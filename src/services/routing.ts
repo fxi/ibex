@@ -15,7 +15,7 @@ const defaultSettings: RouteSettings = {
   climbs: 'IGNORE',
   bikeSharingProvidersIds: [],
   addRouteGeoJson: true,
-  optimizeWaypointOrder: false,
+  optimizeWaypointOrder: true,
 };
 
 export class RoutingApiService {

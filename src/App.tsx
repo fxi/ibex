@@ -57,7 +57,8 @@ function App() {
     stairs: 'AVOID_IF_POSSIBLE',
     pavements: 'AVOID_IF_POSSIBLE',
     oneways: 'AVOID_IF_POSSIBLE',
-    surface: 'PREFER_NON_PAVED'
+    surface: 'PREFER_NON_PAVED',
+    optimizeWaypointsOrder: true
   })
   
   // Dialog states
@@ -199,7 +200,7 @@ function App() {
         if (mapContainer.current && !mapRef.current) {
           const map = new maplibregl.Map({
             container: mapContainer.current,
-            style: 'https://api.maptiler.com/maps/01984598-44d5-70a4-b028-6ce2d6f3027a/style.json?key=r0T8W9TTH8XCCGoLL9gE',
+            style: `https://api.maptiler.com/maps/01984598-44d5-70a4-b028-6ce2d6f3027a/style.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`,
             center: [6.1908, 46.1943],
             zoom: 10,
             maxZoom: 18,
@@ -214,7 +215,7 @@ function App() {
             console.log('Map loaded successfully')
             map.addSource('terrainSource', {
               type: 'raster-dem',
-              url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${'r0T8W9TTH8XCCGoLL9gE'}`,
+              url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`,
               tileSize: 256
             })
           })
@@ -923,6 +924,27 @@ function App() {
                             <SelectItem value="PREFER_SMOOTH">Prefer Smooth</SelectItem>
                             <SelectItem value="AVOID_NON_SMOOTH">Avoid Non-Smooth</SelectItem>
                             <SelectItem value="AVOID_BAD_SMOOTHNESS_ONLY">Avoid Bad Only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="optimize-waypoints">Waypoint Order</Label>
+                        <Select
+                          value={routingSettings.optimizeWaypointsOrder.toString()}
+                          onValueChange={(value) =>
+                            setRoutingSettings((prev) => ({
+                              ...prev,
+                              optimizeWaypointsOrder: value === 'true',
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Optimize Order</SelectItem>
+                            <SelectItem value="false">Keep Original Order</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
