@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil } from 'lucide-react'
+import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand } from 'lucide-react'
 import { useMarkerManager } from '@/hooks/useMarkerManager'
 import { useRoutes, Route } from '@/hooks/useRoutes'
 import { useTrackManager } from '@/hooks/useTrackManager'
@@ -35,6 +35,7 @@ import { toast } from 'sonner'
 function App() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const maplibreglRef = useRef<any>(null)
   const [trackManagerOpen, setTrackManagerOpen] = useState(true)
   const [currentVisualizationMode, setCurrentVisualizationMode] = useState<VisualizationMode>('default')
   
@@ -121,6 +122,7 @@ function App() {
     updateTrackColor,
     renameTrack,
     exportTrack,
+    zoomToTrack,
     clearTemporaryTracks,
     clearAllTracks,
     setAllTracksVisualizationMode,
@@ -189,6 +191,7 @@ function App() {
     const loadMap = async () => {
       try {
         const maplibregl = await import('maplibre-gl')
+        maplibreglRef.current = maplibregl
         // Import CSS separately via index.css or global.css
         
         if (mapContainer.current && !mapRef.current) {
@@ -210,7 +213,7 @@ function App() {
           // Initialize managers and add click handler
           Promise.all([
             initializeMarkerManager(mapRef),
-            initializeTrackManager(mapRef)
+            initializeTrackManager(mapRef, maplibreglRef.current)
           ]).then(() => {
             // Simple click handler - no debouncing needed with clean class approach
             map.on('click', (e) => {
@@ -431,6 +434,18 @@ function App() {
           ref={mapContainer} 
           className="h-full w-full cursor-crosshair" 
         />
+
+        {/* Floating Show Panel Button */}
+        {!trackManagerOpen && (
+          <Button
+            onClick={() => setTrackManagerOpen(true)}
+            variant="secondary"
+            size="sm"
+            className="absolute bottom-4 left-4 z-20 shadow-lg"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       
       {/* Bottom Panel with Tabs */}
@@ -467,11 +482,11 @@ function App() {
               <TabsTrigger value="settings" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
                 Settings
               </TabsTrigger>
-              <TabsTrigger value="diagnostics" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+              <TabsTrigger value="diagnostics" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent hidden md:flex">
                 <Gauge className="h-4 w-4 mr-1" />
                 Diagnostics
               </TabsTrigger>
-              <TabsTrigger value="info" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
+              <TabsTrigger value="info" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent hidden md:flex">
                 <Info className="h-4 w-4 mr-1" />
                 Info
               </TabsTrigger>
@@ -502,7 +517,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium text-center">
+                          <th className="pb-2 font-medium text-center hidden md:table-cell">
                             <button 
                               onClick={() => handleSort('pts')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors mx-auto"
@@ -513,7 +528,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium">
+                          <th className="pb-2 font-medium hidden md:table-cell">
                             <button 
                               onClick={() => handleSort('date')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors"
@@ -535,7 +550,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium text-right">
+                          <th className="pb-2 font-medium text-right hidden md:table-cell">
                             <button 
                               onClick={() => handleSort('time')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
@@ -576,7 +591,7 @@ function App() {
                           <tr key={track.getId()} className="border-b hover:bg-muted/50">
                             <td className="py-2">
                               <div className="flex items-center gap-2">
-                                <span 
+                                <span
                                   className="w-3 h-3 rounded-full cursor-pointer flex-shrink-0" 
                                   style={{ backgroundColor: track.getColor() }}
                                   onClick={() => {
@@ -599,7 +614,7 @@ function App() {
                                   title={track.isPermanentTrack() ? "Click to change color" : "Color"}
                                 ></span>
                                 <span
-                                  className={track.isPermanentTrack() ? "cursor-pointer hover:underline" : ""}
+                                  className={`${track.isPermanentTrack() ? "cursor-pointer hover:underline" : ""} truncate max-w-28 md:max-w-xs`}
                                   onClick={() => {
                                     if (track.isPermanentTrack()) {
                                       showInputDialog(
@@ -622,24 +637,24 @@ function App() {
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2 text-center text-muted-foreground">
+                            <td className="py-2 text-center text-muted-foreground hidden md:table-cell">
                               {track.getWaypoints().length}
                             </td>
-                            <td className="py-2 text-muted-foreground">
-                              {new Date(track.getCreatedAt()).toLocaleDateString(undefined, { 
-                                month: '2-digit', 
-                                day: '2-digit', 
-                                year: '2-digit' 
+                            <td className="py-2 text-muted-foreground hidden md:table-cell">
+                              {new Date(track.getCreatedAt()).toLocaleDateString(undefined, {
+                                month: '2-digit',
+                                day: '2-digit',
+                                year: '2-digit'
                               })}
                             </td>
                             <td className="py-2 text-right">
                               {track.getRoute()?.stats?.distanceMeters 
-                                ? (track.getRoute()!.stats!.distanceMeters / 1000).toFixed(1) + 'km' 
+                                ? (track.getRoute()!.stats!.distanceMeters / 1000).toFixed(1) + 'km'
                                 : 'N/A'}
                             </td>
-                            <td className="py-2 text-right">
-                              {track.getRoute()?.stats?.durationSeconds 
-                                ? Math.round(track.getRoute()!.stats!.durationSeconds / 60) + 'min' 
+                            <td className="py-2 text-right hidden md:table-cell">
+                              {track.getRoute()?.stats?.durationSeconds
+                                ? Math.round(track.getRoute()!.stats!.durationSeconds / 60) + 'min'
                                 : 'N/A'}
                             </td>
                             <td className="py-2 text-right">
@@ -683,6 +698,15 @@ function App() {
                                   title="Export GPX"
                                 >
                                   <Download className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  onClick={() => zoomToTrack(track.getId())}
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0"
+                                  title="Zoom to track"
+                                >
+                                  <Expand className="h-3 w-3" />
                                 </Button>
                                 <Button
                                   onClick={() => toggleTrackVisibility(track.getId())}

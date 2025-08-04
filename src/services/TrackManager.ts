@@ -64,6 +64,22 @@ export class Track {
   getOutlineLayerId(): string { return this.outlineLayerId }
   getVisualizationMode(): VisualizationMode { return this.data.visualizationMode || 'default' }
 
+  getBounds(): any | null {
+    if (!this.data.route?.geojson) return null
+
+    const coordinates = this.getAllCoordinates()
+    if (coordinates.length === 0) return null
+
+    const maplibregl = this.trackManager?.getMapLibreGl()
+    if (!maplibregl) return null
+
+    const bounds = coordinates.reduce((bounds, coord) => {
+      return bounds.extend(coord)
+    }, new maplibregl.LngLatBounds(coordinates[0], coordinates[0]))
+
+    return bounds
+  }
+
   // Setters
   setName(name: string) {
     this.data.name = name
@@ -95,6 +111,31 @@ export class Track {
     this.onDelete(this.data.id)
   }
 
+  private getAllCoordinates(): [number, number][] {
+    let allCoordinates: [number, number][] = []
+    const geojson = this.data.route.geojson
+
+    if (geojson.features) {
+      geojson.features.forEach((feature: any) => {
+        if (feature.geometry?.coordinates) {
+          if (feature.geometry.type === 'LineString') {
+            allCoordinates.push(...feature.geometry.coordinates)
+          } else if (feature.geometry.type === 'MultiLineString') {
+            feature.geometry.coordinates.forEach((line: any) => allCoordinates.push(...line))
+          }
+        }
+      })
+    } else if (geojson.geometry?.coordinates) {
+      if (geojson.geometry.type === 'LineString') {
+        allCoordinates = geojson.geometry.coordinates
+      } else if (geojson.geometry.type === 'MultiLineString') {
+        geojson.geometry.coordinates.forEach((line: any) => allCoordinates.push(...line))
+      }
+    }
+    
+    return allCoordinates
+  }
+
   exportAsGPX(): void {
     try {
       if (!this.data.route?.geojson) {
@@ -102,32 +143,7 @@ export class Track {
         return
       }
       
-      // Extract all coordinates from all features in the GeoJSON
-      let allCoordinates: [number, number][] = []
-      
-      if (this.data.route.geojson.features) {
-        // Handle FeatureCollection
-        this.data.route.geojson.features.forEach((feature: any) => {
-          if (feature.geometry?.coordinates) {
-            if (feature.geometry.type === 'LineString') {
-              allCoordinates.push(...feature.geometry.coordinates)
-            } else if (feature.geometry.type === 'MultiLineString') {
-              feature.geometry.coordinates.forEach((lineCoords: [number, number][]) => {
-                allCoordinates.push(...lineCoords)
-              })
-            }
-          }
-        })
-      } else if (this.data.route.geojson.geometry?.coordinates) {
-        // Handle single Geometry
-        if (this.data.route.geojson.geometry.type === 'LineString') {
-          allCoordinates = this.data.route.geojson.geometry.coordinates
-        } else if (this.data.route.geojson.geometry.type === 'MultiLineString') {
-          this.data.route.geojson.geometry.coordinates.forEach((lineCoords: [number, number][]) => {
-            allCoordinates.push(...lineCoords)
-          })
-        }
-      }
+      const allCoordinates = this.getAllCoordinates()
       
       console.log('Extracted coordinates for GPX:', allCoordinates.length)
       
@@ -626,12 +642,18 @@ ${trackPoints}
 export class TrackManager {
   private tracks = new Map<string, Track>()
   private map: any
+  private maplibregl: any
   private onTracksChange?: (tracks: Track[]) => void
   private lastHoveredFeature?: string
 
-  constructor(map: any, onTracksChange?: (tracks: Track[]) => void) {
+  constructor(map: any, maplibregl: any, onTracksChange?: (tracks: Track[]) => void) {
     this.map = map
+    this.maplibregl = maplibregl
     this.onTracksChange = onTracksChange
+  }
+
+  getMapLibreGl(): any {
+    return this.maplibregl
   }
 
   getMap(): any {
@@ -769,6 +791,20 @@ export class TrackManager {
       }
     })
     this.notifyChange()
+  }
+
+  zoomToTrack(id: string): void {
+    const track = this.getTrack(id)
+    if (!track) return
+
+    const bounds = track.getBounds()
+    if (bounds) {
+      this.map.fitBounds(bounds, {
+        padding: 60, // Add some padding around the track
+        duration: 1000, // Smooth animation
+        essential: true
+      })
+    }
   }
 
   saveTemporaryTrackAsPermanent(id: string, name: string): void {

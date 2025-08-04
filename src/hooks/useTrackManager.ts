@@ -8,12 +8,13 @@ export const useTrackManager = () => {
   const [tracks, setTracks] = useState<Track[]>([])
   const trackManagerRef = useRef<TrackManager | null>(null)
 
-  const initializeManager = useCallback((mapRef: any) => {
+  const initializeManager = useCallback((mapRef: any, maplibregl: any) => {
     if (!mapRef.current || trackManagerRef.current) return
 
     trackManagerRef.current = new TrackManager(
       mapRef.current,
-      (updatedTracks) => setTracks([...updatedTracks])
+      maplibregl,
+      (updatedTracks: Track[]) => setTracks([...updatedTracks])
     )
 
     // Load saved tracks from localStorage
@@ -177,6 +178,11 @@ export const useTrackManager = () => {
     trackManagerRef.current.setAllTracksVisualizationMode(mode)
   }, [])
 
+  const zoomToTrack = useCallback((trackId: string) => {
+    if (!trackManagerRef.current) return
+    trackManagerRef.current.zoomToTrack(trackId)
+  }, [])
+
   const getLastHoveredFeature = useCallback(() => {
     if (!trackManagerRef.current) return undefined
     return trackManagerRef.current.getLastHoveredFeature()
@@ -207,6 +213,7 @@ export const useTrackManager = () => {
     clearAllTracks,
     setTrackVisualizationMode,
     setAllTracksVisualizationMode,
+    zoomToTrack,
     getLastHoveredFeature,
     
     // Manager instance
