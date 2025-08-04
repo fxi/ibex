@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand } from 'lucide-react'
+import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search } from 'lucide-react'
 import { useMarkerManager } from '@/hooks/useMarkerManager'
 import { useRoutes, Route } from '@/hooks/useRoutes'
 import { useTrackManager } from '@/hooks/useTrackManager'
@@ -27,6 +27,8 @@ import { MultiActionConfirmDialog } from '@/components/ui/multi-action-confirm-d
 import { InputDialog } from '@/components/ui/input-dialog'
 import { VisualizationSelector } from '@/components/ui/visualization-selector'
 import { RouteLegend } from '@/components/ui/route-legend'
+import { LocationButton } from '@/components/ui/location-button'
+import { GeocodingSearch } from '@/components/ui/geocoding-search'
 import { RouteVisualization, VisualizationMode } from '@/services/RouteVisualization'
 import { toast } from 'sonner'
 
@@ -201,13 +203,28 @@ function App() {
             center: [6.1908, 46.1943],
             zoom: 10,
             maxZoom: 18,
-            minZoom: 5
+            minZoom: 5,
+            pitch: 0,
+            bearing: 0
           })
 
           mapRef.current = map
 
           map.on('load', () => {
             console.log('Map loaded successfully')
+            map.addSource('terrainSource', {
+              type: 'raster-dem',
+              url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${'r0T8W9TTH8XCCGoLL9gE'}`,
+              tileSize: 256
+            })
+          })
+
+          map.on('pitch', () => {
+            if (map.getPitch() > 0) {
+              map.setTerrain({ source: 'terrainSource', exaggeration: 1.5 })
+            } else {
+              map.setTerrain(null)
+            }
           })
 
           // Initialize managers and add click handler
@@ -405,8 +422,8 @@ function App() {
     <div className="h-screen w-screen bg-background text-foreground relative flex flex-col">
       {/* Main content with map */}
       <div className="flex-1 relative">
-        {/* Secondary Compute Routes Button */}
-        <div className="absolute top-4 right-4 z-10">
+        {/* Map Controls */}
+        <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
           <Button
             onClick={() => handleProcessRoute()}
             disabled={waypoints.length < 2 || isProcessing}
@@ -417,6 +434,8 @@ function App() {
           >
             <CloudCog className="h-4 w-4" />
           </Button>
+          <LocationButton mapRef={mapRef} />
+          <GeocodingSearch mapRef={mapRef} addWaypoint={addWaypoint} />
         </div>
 
         {/* Route Legend */}

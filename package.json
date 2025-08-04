@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@mapbox/togeojson": "^0.16.2",
+    "@maptiler/client": "^2.5.0",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-label": "^2.1.7",
