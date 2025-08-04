@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -42,6 +42,11 @@ export function InputDialog({
   const [value, setValue] = useState(defaultValue)
   const [error, setError] = useState<string>("")
 
+  // Effect to sync state with prop changes
+  useEffect(() => {
+    setValue(defaultValue)
+  }, [defaultValue])
+
   const handleConfirm = () => {
     if (validation) {
       const result = validation(value)
@@ -58,7 +63,8 @@ export function InputDialog({
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
+    if (newOpen) {
+      // Reset state when dialog opens
       setValue(defaultValue)
       setError("")
     }

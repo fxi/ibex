@@ -1,0 +1,771 @@
+Cyclers Navigate Docs
+Routing API
+1 Introduction
+This document describes Cyclers Navigate Routing API (the Routing API further on) for planning of bike routes provided by Umotional. Cyclers Navigate is the world’s most advanced bicycle route planning engine capable of planning high-quality routes of different types and criteria. Cyclers Navigate Routing API exposes the Cyclers engine’s functionality for integration into partner’s products and services.
+
+The Routing API produces a set of Route Plans to get from the origin to the destination given specified parameters. The Route Plan is a technical term refering to the data object represeting a route. For a given request, the Routing API produces a set of three to five route plans. The proposed Route Plans are calculated so that the individual routes are maximally distinct (i.e., they do not overlap) and that the routes represent different trade-offs between the route’s duration (which is highly correlated with route’s distance/length) and the route’s bike-friendliness, where bike-friendliness itself is calculated based on a multitude of bike-friendliness factors (such as safety, comfort, physical effort and pollution-exposure). The importance of selected bike-friendliness factors can be adjusted using route modifiers (it is e.g., possible to specify that extra effort should be made to avoid high-traffic segments, although this might lead to longer routes compared to when traffic is considered with normal priority).
+
+The Routing API can be accessed through the endpoint
+
+POST /v5/routing
+The HTTPS protocol is mandatory when calling the Routing API. The JSON data format is used for both requests and responses. The GZIP compression of requests and responses is used to minimize the data transfer over the network between the backend and the client.
+
+2 Example Uses
+This section illustrates examples of the most used cased of the Routing API. The full specification of the API is further described in Section 3 Routing API Specification.
+
+2.1 Point-to-Point Routes
+Calculating point-to-point routes is the simplest and the default use of the Routing API. In this case, a set of routes from a given origin to a given destination is calculated.
+
+_images/point_to_point.png
+A sample request payload below:
+
+{
+  "client": "IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.090438, "lon": 14.368958},
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.2 Point-to-Point Routes with Waypoints
+Point-to-point routes can be constrained to pass through specific waypoints. By specifying waypoint locations in the waypoints field of the route planning request. By default, the planned routes must to pass the waypoints in the prescribed order.
+
+_images/point_to_point_through_waypoints.png
+To achieve this, the requests has to be specified as follows:
+
+Locations of desired points of interest must be specified in waypoints field.
+
+A sample request payload below:
+
+{
+  "client": "IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.090438, "lon": 14.368958},
+  "waypoints": [
+    {"lat": 50.110808, "lon": 14.396338}
+  ],
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.3 Order-Optimized Multi-Waypoints Routes
+The Routing API can also plan routes visiting multiple points of interest in the optimal order.
+
+_images/optimized_through_waypoints.png
+To achieve this, the requests has to be specified as follows:
+
+Locations of desired points of interest must be specified in waypoints field.
+
+Field optimizeWaypointsOrder must be set to true.
+
+The maximum number of allowed points of interests is 15.
+
+A sample request payload below:
+
+{
+  "client": "IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "waypoints": [
+    {"lat": 50.081327, "lon": 14.413480},
+    {"lat": 50.079761, "lon": 14.429744},
+    {"lat": 50.086951, "lon": 14.420524},
+    {"lat": 50.075447, "lon": 14.414101},
+    {"lat": 50.086469, "lon": 14.411515}
+   ],
+  "settings": {
+    "optimizeWaypointOrder": true
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.4 Circular Routes
+The Routing API can also plan circular routes with a desired length. To achieve this, the requests has to be specified as follows
+
+Field origin must be equal to destination field.
+
+Field desiredLengthMeters in request settings must contain integer number of desired route length in meters.
+
+_images/circuit.png
+A sample request payload below:
+
+{
+  "client":"IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "settings":{
+    "desiredLengthMeters": 5000
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.5 How to Customize Routes
+This section demonstrates examples how to construct routing requests for several different route planning use cases.
+
+2.5.1 Routes for Mountain Bikers
+To plan an adventure route over the unpaved terrain for a mounting bike or e-bike, the Routing API request should be constructed as follows:
+
+Field surface in the request settings should be set to PREFER_NON_PAVED.
+
+Field bikeType in the request settings should be set to MOUNTAIN_BIKE or ELECTRIC_BIKE value. The value ELECTRIC_BIKE represents mountain e-bike type.
+
+A sample minimal request payload below:
+
+{
+  "client":"IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "settings":{
+    "surface": "PREFER_NON_PAVED",
+    "bikeType": "MOUNTAIN_BIKE"
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.5.2 Routes for Road Cyclists
+To plan a smooth-surface road bike route, the Routing API request should be constructed as follows:
+
+Field surface in the request settings should be set to AVOID_NON_SMOOTH value.
+
+Field bikeType in the request settings should be set to ROAD_BIKE value.
+
+In a situation when a road cyclist is really confident with riding in traffic, consider setting field traffic in the request settings to IGNORE value.
+
+A sample minimal request payload below:
+
+{
+  "client":"IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "settings":{
+    "surface": "AVOID_NON_SMOOTH",
+    "bikeType": "ROAD_BIKE",
+    "traffic": "IGNORE",
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.5.3 Routes for Kickscooters
+To plan a perfect route for a electric kickscooter which takes into account rider’s safety and legality of a ride, the Routing API request should be constructed as follows:
+
+Field traffic in the request settings should be set to AVOID value.
+
+Field pavements in the request settings should be set to STRICTLY_AVOID value.
+
+Field bikeType in the request settings should be set to ELECTRIC_SCOOTER value.
+
+A sample minimal request payload below:
+
+{
+  "client":"IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "settings":{
+    "traffic": "AVOID_IF_POSSIBLE",
+    "pavements": "STRICTLY_AVOID",
+    "bikeType": "ELECTRIC_SCOOTER"
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+2.5.4 Enforcing strict traffic rules compliancy’s
+By default, the planned routes may take advantage of segments which are not strictly traffic rule compliant but which may make the resulting route shorter, safer or smoother. When strict compliancy with traffic rules is required, the the following settings should be used:
+
+Field pavements in the request settings should be set to STRICTLY_AVOID value.
+
+Field oneways in the request settings should be set to STRICTLY_AVOID value.
+
+A sample minimal request payload below:
+
+{
+  "client":"IOS",
+  "origin": {"lat": 50.105827, "lon": 14.415478},
+  "destination": {"lat": 50.105827, "lon": 14.415478},
+  "settings":{
+    "pavements": "STRICTLY_AVOID",
+    "oneways": "STRICTLY_AVOID"
+  },
+  "key": "<YOUR ROUTING API KEY>"
+}
+3 Routing API Specification
+3.1 Request
+The Routing API request object should be sent in the body of the http POST request to the endpoint specified above.
+
+The request parameters below defines the desired characteristics of the resulting planned routes.
+
+Required Parameters
+
+origin
+The required origin location expressed as latitude/longitude coordinates, e.g., { "lat": 50.767001, "lon": 15.057661 }.
+
+
+
+destination
+The required destination location, e.g., { "lat": 50.785911, "lon": 15.063445 }.
+
+
+
+client
+The client name. Possible values are WEB, ANDROID, IOS.
+
+
+
+key
+The key which provides access to the Routing API on behalf of a user. Each user of the Routing API has own unique key.
+
+Note
+
+A key is needed to access the Routing API. The key must be inserted into each request.
+
+Optional Parameters
+
+waypoints
+List of waypoints locations, through which the planned routes have to pass, e.g., [{"lat": 50.785911, "lon": 15.063445}, {"lat": 50.767001, "lon": 15.057661}, ...].
+
+
+
+settings
+Additional route settings and route modifiers. All possible parameters are in detail described in Section 3.2 Request Settings.
+
+
+
+3.2 Request Settings
+The request settings object contains parameters that specify preferred route characteristics. There are two types of parameters: Route Modifiers and Route Settings.
+
+Route Modifiers are used to adjust the importance of route choice factors. For example, modifiers such as climbs or traffic specify what priority should be given to avoiding climbs, respectively avoiding high-car-traffic segments during the route search. Using modifiers it is also possible to instruct the route planning engine whether the route plans can contain not strictly traffic-rule compliant segments such as pavements or stairs. Similar modifiers are really useful while routing for e-bikes, kickscooters or cargo bikes.
+
+The second type of request parameters, the Route Settings, instruct the route planning engine about exact requirements for the route. For instance, using the Route Settings it is possible to define a minimal route length. When planning the route through multiple waypoints, the route planning engine can be also set to optimize the order of waypoints.
+
+Route Modifiers
+
+climbs
+Specifies the level of priority that should be given to avoiding climbs.
+
+
+
+Possible values are:
+
+IGNORE = The engine do not considers avoiding climbs during route planning
+
+AVOID_IF_REASONABLE = The engine tries avoid climbs if reasonably possible. Reasonably possible means there exists an alternative route which is not significantly longer or worse in other bike-friendliness factors (default setting).
+
+AVOID_IF_POSSIBLE = The engine tries avoid climbs if at all possible.
+
+
+
+traffic
+Specifies the level of priority that should be given to avoiding segments with high car traffic.
+
+
+
+Possible values are:
+
+IGNORE = The engine slightly considers car traffic during route planning.
+
+AVOID_IF_REASONABLE = The engine tries avoid segments with high-car-traffic if reasonably possible (default).
+
+AVOID_IF_POSSIBLE = The engine tries avoid high-traffic segments if at all possible.
+
+
+
+surface
+Specifies how road or cycleway type of surface and surface smoothness should be handled.
+
+
+
+Possible values are:
+
+IGNORE = The engine do not considers surface smoothness during route planning.
+
+PREFER_NON_PAVED = The engine prefers unpaved terrain segments. The setting is suitable for mountain bike riders who want to enjoy ride over rough terrain.
+
+AVOID_BAD_SMOOTHNESS_ONLY = Suggested routes do not differentiate between paved or unpaved segments, but the engine tries avoid segments with very bad smoothness (e.g. cobblestones, trials with roots and rocks). The setting is suitable for hybrid or gravel bikes.
+
+PREFER_SMOOTH = The engine prefers segments with smoother surface but do not avoid non-smooth segments if these are convenient for other reasons (default).
+
+AVOID_NON_SMOOTH = The engine tries avoid segments with non-smooth surface if at all possible. The setting suitable for road bikes.
+
+
+
+pollution
+Specifies how air pollution should be handled.
+
+
+
+Possible values are:
+
+IGNORE = The engine do not considers pollution during route planning.
+
+AVOID_IF_REASONABLE = The engine tries avoid segments with high air pollution if reasonably possible (default).
+
+AVOID_IF_POSSIBLE = The engine tries avoid high pollution segments if at all possible.
+
+Note
+
+Air pollution modifier is currently available only in Belgium.
+
+
+
+stairs
+Specifies how stairs should be handled.
+
+
+
+Possible values are:
+
+AVOID_IF_POSSIBLE = Suggested routes should avoid staircase segments, if possible, i.e., there exist a route avoiding the staircase (default).
+
+STRICTLY_AVOID = Suggested routes must not contain staircase segments.
+
+
+
+pavements
+Specifies how going through pavements should be handled.
+
+
+
+Possible values are:
+
+AVOID_IF_POSSIBLE = Suggested routes avoid going on the pavement if at all possible (default).
+
+STRICTLY_AVOID = Suggested routes must not contain pavement segments.
+
+
+
+oneways
+Specifies how going through one-way streets in the opposite direction should be handled.
+
+
+
+Possible values are:
+
+AVOID_IF_POSSIBLE = Suggested routes avoid going in the opposite/contra-flow direction if at all possible (default).
+
+STRICTLY_AVOID = Suggested routes must not contain one-way segments through which the user should go in the opposite direction.
+
+
+
+bikeType
+The parameter is used to personalize calculation of a travel time in route planning.
+
+
+
+Possible values are:
+
+CITY_BIKE, ROAD_BIKE, MOUNTAIN_BIKE, HYBRID_BIKE, FOLDING_BIKE, ELECTRIC_BIKE, CARGO_BIKE, FIXIE_BIKE, GRAVEL_BIKE, RECUMBENT_BIKE, ELECTRIC_CITY_BIKE, ELECTRIC_ROAD_BIKE, ELECTRIC_FOLDING_BIKE, ELECTRIC_CARGO_BIKE, ELECTRIC_FIXIE_BIKE, ELECTRIC_HYBRID_BIKE, ELECTRIC_GRAVEL_BIKE, ELECTRIC_RECUMBENT_BIKE, SCOOTER, BIG_WHEEL_SCOOTER, ELECTRIC_SCOOTER.
+
+
+
+Route Settings
+
+optimizeWaypointOrder
+Specifies whether the route planning engine should optimize the order in which waypoints are visited.
+
+
+
+Possible values are:
+
+false = Order is not optimized, i.e., the waypoints are visited in the order specified (default).
+
+true = Order is optimized, i.e., the waypoints are visited in the order minimizing the overall travel time.
+
+
+
+desiredLengthMeters
+Specified the desired route length in meters that should be returned by route planning engine. The desired route length is only approximate. The real length might differ.
+
+
+
+addPlanGeojson
+Boolean parameter indicating whether the plan object in the response should alse contain representation of itself in GeoJSON format. See the route plan representation in Section 3.8 Plan GeoJSON. By default, set to false.
+
+
+
+3.3 Response
+The Routing API returns a response object according to the specified request (see section 3.1 Request).
+
+Response consists primarily of a set of route plans that have been found by the route planning engine. Each route plan specifies one of the suggested ways to move between locations specified in the request.
+
+Required fields
+
+id
+The unique id of the routing response.
+
+
+
+request
+The corresponding routing request.
+
+
+
+creationTimestamp
+The ISO-8601 timestamp of response creation, e.g., 2019-11-01T16:00:00.000+02:00.
+
+
+
+status
+Routing response status. Possible values are:
+
+OK = Response contains a valid result.
+
+PLAN_NOT_FOUND = No route could be found between the origin and destination given the routing settings.
+
+MAX_WAYPOINTS_EXCEEDED = Too many waypoints were provided in the request.
+
+INVALID_REQUEST = Provided request was invalid. Common causes of this status include an invalid parameter or parameter value.
+
+SERVER_ERROR = Provided request could not be processed due to a server error. The request may succeed if you try again.
+
+LOCATION_NOT_FOUND = Indicates at least one of the locations specified in the request’s origin, destination, or waypoints could not be geocoded.
+
+LIMIT_EXCEEDS = Provided request could not be processed due to rate limitation of the endpoint. The request may succeed if you try again.
+
+
+
+plans
+List of found Route Plans, when status is OK, otherwise will be an empty list. Details describing fields of Route Plan see in section 3.4 Route Plan below.
+
+Optional fields
+
+invalidRequest
+Invalid request for which this response was created (in case of INVALID_REQUEST status).
+
+
+
+errorMessage
+Message with specific information about error cause.
+
+
+
+Note
+
+The response can contain additional fields not documented here. These are not relevant for bike route planning and should be ignored.
+
+Sample of valid response JSON:
+
+{
+  "id": "5dbb1131e21b84000723d794",
+  "request": {
+    "client":"IOS",
+    "origin": {"lat": 50.105827, "lon": 14.415478},
+    "destination": {"lat": 50.090438, "lon": 14.368958},
+    "key": "<YOUR ROUTING API KEY>"
+  },
+  "status": "OK",
+  "plans":[
+    {"id": 0, "start": {"lat": 50.105819, "lon": 14.415447, "elevationMeters": 182}},
+    {"id": 1, "start": {"lat": 50.105819, "lon": 14.415447, "elevationMeters": 182}}
+  ],
+  "creationTimestamp": "2019-11-01T16:00:00.000Z"
+}
+3.4 Route Plan
+Specifies one of the suggested routes to move between locations specified in the Request. The Route Plan consists of one or multiple legs. For route plans that contain no waypoints, the Route Plan will consist of a single leg (see 3.5 Route Leg); or plans that define one or more waypoints, the Route Plan will consist of one or more legs, corresponding to the specific legs of the Route Plan.
+
+Fields
+
+id
+Response-unique plan id.
+
+
+
+start
+Start location of the plan.
+
+
+
+end
+End location of the plan.
+
+
+
+labels
+Set of labels describing the characteristic of the plan. The Route Plan containing the label FAST is the route with lowest travel time found for the given request. Further, the Route Plan containing the label BIKE_FRIENDLY is the route with the highest percentage of bike-friendly segments (more in 3.8 Statistics) found for given request. Other possible values are ALTERNATIVE, CLEANEST_AIR.
+
+
+
+stats
+Plan statistics. Details in section 3.8 Statistics below.
+
+
+
+legs
+List of legs which comprises this plan. Details in Section 3.5 Route Leg below.
+
+
+
+boundingBox
+Geographical boundaris (expressed in GPS cooridnates) of the Route Plan.
+
+
+
+geoJson
+The Route Plan representation in the GeoJSON format. See a detailed description of the object in Section 3.8 Plan GeoJSON.
+
+
+
+Response JSON snippet showing example of one plan object:
+
+{
+  "plans":[
+    {
+      "id": 0,
+      "start": {"lat": 50.105819, "lon": 14.415447, "elevationMeters": 182},
+      "end": {"lat": 50.105819, "lon": 14.415447, "elevationMeters": 182},
+      "labels": ["BIKE_FRIENDLY"],
+      "stats": {
+        "distanceMeters": 14934,
+        "durationSeconds": 5205,
+        "elevationGainMeters": 87,
+        "elevationDropMeters": 91,
+        "bikeConvenience": 115622
+      },
+      "legs": ["array of plan leg objects"],
+      "boundingBox": {
+        "topLeft": {"lat": 50.109093, "lon": 14.411273},
+        "bottomRight": {"lat": 50.109093, "lon": 14.411273}
+      },
+      "labels": ["BIKE_FRIENDLY"],
+      "type": "BIKE"
+    }
+  ]
+}
+3.5 Route Leg
+The Route Leg specifies a part of the Route Plan directly connecting two locations without intermediate waypoints. The leg consists of one or multiple Route Step.
+
+Fields
+
+id
+Plan-unique leg id.
+
+
+
+start
+Start location of the leg.
+
+
+
+end
+End location of the leg.
+
+
+
+stats
+Leg statistics (same as the plan’s stats in section 3.8 Statistics).
+
+
+
+steps
+List of individual steps (details in section 3.6 Route Step below).
+
+
+
+Response JSON snippet showing example of one leg object:
+
+{
+  "legs": [
+    {
+      "id": 0,
+      "start": {"lat": 50.105819, "lon": 14.415447, "elevationMeters": 182},
+      "end": {"lat": 50.086841, "lon": 14.420565, "elevationMeters": 191},
+      "stats": {
+        "distanceMeters": 4683,
+        "durationSeconds": 1311,
+        "elevationGainMeters": 40,
+        "elevationDropMeters": 39,
+        "bikeConvenience": 30910
+      },
+      "mode": "BIKE",
+      "steps":[
+        {
+          "start": {"lat": 50.107622, "lon": 14.41498, "elevationMeters": 183},
+          "end": {"lat": 50.102987, "lon": 14.423236, "elevationMeters": 222},
+          "via": [
+            {"lat": 50.107651, "lon": 14.415024, "elevationMeters": 183},
+            {"lat": 50.107651, "lon": 14.415024, "elevationMeters": 183}
+          ],
+          "distanceMeters": 1977,
+          "durationSeconds": 543,
+          "instruction": {
+            "manoeuvre": "RIGHT",
+            "streetName": "Královská obora",
+            "bicycleRouteName": "201, A162"
+          }
+        }
+      ]
+    }
+  ]
+}
+3.6 Route Step
+Route Step is the lowest-level atomic part of the Route Plan and specifies the part of the route between successive guidance instructions (e.g., turn left).
+
+Fields
+
+start
+Start location of the step.
+
+
+
+end
+End location of the step.
+
+
+
+via
+Via location objects of the step to draw it precisely in the map.
+
+
+
+distanceMeters
+Distance in meters to the next step.
+
+
+
+durationSeconds
+Duration in seconds to the next step.
+
+
+
+instruction
+Instruction at the step’s start location for executing this step. (Details in section 3.7 Instruction below).
+
+
+
+3.7 Instruction
+Instruction object contains detailed information about the manoeuvre (e.g., whether to turn left or right and on what street or way to continue).
+
+manoeuvre
+Possible values are LEFT, RIGHT, SLIGHTLY_LEFT, SLIGHTLY_RIGHT, HARD_LEFT, HARD_RIGHT, CONTINUE, U_TURN, ORIGIN, DESTINATION, WAYPOINT.
+
+
+
+streetName
+Name of the street where to which this instruction is leading.
+
+
+
+bicycleRouteName
+Name of the bicycle route to which this instruction is leading.
+
+
+
+3.8 Statistics
+Statistics object contains information about given part of the route plan (e.g., whole plan or leg).
+
+Fields
+
+distanceMeters
+Plan distance in meters.
+
+
+
+durationSeconds
+Plan duration in seconds.
+
+
+
+bikeFriendlyRoutesPercentage
+Percentage of bike-friendly route segments.
+
+
+
+physicalEffortKj
+Physical effort in kJ required to ride the route plan.
+
+
+
+elevationGainMeters
+Total elevation gain in meters along the plan.
+
+
+
+elevationDropMeters
+Total elevation drop in meters along the plan.
+
+
+
+emissionsGramsCO2
+CO2 emissions in grams which would be emitted when the cyclist would travel this route by car.
+
+
+
+slopePercent
+The average slope in percent.
+
+
+
+steepSlopesPercentage
+The percentage of steep route segment with the slope greater then 6%.
+
+
+
+traffic
+The percentage of route segments with high-traffic.
+
+
+
+smoothness
+The percentage of bad non-smooth route segments.
+
+
+
+Note
+
+For the recreational cycling use case, we recommend using routes with the highest values of bikeFriendlyRoutesPercentage. How high these percentages are going to be depends largely on local infrastructure conditions, i.e., there could be situations in which even the most bike friendly routes will have a low bikeFriendlyRoutesPercentage score. Equally, there could be situations in which even the most direct, fastest route will have high bikeFriendlyRoutesPercentage.
+
+3.8 Plan GeoJSON
+The GeoJSON representation of a route plan is included in one FeatureCollection object as a list of Feature objects. Each Feature represents segment of the route plan that contains LineString geometry and following properties:
+
+
+
+distance
+Route segment distance in meters.
+
+
+
+infrastructure
+The type of road infrastructure on the route segment. Possible values are: CYCLEWAY, BIKE_LANE, FOOTWAY, OFFROAD, ROAD.
+
+
+
+stress
+The level of traffic stress presented on the route segment. Level 1 means no car traffic and level 5 means high car traffic occurrence.
+
+
+
+surfaceSmoothness
+Category of surface smoothness on route segment. Possible values are: PAVED_EXCELLENT, PAVED_GOOD, PAVED_INTERMEDIATE, PAVED_BAD, UNPAVED_INTERMEDIATE, UNPAVED_BAD, UNPAVED_HORRIBLE, UNPAVED_IMPASSABLE, UNKNOWN.
+
+
+
+slope
+Slope in percent on the route segment.
+
+
+
+An example of plan GeoJSON:
+
+{
+  "type":"FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[9.148466, 48.430829], [9.148745, 48.43099]]
+      },
+      "properties":{
+        "stress": 2,
+        "distance": 27,
+        "infrastructure": "ROAD",
+        "surfaceSmoothness": "PAVED_EXCELLENT",
+        "slope": 0.0
+      }
+    }
+  ]
+}
+3.9 Location
+The Routing API location object consists of three fields:
+
+lat
+Latitude coordinate.
+
+
+
+lon
+Longitude coordinate.
+
+
+
+elevationMeters
+Elevation in meters above mean sea level.

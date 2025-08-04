@@ -1,5 +1,6 @@
 import { Route } from '@/hooks/useRoutes'
 import { WaypointData } from './MarkerManager'
+import { RouteVisualization, VisualizationMode } from './RouteVisualization'
 
 export interface TrackData {
   id: string
@@ -10,6 +11,7 @@ export interface TrackData {
   isPermanent: boolean
   color?: string
   isVisible?: boolean
+  visualizationMode?: VisualizationMode
 }
 
 export class Track {
@@ -18,17 +20,20 @@ export class Track {
   private outlineLayerId: string
   private onUpdate: (track: Track) => void
   private onDelete: (id: string) => void
+  private trackManager?: TrackManager
 
   constructor(
     data: TrackData,
     onUpdate: (track: Track) => void,
-    onDelete: (id: string) => void
+    onDelete: (id: string) => void,
+    trackManager?: TrackManager
   ) {
     this.data = { ...data }
     this.mapLayerId = `track-${data.id}`
     this.outlineLayerId = `track-${data.id}-outline`
     this.onUpdate = onUpdate
     this.onDelete = onDelete
+    this.trackManager = trackManager
     
     // Ensure track has a color
     if (!this.data.color) {
@@ -57,6 +62,7 @@ export class Track {
   getData(): TrackData { return { ...this.data } }
   getMapLayerId(): string { return this.mapLayerId }
   getOutlineLayerId(): string { return this.outlineLayerId }
+  getVisualizationMode(): VisualizationMode { return this.data.visualizationMode || 'default' }
 
   // Setters
   setName(name: string) {
@@ -71,6 +77,11 @@ export class Track {
 
   setVisibility(visible: boolean) {
     this.data.isVisible = visible
+    this.onUpdate(this)
+  }
+
+  setVisualizationMode(mode: VisualizationMode) {
+    this.data.visualizationMode = mode
     this.onUpdate(this)
   }
 
@@ -91,13 +102,41 @@ export class Track {
         return
       }
       
-      const coordinates = this.data.route.geojson.features?.[0]?.geometry?.coordinates || []
-      if (coordinates.length === 0) {
+      // Extract all coordinates from all features in the GeoJSON
+      let allCoordinates: [number, number][] = []
+      
+      if (this.data.route.geojson.features) {
+        // Handle FeatureCollection
+        this.data.route.geojson.features.forEach((feature: any) => {
+          if (feature.geometry?.coordinates) {
+            if (feature.geometry.type === 'LineString') {
+              allCoordinates.push(...feature.geometry.coordinates)
+            } else if (feature.geometry.type === 'MultiLineString') {
+              feature.geometry.coordinates.forEach((lineCoords: [number, number][]) => {
+                allCoordinates.push(...lineCoords)
+              })
+            }
+          }
+        })
+      } else if (this.data.route.geojson.geometry?.coordinates) {
+        // Handle single Geometry
+        if (this.data.route.geojson.geometry.type === 'LineString') {
+          allCoordinates = this.data.route.geojson.geometry.coordinates
+        } else if (this.data.route.geojson.geometry.type === 'MultiLineString') {
+          this.data.route.geojson.geometry.coordinates.forEach((lineCoords: [number, number][]) => {
+            allCoordinates.push(...lineCoords)
+          })
+        }
+      }
+      
+      console.log('Extracted coordinates for GPX:', allCoordinates.length)
+      
+      if (allCoordinates.length === 0) {
         alert('No coordinates found in route')
         return
       }
       
-      const trackPoints = coordinates.map((coord: [number, number]) => 
+      const trackPoints = allCoordinates.map((coord: [number, number]) => 
         `      <trkpt lat="${coord[1]}" lon="${coord[0]}"></trkpt>`
       ).join('\n')
       
@@ -141,47 +180,371 @@ ${trackPoints}
       // Remove existing layers if they exist
       this.removeFromMap(map)
 
-      // Add source
-      map.addSource(this.mapLayerId, {
-        type: 'geojson',
-        data: this.data.route.geojson
-      })
+      const visualizationMode = this.getVisualizationMode()
 
-      // Add outline layer
-      map.addLayer({
-        id: this.outlineLayerId,
-        type: 'line',
-        source: this.mapLayerId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': 'white',
-          'line-width': this.data.isPermanent ? 6 : 8,
-          'line-opacity': 0.8
-        }
-      })
+      // Check if we have GeoJSON with segment properties for advanced visualization
+      const hasSegmentData = this.data.route.geojson?.features?.some((f: any) => 
+        f.properties && ('stress' in f.properties || 'surfaceSmoothness' in f.properties || 'slope' in f.properties)
+      )
+      
+      if (visualizationMode !== 'default' && hasSegmentData) {
+        console.log('Using GeoJSON-based segment visualization')
+        this.addGeoJSONBasedVisualization(map)
+      } else {
+        console.log('Using default visualization')
+        this.addDefaultVisualization(map)
+      }
 
-      // Add main track layer
-      map.addLayer({
-        id: this.mapLayerId,
-        type: 'line',
-        source: this.mapLayerId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': this.getColor(),
-          'line-width': this.data.isPermanent ? 4 : 6,
-          'line-opacity': 0.8
-        }
-      })
+      // Add interactive features to both layers
+      this.addInteractiveFeatures(map)
 
       this.data.isVisible = true
     } catch (error) {
       console.error('Error adding track to map:', error)
+    }
+  }
+
+  private addDefaultVisualization(map: any): void {
+    // Add source
+    map.addSource(this.mapLayerId, {
+      type: 'geojson',
+      data: this.data.route.geojson
+    })
+
+    // Add outline layer
+    map.addLayer({
+      id: this.outlineLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': 'white',
+        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-opacity': 0.8
+      }
+    })
+
+    // Add main track layer
+    map.addLayer({
+      id: this.mapLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': this.getColor(),
+        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-opacity': 0.8
+      }
+    })
+  }
+
+  private addGeoJSONBasedVisualization(map: any): void {
+    const visualizationMode = this.getVisualizationMode()
+    
+    // Use the route GeoJSON directly - it already has segment properties
+    const segmentGeoJSON = this.data.route.geojson
+    
+    console.log('GeoJSON features:', segmentGeoJSON.features?.length)
+    console.log('First feature properties:', segmentGeoJSON.features?.[0]?.properties)
+    
+    // Calculate max distance for distance-based visualization
+    let maxDistance = 1
+    if (visualizationMode === 'distance' && segmentGeoJSON.features) {
+      const distances = segmentGeoJSON.features
+        .map((f: any) => f.properties?.distance)
+        .filter((d: any) => typeof d === 'number')
+      if (distances.length > 0) {
+        maxDistance = Math.max(...distances)
+      }
+    }
+    
+    // Add source
+    map.addSource(this.mapLayerId, {
+      type: 'geojson',
+      data: segmentGeoJSON
+    })
+
+    // Add outline layer
+    map.addLayer({
+      id: this.outlineLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': 'white',
+        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-opacity': 0.8
+      }
+    })
+
+    // Add main track layer with data-driven styling
+    map.addLayer({
+      id: this.mapLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': this.createDataDrivenExpression(visualizationMode, maxDistance),
+        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-opacity': 0.8
+      }
+    })
+  }
+
+  private addSegmentBasedVisualization(map: any): void {
+    const sections = this.data.route.sections!
+    const visualizationMode = this.getVisualizationMode()
+    
+    console.log('Track sections data:', sections)
+    console.log('Route GeoJSON:', this.data.route.geojson)
+    
+    // Check if sections have coordinates, if not, fall back to default visualization
+    const hasValidSections = sections.some(s => s.coordinates && s.coordinates.length > 0)
+    if (!hasValidSections) {
+      console.log('No valid section coordinates found, falling back to default visualization')
+      // For now, always fall back to default visualization until we fix section coordinate extraction
+      this.addDefaultVisualization(map)
+      return
+    }
+    
+    // Calculate max distance for distance-based visualization
+    const maxDistance = Math.max(...sections.map(s => s.distance))
+
+    // Create segment-based GeoJSON
+    const segmentGeoJSON = RouteVisualization.createSegmentGeoJSON(sections)
+    console.log('Generated segment GeoJSON:', segmentGeoJSON)
+    
+    // Add source
+    map.addSource(this.mapLayerId, {
+      type: 'geojson',
+      data: segmentGeoJSON
+    })
+
+    // Add outline layer
+    map.addLayer({
+      id: this.outlineLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': 'white',
+        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-opacity': 0.8
+      }
+    })
+
+    // Add main track layer with data-driven styling
+    map.addLayer({
+      id: this.mapLayerId,
+      type: 'line',
+      source: this.mapLayerId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': this.createDataDrivenExpression(visualizationMode, maxDistance),
+        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-opacity': 0.8
+      }
+    })
+  }
+
+  private createDataDrivenExpression(mode: VisualizationMode, maxDistance: number): any {
+    if (mode === 'infrastructure') {
+      const baseExpression: any[] = ['case']
+      const mapping = RouteVisualization.getInfrastructureColorMapping()
+      mapping.forEach(({ value, color }) => {
+        baseExpression.push(['==', ['get', 'infrastructure'], value])
+        baseExpression.push(color)
+      })
+      baseExpression.push('#6B7280') // Default fallback
+      return baseExpression
+    } else if (mode === 'stress') {
+      const baseExpression: any[] = ['case']
+      const mapping = RouteVisualization.getStressColorMapping()
+      mapping.forEach(({ value, color }) => {
+        baseExpression.push(['==', ['get', 'stress'], value])
+        baseExpression.push(color)
+      })
+      baseExpression.push('#6B7280') // Default fallback
+      return baseExpression
+    } else if (mode === 'surface') {
+      const baseExpression: any[] = ['case']
+      const mapping = RouteVisualization.getSurfaceColorMapping()
+      mapping.forEach(({ value, color }) => {
+        baseExpression.push(['==', ['get', 'surfaceSmoothness'], value])
+        baseExpression.push(color)
+      })
+      baseExpression.push('#6B7280') // Default fallback
+      return baseExpression
+    } else if (mode === 'slope') {
+      return [
+        'case',
+        ['<', ['get', 'slope'], -8], '#1E40AF',
+        ['<', ['get', 'slope'], -4], '#3B82F6',
+        ['<', ['get', 'slope'], -1], '#60A5FA',
+        ['<', ['get', 'slope'], 1], '#10B981',
+        ['<', ['get', 'slope'], 4], '#F59E0B',
+        ['<', ['get', 'slope'], 8], '#F97316',
+        ['<', ['get', 'slope'], 12], '#EF4444',
+        '#DC2626' // Default fallback for very steep
+      ]
+    } else if (mode === 'distance') {
+      const step1 = maxDistance * 0.2
+      const step2 = maxDistance * 0.4
+      const step3 = maxDistance * 0.6
+      const step4 = maxDistance * 0.8
+      
+      return [
+        'case',
+        ['<', ['get', 'distance'], step1], '#10B981',
+        ['<', ['get', 'distance'], step2], '#84CC16',
+        ['<', ['get', 'distance'], step3], '#F59E0B',
+        ['<', ['get', 'distance'], step4], '#F97316',
+        '#EF4444' // Default fallback for longest segments
+      ]
+    }
+
+    // Default fallback
+    return '#6B7280'
+  }
+
+  private addInteractiveFeatures(map: any): void {
+    // Add pointer cursor on hover
+    map.on('mouseenter', this.mapLayerId, () => {
+      map.getCanvas().style.cursor = 'pointer'
+      // Notify diagnostic system about hover
+      if (this.trackManager) {
+        this.trackManager.notifyFeatureHovered(this.getName())
+      }
+    })
+
+    map.on('mouseleave', this.mapLayerId, () => {
+      map.getCanvas().style.cursor = ''
+    })
+
+    // Add right-click context menu (desktop)
+    map.on('contextmenu', this.mapLayerId, (e: any) => {
+      e.preventDefault()
+      e.originalEvent.stopPropagation()
+      this.showContextMenu(e.point.x, e.point.y)
+    })
+
+    // Add long-tap context menu (mobile) - 500ms
+    let longTapTimer: NodeJS.Timeout | null = null
+    let tapStart = { x: 0, y: 0 }
+
+    map.on('touchstart', this.mapLayerId, (e: any) => {
+      if (e.originalEvent.touches.length === 1) {
+        const touch = e.originalEvent.touches[0]
+        tapStart = { x: touch.clientX, y: touch.clientY }
+        
+        longTapTimer = setTimeout(() => {
+          e.preventDefault()
+          e.originalEvent.stopPropagation()
+          this.showContextMenu(tapStart.x, tapStart.y)
+        }, 500)
+      }
+    })
+
+    map.on('touchmove', this.mapLayerId, (e: any) => {
+      if (longTapTimer) {
+        clearTimeout(longTapTimer)
+        longTapTimer = null
+      }
+    })
+
+    map.on('touchend', this.mapLayerId, () => {
+      if (longTapTimer) {
+        clearTimeout(longTapTimer)
+        longTapTimer = null
+      }
+    })
+  }
+
+  private showContextMenu(x: number, y: number): void {
+    // Create context menu element
+    const contextMenu = document.createElement('div')
+    contextMenu.className = 'track-context-menu absolute bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-32'
+    contextMenu.style.left = `${x}px`
+    contextMenu.style.top = `${y}px`
+
+    // Create menu items based on track type
+    const menuItems = this.isPermanentTrack() ? [
+      { label: this.isVisible() ? 'Hide' : 'Show', action: () => this.toggleVisibility() },
+      { label: 'Hide all others', action: () => this.hideAllOthers() },
+      { label: 'Export GPX', action: () => this.exportAsGPX() },
+      { label: 'Delete', action: () => this.confirmDelete(), destructive: true }
+    ] : [
+      { label: 'Save', action: () => this.promptSave() },
+      { label: 'Export GPX', action: () => this.exportAsGPX() },
+      { label: 'Delete', action: () => this.delete(), destructive: true }
+    ]
+
+    menuItems.forEach(item => {
+      const menuItem = document.createElement('button')
+      menuItem.className = `block w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
+        item.destructive ? 'text-red-600 hover:bg-red-50' : 'text-gray-700'
+      }`
+      menuItem.textContent = item.label
+      menuItem.onclick = () => {
+        item.action()
+        document.body.removeChild(contextMenu)
+      }
+      contextMenu.appendChild(menuItem)
+    })
+
+    // Add to document and remove on outside click
+    document.body.appendChild(contextMenu)
+    
+    const removeMenu = (event: MouseEvent) => {
+      if (!contextMenu.contains(event.target as Node)) {
+        document.body.removeChild(contextMenu)
+        document.removeEventListener('click', removeMenu)
+      }
+    }
+    
+    setTimeout(() => document.addEventListener('click', removeMenu), 0)
+  }
+
+  private toggleVisibility(): void {
+    if (this.trackManager) {
+      this.trackManager.toggleTrackVisibility(this.getId())
+    }
+  }
+
+  private hideAllOthers(): void {
+    if (this.trackManager) {
+      this.trackManager.hideAllOtherTracks(this.getId())
+    }
+  }
+
+  private confirmDelete(): void {
+    if (confirm(`Are you sure you want to delete "${this.getName()}"? This action cannot be undone.`)) {
+      this.delete()
+    }
+  }
+
+  private promptSave(): void {
+    const name = prompt('Enter a name for this track:', this.getName())
+    if (name && name.trim() && this.trackManager) {
+      this.trackManager.saveTemporaryTrackAsPermanent(this.getId(), name.trim())
     }
   }
 
@@ -196,6 +559,9 @@ ${trackPoints}
 
     try {
       let layersRemoved = 0
+      
+      // Remove event listeners first
+      this.removeInteractiveFeatures(map)
       
       // Remove layers in reverse order (main layer first, then outline)
       if (map.getLayer(this.mapLayerId)) {
@@ -230,6 +596,20 @@ ${trackPoints}
     }
   }
 
+  private removeInteractiveFeatures(map: any): void {
+    try {
+      // Remove all event listeners for this track
+      map.off('mouseenter', this.mapLayerId)
+      map.off('mouseleave', this.mapLayerId)
+      map.off('contextmenu', this.mapLayerId)
+      map.off('touchstart', this.mapLayerId)
+      map.off('touchmove', this.mapLayerId)
+      map.off('touchend', this.mapLayerId)
+    } catch (error) {
+      console.error('Error removing interactive features:', error)
+    }
+  }
+
   updateMapColor(map: any): void {
     if (!map || !this.isVisible()) return
 
@@ -247,6 +627,7 @@ export class TrackManager {
   private tracks = new Map<string, Track>()
   private map: any
   private onTracksChange?: (tracks: Track[]) => void
+  private lastHoveredFeature?: string
 
   constructor(map: any, onTracksChange?: (tracks: Track[]) => void) {
     this.map = map
@@ -261,7 +642,8 @@ export class TrackManager {
     const track = new Track(
       trackData,
       (updatedTrack) => this.handleTrackUpdate(updatedTrack),
-      (id) => this.deleteTrack(id)
+      (id) => this.deleteTrack(id),
+      this
     )
 
     this.tracks.set(trackData.id, track)
@@ -349,12 +731,61 @@ export class TrackManager {
     }
   }
 
+  setTrackVisualizationMode(id: string, mode: VisualizationMode): void {
+    const track = this.tracks.get(id)
+    if (track) {
+      track.setVisualizationMode(mode)
+      // Re-render the track with new visualization
+      if (track.isVisible()) {
+        track.addToMap(this.map)
+      }
+      this.notifyChange()
+    }
+  }
+
+  setAllTracksVisualizationMode(mode: VisualizationMode): void {
+    this.tracks.forEach(track => {
+      track.setVisualizationMode(mode)
+      // Re-render visible tracks with new visualization
+      if (track.isVisible()) {
+        track.addToMap(this.map)
+      }
+    })
+    this.notifyChange()
+  }
+
   makePermanent(id: string): void {
     const track = this.tracks.get(id)
     if (track) {
       track.makePermanent()
       this.notifyChange()
     }
+  }
+
+  hideAllOtherTracks(exceptId: string): void {
+    this.tracks.forEach(track => {
+      if (track.getId() !== exceptId && track.isVisible()) {
+        track.removeFromMap(this.map)
+      }
+    })
+    this.notifyChange()
+  }
+
+  saveTemporaryTrackAsPermanent(id: string, name: string): void {
+    const track = this.tracks.get(id)
+    if (track && !track.isPermanentTrack()) {
+      track.setName(name)
+      track.makePermanent()
+      this.notifyChange()
+    }
+  }
+
+  notifyFeatureHovered(featureName: string): void {
+    this.lastHoveredFeature = featureName
+  }
+
+  getLastHoveredFeature(): string | undefined {
+    return this.lastHoveredFeature
   }
 
   exportMultipleTracks(trackIds: string[]): void {

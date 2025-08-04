@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { TrackManager, Track, TrackData } from '@/services/TrackManager'
 import { Route } from '@/hooks/useRoutes'
 import { WaypointData } from '@/services/MarkerManager'
+import { VisualizationMode } from '@/services/RouteVisualization'
 
 export const useTrackManager = () => {
   const [tracks, setTracks] = useState<Track[]>([])
@@ -81,14 +82,14 @@ export const useTrackManager = () => {
     }
 
     const permanentTrack = trackManagerRef.current.addTrack(trackData)
+
+    // Add the permanent track to the map with visibility true
+    permanentTrack.addToMap(trackManagerRef.current.getMap())
     
     // Remove the temporary track (this will remove it from map)
     if (!track.isPermanentTrack()) {
       trackManagerRef.current.deleteTrack(trackId)
     }
-
-    // Add the permanent track to the map with visibility true
-    permanentTrack.addToMap(trackManagerRef.current.getMap())
 
     // Save permanent tracks to localStorage
     const permanentTracks = trackManagerRef.current.getPermanentTracks()
@@ -166,6 +167,21 @@ export const useTrackManager = () => {
     localStorage.removeItem('ibex-permanent-tracks')
   }, [])
 
+  const setTrackVisualizationMode = useCallback((trackId: string, mode: VisualizationMode) => {
+    if (!trackManagerRef.current) return
+    trackManagerRef.current.setTrackVisualizationMode(trackId, mode)
+  }, [])
+
+  const setAllTracksVisualizationMode = useCallback((mode: VisualizationMode) => {
+    if (!trackManagerRef.current) return
+    trackManagerRef.current.setAllTracksVisualizationMode(mode)
+  }, [])
+
+  const getLastHoveredFeature = useCallback(() => {
+    if (!trackManagerRef.current) return undefined
+    return trackManagerRef.current.getLastHoveredFeature()
+  }, [])
+
   // Computed values
   const permanentTracks = tracks.filter(track => track.isPermanentTrack())
   const temporaryTracks = tracks.filter(track => !track.isPermanentTrack())
@@ -189,6 +205,9 @@ export const useTrackManager = () => {
     exportTrack,
     clearTemporaryTracks,
     clearAllTracks,
+    setTrackVisualizationMode,
+    setAllTracksVisualizationMode,
+    getLastHoveredFeature,
     
     // Manager instance
     trackManager: trackManagerRef.current

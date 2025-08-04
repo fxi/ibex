@@ -34,9 +34,19 @@ export interface RoutingRequest {
   uid: null;
 }
 
+export interface RouteSection {
+  distance: number; // Route segment distance in meters
+  infrastructure: 'CYCLEWAY' | 'BIKE_LANE' | 'FOOTWAY' | 'OFFROAD' | 'ROAD';
+  stress: 1 | 2 | 3 | 4 | 5; // Traffic stress level (1 = no cars, 5 = high traffic)
+  surfaceSmoothness: 'PAVED_EXCELLENT' | 'PAVED_GOOD' | 'PAVED_INTERMEDIATE' | 'PAVED_BAD' | 
+                     'UNPAVED_INTERMEDIATE' | 'UNPAVED_BAD' | 'UNPAVED_HORRIBLE' | 'UNPAVED_IMPASSABLE' | 'UNKNOWN';
+  slope: number; // Slope in percent
+  coordinates?: [number, number][]; // Segment coordinates
+}
+
 export interface Route {
   geoJson: any;
-  sections?: any[];
+  sections?: RouteSection[];
   distance?: number;
   duration?: number;
 }

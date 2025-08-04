@@ -1,12 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 import { RoutingApiService } from '@/services/routing'
-import { Point } from '@/types/routing'
+import { Point, RouteSection } from '@/types/routing'
 import { WaypointData } from '@/services/MarkerManager'
 
 export interface Route {
   id: string
   geojson: any
-  sections?: any[]
+  sections?: RouteSection[]
   stats?: {
     distanceMeters: number
     durationSeconds: number
@@ -111,7 +111,7 @@ export const useRoutes = ({ onRoutesChange }: UseRoutesProps = {}) => {
     routeLayersRef.current.push(routeId)
   }, [generateRouteColor])
 
-  const processRoute = useCallback(async (waypoints: WaypointData[], mapRef: any) => {
+  const processRoute = useCallback(async (waypoints: WaypointData[], mapRef: any, settings?: any) => {
     if (waypoints.length < 2) {
       alert('Please add at least 2 waypoints to create a route')
       return []
@@ -134,7 +134,7 @@ export const useRoutes = ({ onRoutesChange }: UseRoutesProps = {}) => {
         lon: wp.lng
       }))
 
-      const data = await RoutingApiService.getRoutes(origin, destination, waypointPoints)
+      const data = await RoutingApiService.getRoutes(origin, destination, waypointPoints, settings)
       console.log('API Response:', data)
 
       if (data.routes && data.routes.length > 0) {

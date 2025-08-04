@@ -30,10 +30,17 @@ export const useMarkerManager = () => {
     }
   }, [])
 
+  const setAllWaypoints = useCallback((newWaypoints: { lng: number; lat: number }[]) => {
+    if (markerManagerRef.current) {
+      markerManagerRef.current.setAllMarkers(newWaypoints)
+    }
+  }, [])
+
   return {
     waypoints,
     addWaypoint,
     clearWaypoints,
+    setAllWaypoints,
     initializeManager,
     markerManager: markerManagerRef.current
   }

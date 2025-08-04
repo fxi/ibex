@@ -146,6 +146,11 @@ export class MarkerManager {
     this.notifyChange()
   }
 
+  setAllMarkers(waypoints: { lng: number; lat: number }[]): void {
+    this.clearAllMarkers()
+    waypoints.forEach(wp => this.addMarker(wp.lng, wp.lat))
+  }
+
   getWaypoints(): WaypointData[] {
     const waypoints: WaypointData[] = []
     this.markers.forEach((marker) => {
