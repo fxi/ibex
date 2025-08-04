@@ -1,0 +1,917 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Generated schema for Root",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "responseType": {
+      "type": "string"
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "locationType": {
+              "type": "string"
+            },
+            "point": {
+              "type": "object",
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lon": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "lat",
+                "lon"
+              ]
+            }
+          },
+          "required": [
+            "locationType",
+            "point"
+          ]
+        },
+        "waypoints": {
+          "type": "array",
+          "items": {}
+        },
+        "destination": {
+          "type": "object",
+          "properties": {
+            "locationType": {
+              "type": "string"
+            },
+            "point": {
+              "type": "object",
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lon": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "lat",
+                "lon"
+              ]
+            }
+          },
+          "required": [
+            "locationType",
+            "point"
+          ]
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "allowedTransportModes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "bikeSharingProvidersIds": {
+              "type": "array",
+              "items": {}
+            },
+            "bikeType": {
+              "type": "string"
+            },
+            "climbs": {
+              "type": "string"
+            },
+            "traffic": {
+              "type": "string"
+            },
+            "stairs": {
+              "type": "string"
+            },
+            "oneways": {
+              "type": "string"
+            },
+            "pavements": {
+              "type": "string"
+            },
+            "surface": {
+              "type": "string"
+            },
+            "addRouteGeoJson": {
+              "type": "boolean"
+            },
+            "optimizeWaypointOrder": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "allowedTransportModes",
+            "bikeSharingProvidersIds",
+            "bikeType",
+            "climbs",
+            "traffic",
+            "stairs",
+            "oneways",
+            "pavements",
+            "surface",
+            "addRouteGeoJson",
+            "optimizeWaypointOrder"
+          ]
+        },
+        "departureDateTime": {
+          "type": "string"
+        },
+        "requestType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "client",
+        "key",
+        "origin",
+        "waypoints",
+        "destination",
+        "settings",
+        "departureDateTime",
+        "requestType"
+      ]
+    },
+    "baseRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "locationType": {
+              "type": "string"
+            },
+            "point": {
+              "type": "object",
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lon": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "lat",
+                "lon"
+              ]
+            }
+          },
+          "required": [
+            "locationType",
+            "point"
+          ]
+        },
+        "waypoints": {
+          "type": "array",
+          "items": {}
+        },
+        "destination": {
+          "type": "object",
+          "properties": {
+            "locationType": {
+              "type": "string"
+            },
+            "point": {
+              "type": "object",
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lon": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "lat",
+                "lon"
+              ]
+            }
+          },
+          "required": [
+            "locationType",
+            "point"
+          ]
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "allowedTransportModes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "bikeSharingProvidersIds": {
+              "type": "array",
+              "items": {}
+            },
+            "bikeType": {
+              "type": "string"
+            },
+            "climbs": {
+              "type": "string"
+            },
+            "traffic": {
+              "type": "string"
+            },
+            "stairs": {
+              "type": "string"
+            },
+            "oneways": {
+              "type": "string"
+            },
+            "pavements": {
+              "type": "string"
+            },
+            "surface": {
+              "type": "string"
+            },
+            "addRouteGeoJson": {
+              "type": "boolean"
+            },
+            "optimizeWaypointOrder": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "allowedTransportModes",
+            "bikeSharingProvidersIds",
+            "bikeType",
+            "climbs",
+            "traffic",
+            "stairs",
+            "oneways",
+            "pavements",
+            "surface",
+            "addRouteGeoJson",
+            "optimizeWaypointOrder"
+          ]
+        },
+        "departureDateTime": {
+          "type": "string"
+        },
+        "requestType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "client",
+        "key",
+        "origin",
+        "waypoints",
+        "destination",
+        "settings",
+        "departureDateTime",
+        "requestType"
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lon": {
+                "type": "number"
+              },
+              "elevationMeters": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "lat",
+              "lon",
+              "elevationMeters"
+            ]
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lon": {
+                "type": "number"
+              },
+              "elevationMeters": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "lat",
+              "lon",
+              "elevationMeters"
+            ]
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "distanceMeters": {
+                "type": "number"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "elevationGainMeters": {
+                "type": "number"
+              },
+              "elevationDropMeters": {
+                "type": "number"
+              },
+              "bikeConvenience": {
+                "type": "number"
+              },
+              "bikeFriendlyRoutesPercentage": {
+                "type": "number"
+              },
+              "walkConvenience": {
+                "type": "number"
+              },
+              "walkFriendlyRoutesPercentage": {
+                "type": "number"
+              },
+              "userSettingsMatch": {
+                "type": "number"
+              },
+              "physicalEffortKj": {
+                "type": "number"
+              },
+              "emissionsGramsCo2": {
+                "type": "number"
+              },
+              "smoothness": {
+                "type": "number"
+              },
+              "traffic": {
+                "type": "number"
+              },
+              "slopePercent": {
+                "type": "number"
+              },
+              "steepSlopesPercentage": {
+                "type": "number"
+              },
+              "safetyScore": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "distanceMeters",
+              "durationSeconds",
+              "elevationGainMeters",
+              "elevationDropMeters",
+              "bikeConvenience",
+              "bikeFriendlyRoutesPercentage",
+              "walkConvenience",
+              "walkFriendlyRoutesPercentage",
+              "userSettingsMatch",
+              "physicalEffortKj",
+              "emissionsGramsCo2",
+              "smoothness",
+              "traffic",
+              "slopePercent",
+              "steepSlopesPercentage",
+              "safetyScore"
+            ]
+          },
+          "legs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "number"
+                },
+                "start": {
+                  "type": "object",
+                  "properties": {
+                    "lat": {
+                      "type": "number"
+                    },
+                    "lon": {
+                      "type": "number"
+                    },
+                    "elevationMeters": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lat",
+                    "lon",
+                    "elevationMeters"
+                  ]
+                },
+                "end": {
+                  "type": "object",
+                  "properties": {
+                    "lat": {
+                      "type": "number"
+                    },
+                    "lon": {
+                      "type": "number"
+                    },
+                    "elevationMeters": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lat",
+                    "lon",
+                    "elevationMeters"
+                  ]
+                },
+                "stats": {
+                  "type": "object",
+                  "properties": {
+                    "distanceMeters": {
+                      "type": "number"
+                    },
+                    "durationSeconds": {
+                      "type": "number"
+                    },
+                    "elevationGainMeters": {
+                      "type": "number"
+                    },
+                    "elevationDropMeters": {
+                      "type": "number"
+                    },
+                    "bikeConvenience": {
+                      "type": "number"
+                    },
+                    "bikeFriendlyRoutesPercentage": {
+                      "type": "number"
+                    },
+                    "userSettingsMatch": {
+                      "type": "number"
+                    },
+                    "physicalEffortKj": {
+                      "type": "number"
+                    },
+                    "smoothness": {
+                      "type": "number"
+                    },
+                    "traffic": {
+                      "type": "number"
+                    },
+                    "slopePercent": {
+                      "type": "number"
+                    },
+                    "steepSlopesPercentage": {
+                      "type": "number"
+                    },
+                    "safetyScore": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "distanceMeters",
+                    "durationSeconds",
+                    "elevationGainMeters",
+                    "elevationDropMeters",
+                    "bikeConvenience",
+                    "bikeFriendlyRoutesPercentage",
+                    "userSettingsMatch",
+                    "physicalEffortKj",
+                    "smoothness",
+                    "traffic",
+                    "slopePercent",
+                    "steepSlopesPercentage",
+                    "safetyScore"
+                  ]
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "object",
+                        "properties": {
+                          "lat": {
+                            "type": "number"
+                          },
+                          "lon": {
+                            "type": "number"
+                          },
+                          "elevationMeters": {
+                            "type": "number"
+                          },
+                          "warning": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string"
+                              },
+                              "properties": {
+                                "type": "object",
+                                "properties": {
+                                  "length": {
+                                    "type": "string"
+                                  },
+                                  "stress": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "length"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "properties"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "lat",
+                          "lon",
+                          "elevationMeters"
+                        ]
+                      },
+                      "end": {
+                        "type": "object",
+                        "properties": {
+                          "lat": {
+                            "type": "number"
+                          },
+                          "lon": {
+                            "type": "number"
+                          },
+                          "elevationMeters": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "lat",
+                          "lon",
+                          "elevationMeters"
+                        ]
+                      },
+                      "via": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "lat": {
+                              "type": "number"
+                            },
+                            "lon": {
+                              "type": "number"
+                            },
+                            "elevationMeters": {
+                              "type": "number"
+                            },
+                            "warning": {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "properties": {
+                                  "type": "object",
+                                  "properties": {
+                                    "stress": {
+                                      "type": "string"
+                                    },
+                                    "length": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "length"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "properties"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "lat",
+                            "lon",
+                            "elevationMeters"
+                          ]
+                        }
+                      },
+                      "distanceMeters": {
+                        "type": "number"
+                      },
+                      "durationSeconds": {
+                        "type": "number"
+                      },
+                      "instruction": {
+                        "type": "object",
+                        "properties": {
+                          "manoeuvre": {
+                            "type": "string"
+                          },
+                          "streetName": {
+                            "type": "string"
+                          },
+                          "htmlInstruction": {
+                            "type": "string"
+                          },
+                          "bicycleRouteName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "manoeuvre",
+                          "htmlInstruction"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "start",
+                      "end",
+                      "via",
+                      "distanceMeters",
+                      "durationSeconds",
+                      "instruction"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "start",
+                "end",
+                "stats",
+                "mode",
+                "steps"
+              ]
+            }
+          },
+          "boundingBox": {
+            "type": "object",
+            "properties": {
+              "topLeft": {
+                "type": "object",
+                "properties": {
+                  "lat": {
+                    "type": "number"
+                  },
+                  "lon": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "lat",
+                  "lon"
+                ]
+              },
+              "bottomRight": {
+                "type": "object",
+                "properties": {
+                  "lat": {
+                    "type": "number"
+                  },
+                  "lon": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "lat",
+                  "lon"
+                ]
+              }
+            },
+            "required": [
+              "topLeft",
+              "bottomRight"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "type": "string"
+          },
+          "geoJson": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "geometry": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "coordinates": {
+                          "type": "array",
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "coordinates"
+                      ]
+                    },
+                    "properties": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string"
+                        },
+                        "stress": {
+                          "type": "number"
+                        },
+                        "slope": {
+                          "type": "number"
+                        },
+                        "distance": {
+                          "type": "number"
+                        },
+                        "popularity": {
+                          "type": "number"
+                        },
+                        "surfaceSmoothness": {
+                          "type": "string"
+                        },
+                        "water": {
+                          "type": "number"
+                        },
+                        "greenery": {
+                          "type": "number"
+                        },
+                        "settingsMatch": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "stress",
+                        "slope",
+                        "distance",
+                        "popularity",
+                        "water",
+                        "greenery",
+                        "settingsMatch"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "geometry",
+                    "properties"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "type",
+              "features"
+            ]
+          },
+          "dummyMap": {
+            "type": "object",
+            "properties": {
+              "highwayPercentage": {
+                "type": "string"
+              },
+              "greenDistance": {
+                "type": "string"
+              },
+              "waterPercentage": {
+                "type": "string"
+              },
+              "highwayDistance": {
+                "type": "string"
+              },
+              "consumedEnergyWh": {
+                "type": "number"
+              },
+              "greenPercentage": {
+                "type": "string"
+              },
+              "scenic": {
+                "type": "number"
+              },
+              "routeCreatedBy": {
+                "type": "string"
+              },
+              "mappings": {
+                "type": "array",
+                "items": {}
+              },
+              "costModel": {
+                "type": "string"
+              },
+              "waterDistance": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "highwayPercentage",
+              "greenDistance",
+              "waterPercentage",
+              "highwayDistance",
+              "consumedEnergyWh",
+              "greenPercentage",
+              "scenic",
+              "routeCreatedBy",
+              "mappings",
+              "costModel",
+              "waterDistance"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "stats",
+          "legs",
+          "boundingBox",
+          "labels",
+          "type",
+          "geoJson",
+          "dummyMap"
+        ]
+      }
+    },
+    "creationTimestamp": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "responseType",
+    "request",
+    "baseRequest",
+    "status",
+    "routes",
+    "creationTimestamp",
+    "url",
+    "region"
+  ]
+}
