@@ -17,7 +17,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search, MoreHorizontal } from 'lucide-react'
 import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useMarkerManager } from '@/hooks/useMarkerManager'
 import { useRoutes, Route } from '@/hooks/useRoutes'
@@ -30,6 +36,7 @@ import { VisualizationSelector } from '@/components/ui/visualization-selector'
 import { RouteLegend } from '@/components/ui/route-legend'
 import { LocationButton } from '@/components/ui/location-button'
 import { GeocodingSearch } from '@/components/ui/geocoding-search'
+import { TrackItem } from '@/components/ui/track-item'
 import { RouteVisualization, VisualizationMode } from '@/services/RouteVisualization'
 import { toast } from 'sonner'
 
@@ -482,38 +489,57 @@ function App() {
         {/* Panel Content */}
         <div className="h-80">
           <Tabs defaultValue="tracks" className="h-full">
-            <TabsList className="w-full justify-start border-b rounded-none p-0 h-auto bg-transparent">
-              <TabsTrigger value="tracks" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
-                Tracks
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="tracks">
+                <PanelLeftOpen className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Tracks</span>
               </TabsTrigger>
-              <TabsTrigger value="tools" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
-                <Settings className="h-4 w-4 mr-1" />
-                Tools
+              <TabsTrigger value="tools">
+                <Settings className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Tools</span>
               </TabsTrigger>
-              <TabsTrigger value="settings" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
-                Settings
+              <TabsTrigger value="settings">
+                <CloudCog className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Settings</span>
               </TabsTrigger>
-              <TabsTrigger value="diagnostics" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent hidden md:flex">
-                <Gauge className="h-4 w-4 mr-1" />
-                Diagnostics
+              <TabsTrigger value="diagnostics">
+                <Gauge className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Diagnostics</span>
               </TabsTrigger>
-              <TabsTrigger value="info" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent hidden md:flex">
-                <Info className="h-4 w-4 mr-1" />
-                Info
+              <TabsTrigger value="info">
+                <Info className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Info</span>
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="tracks" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
-              <div className="space-y-4">
-                {/* Combined Tracks Table */}
-                {tracks.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-3">
-                      <p className="text-sm text-muted-foreground">No tracks available</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="overflow-x-auto">
+            <TabsContent value="tracks" className="mt-0 p-2 md:p-4 h-[calc(100%-3rem)] overflow-y-auto">
+              {/* Combined Tracks List/Table */}
+              {tracks.length === 0 ? (
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-sm text-muted-foreground">No tracks available</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {/* Mobile Card View */}
+                  <div className="md:hidden space-y-2">
+                    {sortedTracks().map(track => (
+                      <TrackItem
+                        key={track.getId()}
+                        track={track}
+                        handleReloadWaypoints={handleReloadWaypoints}
+                        exportTrack={exportTrack}
+                        zoomToTrack={zoomToTrack}
+                        toggleTrackVisibility={toggleTrackVisibility}
+                        showConfirmDialog={showConfirmDialog}
+                        deleteTrack={deleteTrack}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b text-left text-muted-foreground">
@@ -528,7 +554,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium text-center hidden md:table-cell">
+                          <th className="pb-2 font-medium text-center">
                             <button 
                               onClick={() => handleSort('pts')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors mx-auto"
@@ -539,7 +565,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium hidden md:table-cell">
+                          <th className="pb-2 font-medium">
                             <button 
                               onClick={() => handleSort('date')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors"
@@ -561,7 +587,7 @@ function App() {
                               )}
                             </button>
                           </th>
-                          <th className="pb-2 font-medium text-right hidden md:table-cell">
+                          <th className="pb-2 font-medium text-right">
                             <button 
                               onClick={() => handleSort('time')}
                               className="flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
@@ -648,10 +674,10 @@ function App() {
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2 text-center text-muted-foreground hidden md:table-cell">
+                            <td className="py-2 text-center text-muted-foreground">
                               {track.getWaypoints().length}
                             </td>
-                            <td className="py-2 text-muted-foreground hidden md:table-cell">
+                            <td className="py-2 text-muted-foreground">
                               {new Date(track.getCreatedAt()).toLocaleDateString(undefined, {
                                 month: '2-digit',
                                 day: '2-digit',
@@ -663,7 +689,7 @@ function App() {
                                 ? (track.getRoute()!.stats!.distanceMeters / 1000).toFixed(1) + 'km'
                                 : 'N/A'}
                             </td>
-                            <td className="py-2 text-right hidden md:table-cell">
+                            <td className="py-2 text-right">
                               {track.getRoute()?.stats?.durationSeconds
                                 ? Math.round(track.getRoute()!.stats!.durationSeconds / 60) + 'min'
                                 : 'N/A'}
@@ -754,8 +780,8 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </TabsContent>
             
             <TabsContent value="tools" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
