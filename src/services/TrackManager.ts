@@ -238,7 +238,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': 'white',
-        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          1, this.data.isPermanent ? 24 : 16,
+          12, this.data.isPermanent ? 6 : 8,
+          22, this.data.isPermanent ? 6 : 8
+        ],
         'line-opacity': 0.8
       }
     })
@@ -254,7 +261,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': this.getColor(),
-        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          1, this.data.isPermanent ? 24 : 16,
+          12, this.data.isPermanent ? 4 : 6,
+          22, this.data.isPermanent ? 4 : 6
+        ],
         'line-opacity': 0.8
       }
     })
@@ -297,7 +311,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': 'white',
-        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5, this.data.isPermanent ? 8 : 10,
+          12, this.data.isPermanent ? 6 : 8,
+          22, this.data.isPermanent ? 6 : 8
+        ],
         'line-opacity': 0.8
       }
     })
@@ -313,7 +334,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': this.createDataDrivenExpression(visualizationMode, maxDistance),
-        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5, this.data.isPermanent ? 6 : 8,
+          12, this.data.isPermanent ? 4 : 6,
+          22, this.data.isPermanent ? 4 : 6
+        ],
         'line-opacity': 0.8
       }
     })
@@ -359,7 +387,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': 'white',
-        'line-width': this.data.isPermanent ? 6 : 8,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5, this.data.isPermanent ? 8 : 10,
+          12, this.data.isPermanent ? 6 : 8,
+          22, this.data.isPermanent ? 6 : 8
+        ],
         'line-opacity': 0.8
       }
     })
@@ -375,7 +410,14 @@ ${trackPoints}
       },
       paint: {
         'line-color': this.createDataDrivenExpression(visualizationMode, maxDistance),
-        'line-width': this.data.isPermanent ? 4 : 6,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          5, this.data.isPermanent ? 6 : 8,
+          12, this.data.isPermanent ? 4 : 6,
+          22, this.data.isPermanent ? 4 : 6
+        ],
         'line-opacity': 0.8
       }
     })
