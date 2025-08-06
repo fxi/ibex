@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/ibex/dev-sw.js?dev-sw', { scope: '/ibex/', type: 'classic' })

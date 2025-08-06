@@ -137,6 +137,12 @@ html, body, #root {
   width: 100%;
   margin: 0;
   padding: 0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.overflow-y-auto {
+  overscroll-behavior-y: contain;
 }
 
 /* Custom numbered marker styles */
