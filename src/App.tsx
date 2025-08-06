@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search } from 'lucide-react'
+import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useMarkerManager } from '@/hooks/useMarkerManager'
 import { useRoutes, Route } from '@/hooks/useRoutes'
 import { useTrackManager } from '@/hooks/useTrackManager'
@@ -35,6 +36,7 @@ import { toast } from 'sonner'
 
 
 function App() {
+  useViewportHeight(); // Set the --app-height CSS variable
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const maplibreglRef = useRef<any>(null)
@@ -420,7 +422,7 @@ function App() {
 
 
   return (
-    <div className="h-screen w-screen bg-background text-foreground relative flex flex-col">
+    <div className="h-app w-screen bg-background text-foreground relative flex flex-col">
       {/* Main content with map */}
       <div className="flex-1 relative">
         {/* Map Controls */}
