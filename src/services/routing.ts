@@ -69,4 +69,20 @@ export class RoutingApiService {
       throw new Error('Failed to fetch routes. Please try again.');
     }
   }
+
+  static async getCircularRoutes(
+    startPoint: Point,
+    desiredLengthMeters: number,
+    waypoints: Point[] = [],
+    settings: Partial<RouteSettings> = {}
+  ): Promise<RoutingResponse> {
+    const circularSettings: Partial<RouteSettings> = {
+      ...settings,
+      desiredLengthMeters,
+    };
+
+    // For circular routes, origin and destination are the same.
+    // The API uses the waypoints to guide the circular route generation.
+    return this.getRoutes(startPoint, startPoint, waypoints, circularSettings);
+  }
 }

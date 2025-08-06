@@ -23,7 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search, MoreHorizontal } from 'lucide-react'
+import { Settings, RotateCcw, Save, Download, Eye, EyeOff, Trash2, PanelLeftOpen, PanelLeftClose, Info, Gauge, ChevronUp, ChevronDown, CloudCog, Pencil, Expand, LocateFixed, Search, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useMarkerManager } from '@/hooks/useMarkerManager'
 import { useRoutes, Route } from '@/hooks/useRoutes'
@@ -32,6 +32,7 @@ import { WaypointData } from '@/services/MarkerManager'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { MultiActionConfirmDialog } from '@/components/ui/multi-action-confirm-dialog'
 import { InputDialog } from '@/components/ui/input-dialog'
+import { CircularRouteDialog } from '@/components/ui/circular-route-dialog'
 import { VisualizationSelector } from '@/components/ui/visualization-selector'
 import { RouteLegend } from '@/components/ui/route-legend'
 import { LocationButton } from '@/components/ui/location-button'
@@ -112,6 +113,8 @@ function App() {
     label: "",
     onConfirm: () => {}
   })
+
+  const [circularRouteDialogOpen, setCircularRouteDialogOpen] = useState(false)
   
   // Use marker manager for clean marker handling
   const {
@@ -147,6 +150,7 @@ function App() {
     allRouteAlternatives,
     isProcessing,
     processRoute,
+    processCircularRoute,
     clearRoutes
   } = useRoutes()
 
@@ -303,6 +307,52 @@ function App() {
     }
   }
 
+  const handleProcessCircularRoute = (distance: number) => {
+    if (waypoints.length === 0) {
+      toast.error("Please add at least one waypoint to create a circular route.")
+      return
+    }
+
+    const startPoint = waypoints[0]
+    const intermediateWaypoints = waypoints.slice(1)
+
+    const processAndAddCircularRoutes = async () => {
+      const routes = await processCircularRoute(
+        startPoint,
+        distance,
+        intermediateWaypoints,
+        mapRef,
+        routingSettings
+      )
+      if (routes.length > 0) {
+        addTemporaryTracks(routes, waypoints)
+      }
+    }
+
+    if (temporaryTracks.length > 0) {
+      showMultiActionConfirmDialog(
+        "Existing Temporary Tracks",
+        "You have existing temporary tracks. What would you like to do?",
+        [
+          {
+            label: "Replace",
+            onClick: () => {
+              clearTemporaryTracks()
+              processAndAddCircularRoutes()
+            },
+            variant: "destructive",
+          },
+          {
+            label: "Add",
+            onClick: () => processAndAddCircularRoutes(),
+          },
+        ]
+      )
+    } else {
+      processAndAddCircularRoutes()
+    }
+  }
+
   const handleVisualizationModeChange = (mode: VisualizationMode) => {
     setCurrentVisualizationMode(mode)
     setAllTracksVisualizationMode(mode)
@@ -443,6 +493,16 @@ function App() {
             title="Compute Routes"
           >
             <CloudCog className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => setCircularRouteDialogOpen(true)}
+            disabled={waypoints.length === 0 || isProcessing}
+            size="sm"
+            variant="secondary"
+            className="shadow-lg"
+            title="Create Circular Route"
+          >
+            <RefreshCw className="h-4 w-4" />
           </Button>
           <LocationButton mapRef={mapRef} />
           <GeocodingSearch mapRef={mapRef} addWaypoint={addWaypoint} />
@@ -800,6 +860,15 @@ function App() {
                       <CloudCog className="h-4 w-4 mr-2" />
                       {isProcessing ? 'Processing...' : 'Compute Routes'}
                     </Button>
+
+                    <Button
+                      onClick={() => setCircularRouteDialogOpen(true)}
+                      disabled={waypoints.length === 0 || isProcessing}
+                      className="w-full"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Create Circular Route
+                    </Button>
                     
                     <Button
                       onClick={() => {
@@ -1097,6 +1166,12 @@ function App() {
         defaultValue={inputDialog.defaultValue}
         onConfirm={inputDialog.onConfirm}
         validation={inputDialog.validation}
+      />
+
+      <CircularRouteDialog
+        open={circularRouteDialogOpen}
+        onOpenChange={setCircularRouteDialogOpen}
+        onConfirm={handleProcessCircularRoute}
       />
 
       <MultiActionConfirmDialog

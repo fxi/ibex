@@ -21,6 +21,7 @@ export interface RouteSettings {
   bikeSharingProvidersIds: string[];
   addRouteGeoJson: boolean;
   optimizeWaypointOrder: boolean;
+  desiredLengthMeters?: number;
 }
 
 export interface RoutingRequest {

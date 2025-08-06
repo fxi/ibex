@@ -178,11 +178,76 @@ export const useRoutes = ({ onRoutesChange }: UseRoutesProps = {}) => {
     }
   }, [clearRoutes, addRouteToMap, generateRouteColor, onRoutesChange])
 
+  const processCircularRoute = useCallback(async (
+    startPoint: WaypointData,
+    desiredLengthMeters: number,
+    waypoints: WaypointData[],
+    mapRef: any,
+    settings?: any
+  ) => {
+    setIsProcessing(true)
+    clearRoutes(mapRef)
+
+    try {
+      const origin: Point = { 
+        lat: startPoint.lat, 
+        lon: startPoint.lng 
+      }
+      const waypointPoints: Point[] = waypoints.map(wp => ({
+        lat: wp.lat,
+        lon: wp.lng
+      }))
+
+      const data = await RoutingApiService.getCircularRoutes(origin, desiredLengthMeters, waypointPoints, settings)
+      console.log('API Response (Circular):', data)
+
+      if (data.routes && data.routes.length > 0) {
+        const routes: Route[] = []
+        
+        data.routes.forEach((route: any, routeIndex: number) => {
+          if (route.geoJson) {
+            const routeId = `route-${Date.now()}-${routeIndex}`
+            const routeName = (route.labels && route.labels.length > 0) 
+              ? route.labels.join(', ') 
+              : `Circular Route ${routeIndex + 1}`
+            
+            const routeObj: Route = {
+              id: routeId,
+              geojson: route.geoJson,
+              sections: route.sections,
+              stats: route.stats,
+              labels: route.labels,
+              routeIndex,
+              name: routeName,
+              color: generateRouteColor(routeIndex)
+            }
+            
+            routes.push(routeObj)
+            addRouteToMap(routeObj, mapRef)
+          }
+        })
+
+        setCurrentRoutes(routes)
+        setAllRouteAlternatives(routes)
+        onRoutesChange?.(routes)
+        return routes
+      }
+      return []
+    } catch (error) {
+      console.error('Circular routing error:', error)
+      alert('Failed to process circular route. Please try again.')
+      return []
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [clearRoutes, addRouteToMap, generateRouteColor, onRoutesChange])
+
   return {
     currentRoutes,
     allRouteAlternatives,
     isProcessing,
     processRoute,
+    processCircularRoute,
     clearRoutes,
     addRouteToMap
   }
