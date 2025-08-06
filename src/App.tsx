@@ -422,9 +422,9 @@ function App() {
 
 
   return (
-    <div className="h-app w-screen bg-background text-foreground relative flex flex-col">
-      {/* Main content with map */}
-      <div className="flex-1 relative">
+    <div className="h-app w-screen bg-background text-foreground relative overflow-hidden">
+      {/* Map container */}
+      <div className="absolute inset-0">
         {/* Map Controls */}
         <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
           <Button
@@ -451,48 +451,37 @@ function App() {
           </div>
         )}
 
-        {/* Map container */}
         <div 
           ref={mapContainer} 
           className="h-full w-full cursor-crosshair" 
         />
-
-        {/* Floating Show Panel Button */}
-        {!trackManagerOpen && (
-          <Button
-            onClick={() => setTrackManagerOpen(true)}
-            variant="secondary"
-            size="sm"
-            className="absolute bottom-4 left-4 z-20 shadow-lg"
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </Button>
-        )}
       </div>
       
-      {/* Bottom Panel with Tabs */}
-      <div className={`bg-background border-t transition-all duration-300 ease-in-out ${
-        trackManagerOpen ? 'h-80' : 'h-12'
+      {/* Bottom Panel with Tabs - Overlay */}
+      <div className={`absolute bottom-0 left-0 right-0 bg-background border-t rounded-t-lg shadow-2xl transition-transform duration-300 ease-in-out z-20 ${
+        trackManagerOpen ? 'translate-y-0' : 'translate-y-[calc(100%-4rem)]'
       }`}>
-        {/* Panel Header */}
-        <div className="flex items-center justify-between p-3 border-b">
+        {/* Panel Header Handle */}
+        <div 
+          className="flex items-center justify-center p-3 border-b cursor-pointer"
+          onClick={() => setTrackManagerOpen(!trackManagerOpen)}
+        >
           <Button
-            onClick={() => setTrackManagerOpen(!trackManagerOpen)}
             variant="ghost"
             size="sm"
-            className=""
+            className="w-full"
           >
             {trackManagerOpen ? (
-              <>Hide Panel <PanelLeftClose className="h-4 w-4 ml-1 rotate-90" /></>
+              <ChevronDown className="h-5 w-5" />
             ) : (
-              <>Show Panel <PanelLeftOpen className="h-4 w-4 ml-1 rotate-90" /></>
+              <ChevronUp className="h-5 w-5" />
             )}
           </Button>
         </div>
         
         {/* Panel Content */}
-        {trackManagerOpen && (
-          <Tabs defaultValue="tracks" className="h-64">
+        <div className="h-80">
+          <Tabs defaultValue="tracks" className="h-full">
             <TabsList className="w-full justify-start border-b rounded-none p-0 h-auto bg-transparent">
               <TabsTrigger value="tracks" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none bg-transparent">
                 Tracks
@@ -514,7 +503,7 @@ function App() {
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="tracks" className="mt-0 p-4 h-56 overflow-y-auto">
+            <TabsContent value="tracks" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
               <div className="space-y-4">
                 {/* Combined Tracks Table */}
                 {tracks.length === 0 ? (
@@ -769,7 +758,7 @@ function App() {
               </div>
             </TabsContent>
             
-            <TabsContent value="tools" className="mt-0 p-4 h-56 overflow-y-auto">
+            <TabsContent value="tools" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
               <div className="space-y-4">
                 <Card>
                   <CardHeader>
@@ -836,7 +825,7 @@ function App() {
               </div>
             </TabsContent>
             
-            <TabsContent value="settings" className="mt-0 p-4 h-56 overflow-y-auto">
+            <TabsContent value="settings" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
               <div className="space-y-4">
                 {/* Route Visualization Controls */}
                 {(temporaryTracks.length > 0 || permanentTracks.length > 0) && (
@@ -956,7 +945,7 @@ function App() {
               </div>
             </TabsContent>
             
-            <TabsContent value="diagnostics" className="mt-0 p-4 h-56 overflow-y-auto">
+            <TabsContent value="diagnostics" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
               <div className="space-y-4">
                 <Card>
                   <CardHeader>
@@ -1009,7 +998,7 @@ function App() {
               </div>
             </TabsContent>
             
-            <TabsContent value="info" className="mt-0 p-4 h-56 overflow-y-auto">
+            <TabsContent value="info" className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto">
               <div className="space-y-4">
                 <Card>
                   <CardHeader>
@@ -1058,7 +1047,7 @@ function App() {
               </div>
             </TabsContent>
           </Tabs>
-        )}
+        </div>
       </div>
       
       {/* Dialog Components */}
