@@ -266,6 +266,7 @@ function App() {
 
 
 
+
   const handleClearWaypoints = () => {
     clearWaypoints()
     clearRoutes(mapRef)
@@ -465,15 +466,6 @@ function App() {
 
   // Calculate color mapping for legend
   const getColorMapping = () => {
-    if (currentVisualizationMode === 'distance' && tracks.length > 0) {
-      // Find max distance across all track sections
-      const maxDistance = Math.max(
-        ...tracks
-          .filter(track => track.getRoute().sections && track.getRoute().sections!.length > 0)
-          .flatMap(track => track.getRoute().sections!.map(s => s.distance))
-      )
-      return RouteVisualization.getColorMapping(currentVisualizationMode, maxDistance)
-    }
     return RouteVisualization.getColorMapping(currentVisualizationMode)
   }
 
@@ -508,15 +500,6 @@ function App() {
           <GeocodingSearch mapRef={mapRef} addWaypoint={addWaypoint} />
         </div>
 
-        {/* Route Legend */}
-        {currentVisualizationMode !== 'default' && tracks.some(t => t.isVisible()) && (
-          <div className="absolute top-4 left-4 z-10">
-            <RouteLegend
-              mode={currentVisualizationMode}
-              colorMapping={getColorMapping()}
-            />
-          </div>
-        )}
 
         <div 
           ref={mapContainer} 
@@ -929,10 +912,16 @@ function App() {
                       <CardTitle className="text-base">Route Visualization</CardTitle>
                       <CardDescription>Change how route segments are colored</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex flex-col md:flex-row gap-4">
                       <VisualizationSelector
                         currentMode={currentVisualizationMode}
                         onModeChange={handleVisualizationModeChange}
+                        className="flex-shrink-0"
+                      />
+                      <RouteLegend
+                        mode={currentVisualizationMode}
+                        colorMapping={getColorMapping()}
+                        className="flex-grow"
                       />
                     </CardContent>
                   </Card>
@@ -993,23 +982,6 @@ function App() {
                             <SelectItem value="IGNORE">Ignore</SelectItem>
                             <SelectItem value="AVOID_IF_REASONABLE">Avoid if Reasonable</SelectItem>
                             <SelectItem value="AVOID_IF_POSSIBLE">Avoid if Possible</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="surface">Surface Preference</Label>
-                        <Select value={routingSettings.surface} onValueChange={(value) => 
-                          setRoutingSettings(prev => ({ ...prev, surface: value }))
-                        }>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="PREFER_NON_PAVED">Prefer Unpaved</SelectItem>
-                            <SelectItem value="PREFER_SMOOTH">Prefer Smooth</SelectItem>
-                            <SelectItem value="AVOID_NON_SMOOTH">Avoid Non-Smooth</SelectItem>
-                            <SelectItem value="AVOID_BAD_SMOOTHNESS_ONLY">Avoid Bad Only</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

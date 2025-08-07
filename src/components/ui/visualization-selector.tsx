@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { VisualizationMode } from '@/services/RouteVisualization'
-import { Palette, Car, Mountain, Gauge, Ruler, Circle } from 'lucide-react'
+import { Palette, Info, Circle } from 'lucide-react'
 
 interface VisualizationSelectorProps {
   currentMode: VisualizationMode
@@ -10,10 +10,8 @@ interface VisualizationSelectorProps {
 
 export function VisualizationSelector({ currentMode, onModeChange, className }: VisualizationSelectorProps) {
   const modes: { mode: VisualizationMode; label: string; icon: React.ReactNode }[] = [
-    { mode: 'default', label: 'Default', icon: <Circle className="h-4 w-4" /> },
-    { mode: 'stress', label: 'Traffic Stress', icon: <Car className="h-4 w-4" /> },
-    { mode: 'surface', label: 'Surface', icon: <Mountain className="h-4 w-4" /> },
-    { mode: 'slope', label: 'Slope', icon: <Gauge className="h-4 w-4" /> }
+    { mode: 'default', label: 'Track Color', icon: <Circle className="h-4 w-4" /> },
+    { mode: 'info', label: 'Track Info', icon: <Info className="h-4 w-4" /> }
   ]
 
   return (

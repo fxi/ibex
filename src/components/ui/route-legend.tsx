@@ -32,10 +32,17 @@ export function RouteLegend({ mode, colorMapping, className }: RouteLegendProps)
         <div className="space-y-1">
           {colorMapping.map((item, index) => (
             <div key={index} className="flex items-center gap-2 text-xs">
-              <div 
-                className="w-3 h-3 rounded-sm border border-gray-300" 
-                style={{ backgroundColor: item.color }}
-              />
+              <div className="w-8 h-4 flex items-center">
+                <div
+                  className="w-full h-0.5"
+                  style={{
+                    backgroundColor: item.color,
+                    borderStyle: item.lineStyle || 'solid',
+                    borderWidth: '1px 0 0 0',
+                    borderColor: item.color,
+                  }}
+                />
+              </div>
               <span className="text-muted-foreground">{item.label}</span>
             </div>
           ))}
