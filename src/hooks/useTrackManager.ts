@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { TrackManager, Track, TrackData } from '@/services/TrackManager'
 import { Route } from '@/hooks/useRoutes'
 import { WaypointData } from '@/services/MarkerManager'
-import { VisualizationMode } from '@/services/RouteVisualization'
 
 export const useTrackManager = () => {
   const [tracks, setTracks] = useState<Track[]>([])
@@ -168,16 +167,6 @@ export const useTrackManager = () => {
     localStorage.removeItem('ibex-permanent-tracks')
   }, [])
 
-  const setTrackVisualizationMode = useCallback((trackId: string, mode: VisualizationMode) => {
-    if (!trackManagerRef.current) return
-    trackManagerRef.current.setTrackVisualizationMode(trackId, mode)
-  }, [])
-
-  const setAllTracksVisualizationMode = useCallback((mode: VisualizationMode) => {
-    if (!trackManagerRef.current) return
-    trackManagerRef.current.setAllTracksVisualizationMode(mode)
-  }, [])
-
   const zoomToTrack = useCallback((trackId: string) => {
     if (!trackManagerRef.current) return
     trackManagerRef.current.zoomToTrack(trackId)
@@ -211,8 +200,6 @@ export const useTrackManager = () => {
     exportTrack,
     clearTemporaryTracks,
     clearAllTracks,
-    setTrackVisualizationMode,
-    setAllTracksVisualizationMode,
     zoomToTrack,
     getLastHoveredFeature,
     
