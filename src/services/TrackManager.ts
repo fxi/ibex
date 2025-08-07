@@ -1,6 +1,7 @@
 import { Route } from "@/hooks/useRoutes";
 import { WaypointData } from "./MarkerManager";
 import { RouteVisualization, VisualizationMode } from "./RouteVisualization";
+import { before } from "node:test";
 
 export interface TrackData {
   id: string;
@@ -19,6 +20,7 @@ export class Track {
   private mapLayerId: string;
   private outlineLayerId: string;
   private symbolLayerId: string;
+  private surfaceLayerIds: string[] = [];
   private onUpdate: (track: Track) => void;
   private onDelete: (id: string) => void;
   private trackManager?: TrackManager;
@@ -316,7 +318,7 @@ ${trackPoints}
           1,
           this.data.isPermanent ? 24 : 16,
           12,
-          this.data.isPermanent ? 4 : 6,
+          this.data.isPermanent ? 6 : 8,
           22,
           this.data.isPermanent ? 4 : 6,
         ],
@@ -346,44 +348,51 @@ ${trackPoints}
       id: this.outlineLayerId,
       type: "line",
       source: this.mapLayerId,
+      before : "Road Label",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
         "line-color": "white",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 2, 4, 14, 8],
-        "line-opacity": 0.8,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 2, 18, 14, 20],
+        "line-opacity": 0.2,
       },
     });
 
     // Add main track layer with data-driven coloring for 'info' mode
+    const solidLayerId = `${this.mapLayerId}-solid`;
+
+    this.surfaceLayerIds = [solidLayerId];
+
+    // Solid Layer
     map.addLayer({
-      id: this.mapLayerId,
+      id: solidLayerId,
       type: "line",
+      before : "Road Label",
       source: this.mapLayerId,
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
+      layout: { "line-join": "round", "line-cap": "round" },
       paint: {
         "line-color": this.createDataDrivenExpression(
           this.getVisualizationMode()
         ),
-        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 5],
-        "line-opacity": 0.9,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 2, 6, 14, 10],
+        "line-opacity": 0.8
       },
     });
+
+
 
     // Add symbol layer
     map.addLayer({
       id: this.symbolLayerId,
       type: "symbol",
       source: this.symbolLayerId,
+      before : "Road Label",
       layout: {
         "icon-image": ["get", "symbol"],
         "icon-size": 1.2,
         "icon-allow-overlap": false,
         "symbol-placement": "point",
-        "icon-rotate": ["get", "rotation"],
-        "icon-rotation-alignment": "map",
+ 
+      
         "symbol-sort-key": ["get", "priority"],
       },
       paint: {
@@ -484,12 +493,12 @@ ${trackPoints}
   private createDataDrivenExpression(mode: VisualizationMode): any {
     if (mode === "info") {
       const baseExpression: any[] = ["case"];
-      const mapping = RouteVisualization.getStressColorMapping();
+      const mapping = RouteVisualization.getSurfaceColorMapping();
       mapping.forEach(({ value, color }) => {
-        baseExpression.push(["==", ["get", "stress"], value]);
+        baseExpression.push(["==", ["get", "surfaceSmoothness"], value]);
         baseExpression.push(color);
       });
-      baseExpression.push("#6B7280"); // Default fallback
+      baseExpression.push("#6B7280"); // Default color
       return baseExpression;
     }
 
@@ -503,7 +512,6 @@ ${trackPoints}
     features.forEach((feature) => {
       const { stress, slope } = feature.properties;
       const midPoint = this.getMidPoint(feature.geometry.coordinates);
-      const bearing = this.calculateBearing(feature.geometry.coordinates);
 
       // Priority-based symbol generation
       if (stress >= 4) {
@@ -516,31 +524,19 @@ ${trackPoints}
         );
       } else if (slope > 12) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#EF4444", 20, bearing)
+          this.createSymbolFeature(midPoint, "triangle", "#EF4444", 20, 0)
         );
       } else if (slope < -12) {
         symbolFeatures.push(
-          this.createSymbolFeature(
-            midPoint,
-            "triangle",
-            "#EF4444",
-            20,
-            (bearing + 180) % 360
-          )
+          this.createSymbolFeature(midPoint, "triangle", "#EF4444", 20, 180)
         );
       } else if (slope > 8) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#F97316", 30, bearing)
+          this.createSymbolFeature(midPoint, "triangle", "#F97316", 30, 0)
         );
       } else if (slope < -8) {
         symbolFeatures.push(
-          this.createSymbolFeature(
-            midPoint,
-            "triangle",
-            "#F97316",
-            30,
-            (bearing + 180) % 360
-          )
+          this.createSymbolFeature(midPoint, "triangle", "#F97316", 30, 180)
         );
       }
     });
@@ -551,38 +547,7 @@ ${trackPoints}
   private getMidPoint(coordinates: [number, number][]): [number, number] {
     return coordinates[Math.floor(coordinates.length / 2)];
   }
-
-  private calculateBearing(coordinates: [number, number][]): number {
-    const length = coordinates.length;
-    if (length < 2) return 0;
-
-    let startIdx, endIdx;
-    if (length === 2) {
-      startIdx = 0;
-      endIdx = 1;
-    } else {
-      const medianIdx = Math.floor(length / 2);
-      startIdx = Math.max(0, medianIdx - 1);
-      endIdx = Math.min(length - 1, medianIdx + 1);
-    }
-
-    const [lon1, lat1] = coordinates[startIdx];
-    const [lon2, lat2] = coordinates[endIdx];
-
-    const phi1 = (lat1 * Math.PI) / 180;
-    const phi2 = (lat2 * Math.PI) / 180;
-    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x =
-      Math.cos(phi1) * Math.sin(phi2) -
-      Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-
-    const theta = Math.atan2(y, x);
-    const degrees = (theta * 180) / Math.PI;
-    return (degrees + 360) % 360;
-  }
-
+ 
   private createSymbolFeature(
     coordinates: [number, number],
     symbolName: string,
@@ -747,6 +712,11 @@ ${trackPoints}
 
   removeFromMap(map: any): void {
     if (!map) return;
+
+    this.surfaceLayerIds.forEach((layerId) => {
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    });
+    this.surfaceLayerIds = [];
 
     if (map.getLayer(this.symbolLayerId)) map.removeLayer(this.symbolLayerId);
     if (map.getLayer(this.outlineLayerId)) map.removeLayer(this.outlineLayerId);

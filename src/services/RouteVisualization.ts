@@ -11,21 +11,25 @@ export interface ColorMapping {
 
 export class RouteVisualization {
   
-  static getStressColorMapping(): ColorMapping[] {
+  static getSurfaceColorMapping(): ColorMapping[] {
     return [
-      { value: 1, color: '#10B981', label: 'Level 1 (No traffic)' },
-      { value: 2, color: '#84CC16', label: 'Level 2 (Low traffic)' },
-      { value: 3, color: '#F59E0B', label: 'Level 3 (Medium traffic)' },
-      { value: 4, color: '#F97316', label: 'Level 4 (High traffic)' },
-      { value: 5, color: '#EF4444', label: 'Level 5 (Very high traffic)' }
+      { value: 'PAVED_EXCELLENT', color: '#1b7837', label: 'Paved - Excellent', lineStyle: 'solid' },
+      { value: 'PAVED_GOOD', color: '#5aae61', label: 'Paved - Good', lineStyle: 'solid' },
+      { value: 'PAVED_INTERMEDIATE', color: '#a6dba0', label: 'Paved - Intermediate', lineStyle: 'solid' },
+      { value: 'PAVED_BAD', color: '#d9f0d3', label: 'Paved - Bad', lineStyle: 'solid' },
+      { value: 'UNPAVED_INTERMEDIATE', color: '#e7d4e8', label: 'Unpaved - Intermediate', lineStyle: 'dashed' },
+      { value: 'UNPAVED_BAD', color: '#c2a5cf', label: 'Unpaved - Bad', lineStyle: 'dashed' },
+      { value: 'UNPAVED_HORRIBLE', color: '#9970ab', label: 'Unpaved - Horrible', lineStyle: 'dotted' },
+      { value: 'UNPAVED_IMPASSABLE', color: '#762a83', label: 'Unpaved - Impassable', lineStyle: 'dotted' },
+      { value: 'UNKNOWN', color: '#6B7280', label: 'Unknown', lineStyle: 'solid' }
     ]
   }
 
   static getSegmentColor(section: RouteSection, mode: VisualizationMode): string {
     switch (mode) {
       case 'info':
-        const stressMapping = this.getStressColorMapping()
-        return stressMapping.find(m => m.value === section.stress)?.color || '#6B7280'
+        const surfaceMapping = this.getSurfaceColorMapping()
+        return surfaceMapping.find(m => m.value === section.surfaceSmoothness)?.color || '#6B7280'
       
       default:
         return '#3B82F6' // Default blue
@@ -35,7 +39,7 @@ export class RouteVisualization {
   static getColorMapping(mode: VisualizationMode): ColorMapping[] {
     switch (mode) {
       case 'info':
-        return this.getStressColorMapping()
+        return this.getSurfaceColorMapping()
       default:
         return []
     }
