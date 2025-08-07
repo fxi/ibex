@@ -1,48 +1,59 @@
-import { RouteSection } from '@/types/routing'
-
-export type VisualizationMode = 'default' | 'info'
+import { RouteSection } from '@/types/routing';
 
 export interface ColorMapping {
-  value: string | number
-  color: string
-  label: string
-  lineStyle?: 'solid' | 'dashed' | 'dotted'
+  value: string | number;
+  color: string;
+  label: string;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
 }
 
+const TrackStyleConfig = {
+  surfaceColorMapping: [
+    { value: 'PAVED_EXCELLENT', color: '#1b7837', label: 'Paved - Excellent' },
+    { value: 'PAVED_GOOD', color: '#5aae61', label: 'Paved - Good' },
+    { value: 'PAVED_INTERMEDIATE', color: '#a6dba0', label: 'Paved - Intermediate' },
+    { value: 'PAVED_BAD', color: '#d9f0d3', label: 'Paved - Bad' },
+    { value: 'UNPAVED_INTERMEDIATE', color: '#e7d4e8', label: 'Unpaved - Intermediate' },
+    { value: 'UNPAVED_BAD', color: '#c2a5cf', label: 'Unpaved - Bad' },
+    { value: 'UNPAVED_HORRIBLE', color: '#9970ab', label: 'Unpaved - Horrible' },
+    { value: 'UNPAVED_IMPASSABLE', color: '#762a83', label: 'Unpaved - Impassable' },
+    { value: 'UNKNOWN', color: '#6B7280', label: 'Unknown' },
+  ],
+
+  lineWidthExpression: [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    2, 6, 
+    14, 10
+  ],
+
+  outlineWidthExpression: [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    2, 18, 
+    14, 20
+  ],
+
+  surfaceColorExpression: () => {
+    const caseExpression: any[] = ['case'];
+    TrackStyleConfig.surfaceColorMapping.forEach(({ value, color }) => {
+      caseExpression.push(['==', ['get', 'surfaceSmoothness'], value]);
+      caseExpression.push(color);
+    });
+    caseExpression.push('#6B7280'); // Default color
+    return caseExpression;
+  },
+};
+
 export class RouteVisualization {
-  
   static getSurfaceColorMapping(): ColorMapping[] {
-    return [
-      { value: 'PAVED_EXCELLENT', color: '#1b7837', label: 'Paved - Excellent', lineStyle: 'solid' },
-      { value: 'PAVED_GOOD', color: '#5aae61', label: 'Paved - Good', lineStyle: 'solid' },
-      { value: 'PAVED_INTERMEDIATE', color: '#a6dba0', label: 'Paved - Intermediate', lineStyle: 'solid' },
-      { value: 'PAVED_BAD', color: '#d9f0d3', label: 'Paved - Bad', lineStyle: 'solid' },
-      { value: 'UNPAVED_INTERMEDIATE', color: '#e7d4e8', label: 'Unpaved - Intermediate', lineStyle: 'dashed' },
-      { value: 'UNPAVED_BAD', color: '#c2a5cf', label: 'Unpaved - Bad', lineStyle: 'dashed' },
-      { value: 'UNPAVED_HORRIBLE', color: '#9970ab', label: 'Unpaved - Horrible', lineStyle: 'dotted' },
-      { value: 'UNPAVED_IMPASSABLE', color: '#762a83', label: 'Unpaved - Impassable', lineStyle: 'dotted' },
-      { value: 'UNKNOWN', color: '#6B7280', label: 'Unknown', lineStyle: 'solid' }
-    ]
+    return TrackStyleConfig.surfaceColorMapping;
   }
 
-  static getSegmentColor(section: RouteSection, mode: VisualizationMode): string {
-    switch (mode) {
-      case 'info':
-        const surfaceMapping = this.getSurfaceColorMapping()
-        return surfaceMapping.find(m => m.value === section.surfaceSmoothness)?.color || '#6B7280'
-      
-      default:
-        return '#3B82F6' // Default blue
-    }
-  }
-
-  static getColorMapping(mode: VisualizationMode): ColorMapping[] {
-    switch (mode) {
-      case 'info':
-        return this.getSurfaceColorMapping()
-      default:
-        return []
-    }
+  static getStyleConfig() {
+    return TrackStyleConfig;
   }
 
   static createSegmentGeoJSON(sections: RouteSection[]): any {

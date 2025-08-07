@@ -1,32 +1,20 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ColorMapping, VisualizationMode } from '@/services/RouteVisualization'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ColorMapping } from '@/services/RouteVisualization';
 
 interface RouteLegendProps {
-  mode: VisualizationMode
-  colorMapping: ColorMapping[]
-  className?: string
+  colorMapping: ColorMapping[];
+  className?: string;
 }
 
-export function RouteLegend({ mode, colorMapping, className }: RouteLegendProps) {
-  if (mode === 'default' || colorMapping.length === 0) {
-    return null
-  }
-
-  const getModeTitle = (mode: VisualizationMode): string => {
-    switch (mode) {
-      case 'infrastructure': return 'Road Infrastructure'
-      case 'stress': return 'Traffic Stress Level'
-      case 'surface': return 'Surface Quality'
-      case 'slope': return 'Slope Gradient'
-      case 'distance': return 'Segment Distance'
-      default: return 'Route Visualization'
-    }
+export function RouteLegend({ colorMapping, className }: RouteLegendProps) {
+  if (colorMapping.length === 0) {
+    return null;
   }
 
   return (
     <Card className={`w-64 ${className}`}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{getModeTitle(mode)}</CardTitle>
+        <CardTitle className="text-sm font-medium">Surface Quality</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-1">

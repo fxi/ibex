@@ -1,7 +1,6 @@
 import { Route } from "@/hooks/useRoutes";
 import { WaypointData } from "./MarkerManager";
-import { RouteVisualization, VisualizationMode } from "./RouteVisualization";
-import { before } from "node:test";
+import { RouteVisualization } from "./RouteVisualization";
 
 export interface TrackData {
   id: string;
@@ -12,7 +11,6 @@ export interface TrackData {
   isPermanent: boolean;
   color?: string;
   isVisible?: boolean;
-  visualizationMode?: VisualizationMode;
 }
 
 export class Track {
@@ -96,9 +94,6 @@ export class Track {
   getOutlineLayerId(): string {
     return this.outlineLayerId;
   }
-  getVisualizationMode(): VisualizationMode {
-    return this.data.visualizationMode || "default";
-  }
 
   getBounds(): any | null {
     if (!this.data.route?.geojson) return null;
@@ -132,10 +127,6 @@ export class Track {
     this.onUpdate(this);
   }
 
-  setVisualizationMode(mode: VisualizationMode) {
-    this.data.visualizationMode = mode;
-    this.onUpdate(this);
-  }
 
   makePermanent() {
     this.data.isPermanent = true;
@@ -239,24 +230,7 @@ ${trackPoints}
       // Remove existing layers if they exist
       this.removeFromMap(map);
 
-      const visualizationMode = this.getVisualizationMode();
-
-      // Check if we have GeoJSON with segment properties for advanced visualization
-      const hasSegmentData = this.data.route.geojson?.features?.some(
-        (f: any) =>
-          f.properties &&
-          ("stress" in f.properties ||
-            "surfaceSmoothness" in f.properties ||
-            "slope" in f.properties)
-      );
-
-      if (visualizationMode !== "default" && hasSegmentData) {
-        console.log("Using GeoJSON-based segment visualization");
-        this.addGeoJSONBasedVisualization(map);
-      } else {
-        console.log("Using default visualization");
-        this.addDefaultVisualization(map);
-      }
+      this.addGeoJSONBasedVisualization(map);
 
       // Add interactive features to both layers
       this.addInteractiveFeatures(map);
@@ -267,67 +241,9 @@ ${trackPoints}
     }
   }
 
-  private addDefaultVisualization(map: any): void {
-    // Add source
-    map.addSource(this.mapLayerId, {
-      type: "geojson",
-      data: this.data.route.geojson,
-    });
-
-    // Add outline layer
-    map.addLayer({
-      id: this.outlineLayerId,
-      type: "line",
-      source: this.mapLayerId,
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-color": "white",
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          1,
-          this.data.isPermanent ? 24 : 16,
-          12,
-          this.data.isPermanent ? 6 : 8,
-          22,
-          this.data.isPermanent ? 6 : 8,
-        ],
-        "line-opacity": 0.8,
-      },
-    });
-
-    // Add main track layer
-    map.addLayer({
-      id: this.mapLayerId,
-      type: "line",
-      source: this.mapLayerId,
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-color": this.getColor(),
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          1,
-          this.data.isPermanent ? 24 : 16,
-          12,
-          this.data.isPermanent ? 6 : 8,
-          22,
-          this.data.isPermanent ? 4 : 6,
-        ],
-        "line-opacity": 0.8,
-      },
-    });
-  }
 
   private addGeoJSONBasedVisualization(map: any): void {
+    const styleConfig = RouteVisualization.getStyleConfig();
     const segmentGeoJSON = this.data.route.geojson;
     const symbolFeatures = this.generateSymbolFeatures(segmentGeoJSON.features);
 
@@ -348,163 +264,55 @@ ${trackPoints}
       id: this.outlineLayerId,
       type: "line",
       source: this.mapLayerId,
-      before : "Road Label",
+      before: "ibex_anchor",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": "white",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 2, 18, 14, 20],
-        "line-opacity": 0.2,
+        "line-color": this.getColor(),
+        "line-width": styleConfig.outlineWidthExpression,
+        "line-opacity": 0.3,
       },
     });
 
-    // Add main track layer with data-driven coloring for 'info' mode
+    // Add main track layer with data-driven coloring
     const solidLayerId = `${this.mapLayerId}-solid`;
-
     this.surfaceLayerIds = [solidLayerId];
 
-    // Solid Layer
     map.addLayer({
       id: solidLayerId,
       type: "line",
-      before : "Road Label",
       source: this.mapLayerId,
+      before: "ibex_anchor",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": this.createDataDrivenExpression(
-          this.getVisualizationMode()
-        ),
-        "line-width": ["interpolate", ["linear"], ["zoom"], 2, 6, 14, 10],
-        "line-opacity": 0.8
+        "line-color": styleConfig.surfaceColorExpression(),
+        "line-width": styleConfig.lineWidthExpression,
+        "line-opacity": 0.8,
       },
     });
-
-
 
     // Add symbol layer
     map.addLayer({
       id: this.symbolLayerId,
       type: "symbol",
       source: this.symbolLayerId,
-      before : "Road Label",
+      before: "ibex_anchor",
       layout: {
         "icon-image": ["get", "symbol"],
-        "icon-size": 1.2,
+        "icon-size": 0.7,
         "icon-allow-overlap": false,
-        "symbol-placement": "point",
- 
-      
+        "symbol-avoid-edges": true,
+        "icon-rotate": ["get", "rotation"],
         "symbol-sort-key": ["get", "priority"],
       },
       paint: {
         "icon-color": ["get", "color"],
         "icon-halo-color": "#fff",
-        "icon-halo-width": 1,
-        "icon-halo-blur": 1,
+        "icon-halo-width": 1.5,
+        "icon-halo-blur": 0,
       },
     });
   }
 
-  private addSegmentBasedVisualization(map: any): void {
-    const sections = this.data.route.sections!;
-    const visualizationMode = this.getVisualizationMode();
-
-    console.log("Track sections data:", sections);
-    console.log("Route GeoJSON:", this.data.route.geojson);
-
-    // Check if sections have coordinates, if not, fall back to default visualization
-    const hasValidSections = sections.some(
-      (s) => s.coordinates && s.coordinates.length > 0
-    );
-    if (!hasValidSections) {
-      console.log(
-        "No valid section coordinates found, falling back to default visualization"
-      );
-      // For now, always fall back to default visualization until we fix section coordinate extraction
-      this.addDefaultVisualization(map);
-      return;
-    }
-
-    // Calculate max distance for distance-based visualization
-    const maxDistance = Math.max(...sections.map((s) => s.distance));
-
-    // Create segment-based GeoJSON
-    const segmentGeoJSON = RouteVisualization.createSegmentGeoJSON(sections);
-    console.log("Generated segment GeoJSON:", segmentGeoJSON);
-
-    // Add source
-    map.addSource(this.mapLayerId, {
-      type: "geojson",
-      data: segmentGeoJSON,
-    });
-
-    // Add outline layer
-    map.addLayer({
-      id: this.outlineLayerId,
-      type: "line",
-      source: this.mapLayerId,
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-color": "white",
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          5,
-          this.data.isPermanent ? 8 : 10,
-          12,
-          this.data.isPermanent ? 6 : 8,
-          22,
-          this.data.isPermanent ? 6 : 8,
-        ],
-        "line-opacity": 0.8,
-      },
-    });
-
-    // Add main track layer with data-driven styling
-    map.addLayer({
-      id: this.mapLayerId,
-      type: "line",
-      source: this.mapLayerId,
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-color": this.createDataDrivenExpression(visualizationMode),
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          5,
-          this.data.isPermanent ? 6 : 8,
-          12,
-          this.data.isPermanent ? 4 : 6,
-          22,
-          this.data.isPermanent ? 4 : 6,
-        ],
-        "line-opacity": 0.8,
-      },
-    });
-  }
-
-  private createDataDrivenExpression(mode: VisualizationMode): any {
-    if (mode === "info") {
-      const baseExpression: any[] = ["case"];
-      const mapping = RouteVisualization.getSurfaceColorMapping();
-      mapping.forEach(({ value, color }) => {
-        baseExpression.push(["==", ["get", "surfaceSmoothness"], value]);
-        baseExpression.push(color);
-      });
-      baseExpression.push("#6B7280"); // Default color
-      return baseExpression;
-    }
-
-    // Default color for 'default' mode
-    return this.getColor();
-  }
 
   private generateSymbolFeatures(features: any[]): any[] {
     const symbolFeatures: any[] = [];
@@ -873,28 +681,6 @@ export class TrackManager {
     }
   }
 
-  setTrackVisualizationMode(id: string, mode: VisualizationMode): void {
-    const track = this.tracks.get(id);
-    if (track) {
-      track.setVisualizationMode(mode);
-      // Re-render the track with new visualization
-      if (track.isVisible()) {
-        track.addToMap(this.map);
-      }
-      this.notifyChange();
-    }
-  }
-
-  setAllTracksVisualizationMode(mode: VisualizationMode): void {
-    this.tracks.forEach((track) => {
-      track.setVisualizationMode(mode);
-      // Re-render visible tracks with new visualization
-      if (track.isVisible()) {
-        track.addToMap(this.map);
-      }
-    });
-    this.notifyChange();
-  }
 
   makePermanent(id: string): void {
     const track = this.tracks.get(id);

@@ -33,12 +33,11 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { MultiActionConfirmDialog } from '@/components/ui/multi-action-confirm-dialog'
 import { InputDialog } from '@/components/ui/input-dialog'
 import { CircularRouteDialog } from '@/components/ui/circular-route-dialog'
-import { VisualizationSelector } from '@/components/ui/visualization-selector'
 import { RouteLegend } from '@/components/ui/route-legend'
 import { LocationButton } from '@/components/ui/location-button'
 import { GeocodingSearch } from '@/components/ui/geocoding-search'
 import { TrackItem } from '@/components/ui/track-item'
-import { RouteVisualization, VisualizationMode } from '@/services/RouteVisualization'
+import { RouteVisualization } from '@/services/RouteVisualization'
 import { toast } from 'sonner'
 
 
@@ -49,7 +48,6 @@ function App() {
   const mapRef = useRef<any>(null)
   const maplibreglRef = useRef<any>(null)
   const [trackManagerOpen, setTrackManagerOpen] = useState(true)
-  const [currentVisualizationMode, setCurrentVisualizationMode] = useState<VisualizationMode>('default')
   
   // Table sorting state
   type SortColumn = 'name' | 'pts' | 'date' | 'distance' | 'time' | 'elevation' | 'saved'
@@ -140,7 +138,6 @@ function App() {
     zoomToTrack,
     clearTemporaryTracks,
     clearAllTracks,
-    setAllTracksVisualizationMode,
     getLastHoveredFeature,
     initializeManager: initializeTrackManager
   } = useTrackManager()
@@ -219,19 +216,30 @@ function App() {
             maxZoom: 18,
             minZoom: 5,
             pitch: 0,
-            bearing: 0
+            bearing: 0,
+            rollEnabled: true
           })
 
           mapRef.current = map
 
           map.on('load', () => {
-            console.log('Map loaded successfully')
+            console.log('Map loaded successfully');
+
+            // Add a permanent anchor layer for track placement
+            if (!map.getLayer('ibex_anchor')) {
+              map.addLayer({
+                id: 'ibex_anchor',
+                type: 'background',
+                paint: { 'background-opacity': 0 },
+              });
+            }
+            
             map.addSource('terrainSource', {
               type: 'raster-dem',
               url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`,
               tileSize: 256
-            })
-          })
+            });
+          });
 
           map.on('pitch', () => {
             if (map.getPitch() > 0) {
@@ -354,10 +362,6 @@ function App() {
     }
   }
 
-  const handleVisualizationModeChange = (mode: VisualizationMode) => {
-    setCurrentVisualizationMode(mode)
-    setAllTracksVisualizationMode(mode)
-  }
 
   const handleReloadWaypoints = useCallback((track: any) => {
     showConfirmDialog(
@@ -466,7 +470,7 @@ function App() {
 
   // Calculate color mapping for legend
   const getColorMapping = () => {
-    return RouteVisualization.getColorMapping(currentVisualizationMode)
+    return RouteVisualization.getSurfaceColorMapping()
   }
 
 
@@ -913,13 +917,7 @@ function App() {
                       <CardDescription>Change how route segments are colored</CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col md:flex-row gap-4">
-                      <VisualizationSelector
-                        currentMode={currentVisualizationMode}
-                        onModeChange={handleVisualizationModeChange}
-                        className="flex-shrink-0"
-                      />
                       <RouteLegend
-                        mode={currentVisualizationMode}
                         colorMapping={getColorMapping()}
                         className="flex-grow"
                       />
