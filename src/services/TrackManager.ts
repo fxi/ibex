@@ -18,6 +18,7 @@ export class Track {
   private mapLayerId: string;
   private outlineLayerId: string;
   private symbolLayerId: string;
+  private distanceMarkersLayerId: string;
   private surfaceLayerIds: string[] = [];
   private onUpdate: (track: Track) => void;
   private onDelete: (id: string) => void;
@@ -33,6 +34,7 @@ export class Track {
     this.mapLayerId = `track-${data.id}`;
     this.outlineLayerId = `track-${data.id}-outline`;
     this.symbolLayerId = `track-${data.id}-symbols`;
+    this.distanceMarkersLayerId = `track-${data.id}-distance-markers`;
     this.onUpdate = onUpdate;
     this.onDelete = onDelete;
     this.trackManager = trackManager;
@@ -126,7 +128,6 @@ export class Track {
     this.data.isVisible = visible;
     this.onUpdate(this);
   }
-
 
   makePermanent() {
     this.data.isPermanent = true;
@@ -241,11 +242,13 @@ ${trackPoints}
     }
   }
 
-
   private addGeoJSONBasedVisualization(map: any): void {
     const styleConfig = RouteVisualization.getStyleConfig();
     const segmentGeoJSON = this.data.route.geojson;
     const symbolFeatures = this.generateSymbolFeatures(segmentGeoJSON.features);
+    const distanceMarkers = this.generateDistanceMarkers(
+      segmentGeoJSON.features
+    );
 
     // Add source for the main track line
     map.addSource(this.mapLayerId, {
@@ -259,6 +262,12 @@ ${trackPoints}
       data: { type: "FeatureCollection", features: symbolFeatures },
     });
 
+    // Add source for distance markers
+    map.addSource(this.distanceMarkersLayerId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: distanceMarkers },
+    });
+
     // Add outline layer
     map.addLayer({
       id: this.outlineLayerId,
@@ -267,9 +276,9 @@ ${trackPoints}
       before: "ibex_anchor",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": this.getColor(),
+        "line-color": "white",
         "line-width": styleConfig.outlineWidthExpression,
-        "line-opacity": 0.3,
+        "line-opacity": 1,
       },
     });
 
@@ -286,7 +295,7 @@ ${trackPoints}
       paint: {
         "line-color": styleConfig.surfaceColorExpression(),
         "line-width": styleConfig.lineWidthExpression,
-        "line-opacity": 0.8,
+        "line-opacity": 1,
       },
     });
 
@@ -298,7 +307,7 @@ ${trackPoints}
       before: "ibex_anchor",
       layout: {
         "icon-image": ["get", "symbol"],
-        "icon-size": 0.7,
+        "icon-size": 1,
         "icon-allow-overlap": false,
         "symbol-avoid-edges": true,
         "icon-rotate": ["get", "rotation"],
@@ -307,12 +316,41 @@ ${trackPoints}
       paint: {
         "icon-color": ["get", "color"],
         "icon-halo-color": "#fff",
-        "icon-halo-width": 1.5,
+        "icon-halo-width": 3,
         "icon-halo-blur": 0,
       },
     });
-  }
 
+    // Add distance markers layer
+    map.addLayer({
+      id: this.distanceMarkersLayerId,
+      type: "circle",
+      source: this.distanceMarkersLayerId,
+      before: "ibex_anchor",
+      paint: {
+        "circle-radius": 8,
+        "circle-color": this.getColor(),
+        "circle-stroke-color": "white",
+        "circle-stroke-width": 2,
+      },
+    });
+
+    map.addLayer({
+      id: `${this.distanceMarkersLayerId}-label`,
+      type: "symbol",
+      source: this.distanceMarkersLayerId,
+      before: "ibex_anchor",
+      layout: {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-size": 10,
+        "text-allow-overlap": true,
+      },
+      paint: {
+        "text-color": "white",
+      },
+    });
+  }
 
   private generateSymbolFeatures(features: any[]): any[] {
     const symbolFeatures: any[] = [];
@@ -321,30 +359,30 @@ ${trackPoints}
       const { stress, slope } = feature.properties;
       const midPoint = this.getMidPoint(feature.geometry.coordinates);
 
-      // Priority-based symbol generation
+      // Priority-based symbol generation with high-contrast colors
       if (stress >= 4) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#EF4444", 0, 0)
+          this.createSymbolFeature(midPoint, "car", "#DC2626", 0, 0) // Dark Red - high danger
         );
       } else if (stress >= 3) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#F97316", 10, 0)
+          this.createSymbolFeature(midPoint, "car", "#EA580C", 10, 0) // Dark Orange - moderate danger
         );
       } else if (slope > 12) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#EF4444", 20, 0)
+          this.createSymbolFeature(midPoint, "chevron_double", "#B91C1C", 20, 0) // Deep Red - steep up
         );
       } else if (slope < -12) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#EF4444", 20, 180)
+          this.createSymbolFeature(midPoint, "chevron_double", "#B91C1C", 20, 180) // Deep Red - steep down
         );
       } else if (slope > 8) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#F97316", 30, 0)
+          this.createSymbolFeature(midPoint, "chevron", "#C2410C", 30, 0) // Dark Orange - moderate up
         );
       } else if (slope < -8) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "triangle", "#F97316", 30, 180)
+          this.createSymbolFeature(midPoint, "chevron", "#C2410C", 30, 180) // Dark Orange - moderate down
         );
       }
     });
@@ -355,7 +393,74 @@ ${trackPoints}
   private getMidPoint(coordinates: [number, number][]): [number, number] {
     return coordinates[Math.floor(coordinates.length / 2)];
   }
- 
+
+  private generateDistanceMarkers(features: any[]): any[] {
+    const markers = [];
+    let totalDistance = 0;
+    const interval = 10000; // 10km
+    let nextMarkerDistance = interval;
+
+    for (const feature of features) {
+      const coords = feature.geometry.coordinates;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const start = coords[i];
+        const end = coords[i + 1];
+        const segmentDistance = this.haversineDistance(start, end);
+
+        while (totalDistance + segmentDistance >= nextMarkerDistance) {
+          const distanceToMarker = nextMarkerDistance - totalDistance;
+          const fraction = distanceToMarker / segmentDistance;
+          const markerCoord = this.interpolatePoint(start, end, fraction);
+
+          markers.push({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: markerCoord,
+            },
+            properties: {
+              label: `${nextMarkerDistance / 1000}`,
+            },
+          });
+
+          nextMarkerDistance += interval;
+        }
+        totalDistance += segmentDistance;
+      }
+    }
+    return markers;
+  }
+
+  private haversineDistance(
+    coords1: [number, number],
+    coords2: [number, number]
+  ): number {
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const R = 6371e3; // Earth radius in meters
+
+    const dLat = toRad(coords2[1] - coords1[1]);
+    const dLon = toRad(coords2[0] - coords1[0]);
+    const lat1 = toRad(coords1[1]);
+    const lat2 = toRad(coords2[1]);
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  private interpolatePoint(
+    p1: [number, number],
+    p2: [number, number],
+    fraction: number
+  ): [number, number] {
+    const lon = p1[0] + (p2[0] - p1[0]) * fraction;
+    const lat = p1[1] + (p2[1] - p1[1]) * fraction;
+    return [lon, lat];
+  }
+
   private createSymbolFeature(
     coordinates: [number, number],
     symbolName: string,
@@ -526,10 +631,16 @@ ${trackPoints}
     });
     this.surfaceLayerIds = [];
 
+    if (map.getLayer(`${this.distanceMarkersLayerId}-label`))
+      map.removeLayer(`${this.distanceMarkersLayerId}-label`);
+    if (map.getLayer(this.distanceMarkersLayerId))
+      map.removeLayer(this.distanceMarkersLayerId);
     if (map.getLayer(this.symbolLayerId)) map.removeLayer(this.symbolLayerId);
     if (map.getLayer(this.outlineLayerId)) map.removeLayer(this.outlineLayerId);
     if (map.getLayer(this.mapLayerId)) map.removeLayer(this.mapLayerId);
 
+    if (map.getSource(this.distanceMarkersLayerId))
+      map.removeSource(this.distanceMarkersLayerId);
     if (map.getSource(this.symbolLayerId)) map.removeSource(this.symbolLayerId);
     if (map.getSource(this.mapLayerId)) map.removeSource(this.mapLayerId);
 
@@ -680,7 +791,6 @@ export class TrackManager {
       this.notifyChange();
     }
   }
-
 
   makePermanent(id: string): void {
     const track = this.tracks.get(id);

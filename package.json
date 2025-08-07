@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "sprite": "scripts/generate-sprites.sh",
     "generate-pwa-assets": "pwa-assets-generator --preset minimal-2023 public/ibex_icon.svg"
   },
   "dependencies": {

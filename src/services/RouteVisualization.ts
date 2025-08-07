@@ -8,23 +8,25 @@ export interface ColorMapping {
 }
 
 const TrackStyleConfig = {
-  surfaceColorMapping: [
-    { value: 'PAVED_EXCELLENT', color: '#1b7837', label: 'Paved - Excellent' },
-    { value: 'PAVED_GOOD', color: '#5aae61', label: 'Paved - Good' },
-    { value: 'PAVED_INTERMEDIATE', color: '#a6dba0', label: 'Paved - Intermediate' },
-    { value: 'PAVED_BAD', color: '#d9f0d3', label: 'Paved - Bad' },
-    { value: 'UNPAVED_INTERMEDIATE', color: '#e7d4e8', label: 'Unpaved - Intermediate' },
-    { value: 'UNPAVED_BAD', color: '#c2a5cf', label: 'Unpaved - Bad' },
-    { value: 'UNPAVED_HORRIBLE', color: '#9970ab', label: 'Unpaved - Horrible' },
-    { value: 'UNPAVED_IMPASSABLE', color: '#762a83', label: 'Unpaved - Impassable' },
-    { value: 'UNKNOWN', color: '#6B7280', label: 'Unknown' },
+
+   surfaceColorMapping: [
+    { value: 'PAVED_EXCELLENT', color: '#1E40AF', label: 'Paved - Excellent' },      // Deep Blue - smooth & fast
+    { value: 'PAVED_GOOD', color: '#3B82F6', label: 'Paved - Good' },               // Blue - reliable
+    { value: 'PAVED_INTERMEDIATE', color: '#60A5FA', label: 'Paved - Intermediate' }, // Light Blue - easy going
+    { value: 'PAVED_BAD', color: '#93C5FD', label: 'Paved - Bad' },                 // Pale Blue - getting bumpy
+    { value: 'UNPAVED_INTERMEDIATE', color: '#C084FC', label: 'Unpaved - Intermediate' }, // Purple-pink - adventure starts
+    { value: 'UNPAVED_BAD', color: '#E879F9', label: 'Unpaved - Bad' },             // Bright Purple-pink - exciting
+    { value: 'UNPAVED_HORRIBLE', color: '#F472B6', label: 'Unpaved - Horrible' },   // Hot Pink - maximum adventure!
+    { value: 'UNPAVED_IMPASSABLE', color: '#EC4899', label: 'Unpaved - Impassable' }, // Deep Hot Pink - legendary
+    { value: 'UNKNOWN', color: '#6B7280', label: 'Unknown' },                       // Gray - mystery awaits
   ],
+
 
   lineWidthExpression: [
     'interpolate',
     ['linear'],
     ['zoom'],
-    2, 6, 
+    5, 4, 
     14, 10
   ],
 
@@ -32,8 +34,8 @@ const TrackStyleConfig = {
     'interpolate',
     ['linear'],
     ['zoom'],
-    2, 18, 
-    14, 20
+    5, 8, 
+    14, 14
   ],
 
   surfaceColorExpression: () => {
