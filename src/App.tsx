@@ -80,6 +80,10 @@ import { GeocodingSearch } from "@/components/ui/geocoding-search";
 import { TrackItem } from "@/components/ui/track-item";
 import { RouteVisualization } from "@/services/RouteVisualization";
 import { toast } from "sonner";
+import { useProfileManager } from "@/hooks/useProfileManager";
+import { ProfileSelector } from "@/components/ui/profile-selector";
+import { ProfileManagementDialog } from "@/components/ui/profile-management-dialog";
+import { RoutingProfile } from "@/types/profiles";
 
 const basepath = import.meta.env.BASE_URL;
 
@@ -111,17 +115,18 @@ function App() {
   // Visualization Settings
   const [useSurfaceQualityColors, setUseSurfaceQualityColors] = useState(false);
 
-  // API Routing Settings
-  const [routingSettings, setRoutingSettings] = useState({
-    bikeType: "GRAVEL_BIKE",
-    traffic: "AVOID_IF_REASONABLE",
-    climbs: "IGNORE",
-    stairs: "AVOID_IF_POSSIBLE",
-    pavements: "AVOID_IF_POSSIBLE",
-    oneways: "AVOID_IF_POSSIBLE",
-    surface: "IGNORE",
-    optimizeWaypointsOrder: true,
-  });
+  // Profile Management
+  const {
+    profiles,
+    activeProfile,
+    addProfile,
+    updateProfile,
+    deleteProfile,
+    selectProfile,
+  } = useProfileManager();
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [editingProfile, setEditingProfile] =
+    useState<Partial<RoutingProfile> | null>(null);
 
   // Dialog states
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -303,7 +308,9 @@ function App() {
           mapRef.current = map;
 
           map.on("load", () => {
-            map.setSprite(`${window.location.origin}${basepath}sprites/symbols`);
+            map.setSprite(
+              `${window.location.origin}${basepath}sprites/symbols`
+            );
 
             // Add a permanent anchor layer for track placement
             if (!map.getLayer("ibex_anchor")) {
@@ -387,7 +394,8 @@ function App() {
   };
 
   const processAndAddRoutes = async () => {
-    const routes = await processRoute(waypoints, mapRef, routingSettings);
+    if (!activeProfile) return;
+    const routes = await processRoute(waypoints, mapRef, activeProfile);
 
     if (routes.length > 0) {
       addTemporaryTracks(routes, waypoints, useSurfaceQualityColors);
@@ -406,12 +414,13 @@ function App() {
     const intermediateWaypoints = waypoints.slice(1);
 
     const processAndAddCircularRoutes = async () => {
+      if (!activeProfile) return;
       const routes = await processCircularRoute(
         startPoint,
         distance,
         intermediateWaypoints,
         mapRef,
-        routingSettings
+        activeProfile
       );
       if (routes.length > 0) {
         addTemporaryTracks(routes, waypoints, useSurfaceQualityColors);
@@ -478,11 +487,7 @@ function App() {
         "Save Track",
         "Track name",
         (newTrackName) => {
-          saveTrackAsPermanent(
-            trackId,
-            newTrackName,
-            useSurfaceQualityColors
-          );
+          saveTrackAsPermanent(trackId, newTrackName, useSurfaceQualityColors);
           toast.success("Track saved permanently!");
         },
         {
@@ -681,7 +686,10 @@ function App() {
                         exportTrack={exportTrack}
                         zoomToTrack={zoomToTrack}
                         toggleTrackVisibility={(trackId) =>
-                          toggleTrackVisibility(trackId, useSurfaceQualityColors)
+                          toggleTrackVisibility(
+                            trackId,
+                            useSurfaceQualityColors
+                          )
                         }
                         showConfirmDialog={showConfirmDialog}
                         deleteTrack={deleteTrack}
@@ -1104,6 +1112,40 @@ function App() {
               className="mt-0 p-4 h-[calc(100%-3rem)] overflow-y-auto"
             >
               <div className="space-y-4">
+                {/* Routing Settings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Routing Preferences
+                    </CardTitle>
+                    <CardDescription>
+                      Select a profile or customize settings below.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ProfileSelector
+                      profiles={profiles}
+                      activeProfile={activeProfile}
+                      onSelectProfile={selectProfile}
+                      onAddProfile={() => {
+                        setEditingProfile({});
+                        setProfileDialogOpen(true);
+                      }}
+                      onEditProfile={(profile) => {
+                        setEditingProfile(profile);
+                        setProfileDialogOpen(true);
+                      }}
+                      onDeleteProfile={(profileId) => {
+                        showConfirmDialog(
+                          "Delete Profile",
+                          "Are you sure you want to delete this profile?",
+                          () => deleteProfile(profileId),
+                          "destructive"
+                        );
+                      }}
+                    />
+                  </CardContent>
+                </Card>
                 {/* Route Visualization Controls */}
                 <Card>
                   <CardHeader>
@@ -1136,191 +1178,6 @@ function App() {
                         className="flex-grow"
                       />
                     )}
-                  </CardContent>
-                </Card>
-
-                {/* Routing Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      Routing Preferences
-                    </CardTitle>
-                    <CardDescription>
-                      Customize route calculation
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="bike-type">Bicycle Type</Label>
-                        <Select
-                          value={routingSettings.bikeType}
-                          onValueChange={(value) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              bikeType: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="GRAVEL_BIKE">Gravel Bike</SelectItem>
-                            <SelectItem value="ROAD_BIKE">Road Bike</SelectItem>
-                            <SelectItem value="MOUNTAIN_BIKE">Mountain Bike</SelectItem>
-                            <SelectItem value="HYBRID_BIKE">Hybrid Bike</SelectItem>
-                            <SelectItem value="ELECTRIC_BIKE">E-Bike</SelectItem>
-                            <SelectItem value="CITY_BIKE">City Bike</SelectItem>
-                            <SelectItem value="FOLDING_BIKE">Folding Bike</SelectItem>
-                            <SelectItem value="CARGO_BIKE">Cargo Bike</SelectItem>
-                            <SelectItem value="ELECTRIC_SCOOTER">E-Scooter</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="surface">Surface Preference</Label>
-                        <Select
-                          value={routingSettings.surface}
-                          onValueChange={(value) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              surface: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="IGNORE">Ignore</SelectItem>
-                            <SelectItem value="PREFER_NON_PAVED">Prefer Unpaved</SelectItem>
-                            <SelectItem value="AVOID_BAD_SMOOTHNESS_ONLY">Avoid Bad Surfaces</SelectItem>
-                            <SelectItem value="PREFER_SMOOTH">Prefer Smooth</SelectItem>
-                            <SelectItem value="AVOID_NON_SMOOTH">Avoid Unpaved</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="traffic">Traffic Avoidance</Label>
-                        <Select
-                          value={routingSettings.traffic}
-                          onValueChange={(value) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              traffic: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="IGNORE">Ignore</SelectItem>
-                            <SelectItem value="AVOID_IF_REASONABLE">
-                              Avoid if Reasonable
-                            </SelectItem>
-                            <SelectItem value="AVOID_IF_POSSIBLE">
-                              Avoid if Possible
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="climbs">Climb Avoidance</Label>
-                        <Select
-                          value={routingSettings.climbs}
-                          onValueChange={(value) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              climbs: value,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="IGNORE">Ignore</SelectItem>
-                            <SelectItem value="AVOID_IF_REASONABLE">
-                              Avoid if Reasonable
-                            </SelectItem>
-                            <SelectItem value="AVOID_IF_POSSIBLE">
-                              Avoid if Possible
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="optimize-waypoints">
-                          Waypoint Order
-                        </Label>
-                        <Select
-                          value={routingSettings.optimizeWaypointsOrder.toString()}
-                          onValueChange={(value) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              optimizeWaypointsOrder: value === "true",
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="true">Optimize Order</SelectItem>
-                            <SelectItem value="false">
-                              Keep Original Order
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="avoid-stairs"
-                          checked={routingSettings.stairs === 'STRICTLY_AVOID'}
-                          onCheckedChange={(checked) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              stairs: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
-                            }))
-                          }
-                        />
-                        <Label htmlFor="avoid-stairs">Avoid Stairs</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="avoid-pavements"
-                          checked={routingSettings.pavements === 'STRICTLY_AVOID'}
-                          onCheckedChange={(checked) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              pavements: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
-                            }))
-                          }
-                        />
-                        <Label htmlFor="avoid-pavements">Avoid Pavements</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="avoid-oneways"
-                          checked={routingSettings.oneways === 'STRICTLY_AVOID'}
-                          onCheckedChange={(checked) =>
-                            setRoutingSettings((prev) => ({
-                              ...prev,
-                              oneways: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
-                            }))
-                          }
-                        />
-                        <Label htmlFor="avoid-oneways">Avoid Oneways</Label>
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -1480,6 +1337,23 @@ function App() {
         open={circularRouteDialogOpen}
         onOpenChange={setCircularRouteDialogOpen}
         onConfirm={handleProcessCircularRoute}
+      />
+
+      <ProfileManagementDialog
+        open={profileDialogOpen}
+        onOpenChange={setProfileDialogOpen}
+        profile={editingProfile}
+        onSave={(profile) => {
+          if (editingProfile?.id) {
+            updateProfile({
+              ...profile,
+              id: editingProfile.id,
+              isCustom: true,
+            });
+          } else {
+            addProfile(profile);
+          }
+        }}
       />
 
       <MultiActionConfirmDialog
