@@ -17,6 +17,7 @@ export class Track {
   private data: TrackData;
   private mapLayerId: string;
   private outlineLayerId: string;
+  private unpavedLayerId: string;
   private symbolLayerId: string;
   private distanceMarkersLayerId: string;
   private surfaceLayerIds: string[] = [];
@@ -33,6 +34,7 @@ export class Track {
     this.data = { ...data };
     this.mapLayerId = `track-${data.id}`;
     this.outlineLayerId = `track-${data.id}-outline`;
+    this.unpavedLayerId = `track-${data.id}-unpaved`;
     this.symbolLayerId = `track-${data.id}-symbols`;
     this.distanceMarkersLayerId = `track-${data.id}-distance-markers`;
     this.onUpdate = onUpdate;
@@ -249,6 +251,12 @@ ${trackPoints}
   ): void {
     const styleConfig = RouteVisualization.getStyleConfig();
     const segmentGeoJSON = this.data.route.geojson;
+    const groupedGeoJSON = RouteVisualization.createGroupedGeoJSON(
+      segmentGeoJSON.features.map((f: any) => ({
+        ...f.properties,
+        coordinates: f.geometry.coordinates,
+      }))
+    );
     const symbolFeatures = this.generateSymbolFeatures(segmentGeoJSON.features);
     const distanceMarkers = this.generateDistanceMarkers(
       segmentGeoJSON.features
@@ -257,7 +265,7 @@ ${trackPoints}
     // Add source for the main track line
     map.addSource(this.mapLayerId, {
       type: "geojson",
-      data: segmentGeoJSON,
+      data: groupedGeoJSON,
     });
 
     // Add sources for symbol layers
@@ -303,6 +311,24 @@ ${trackPoints}
         "line-width": styleConfig.lineWidthExpression,
         "line-opacity": 1,
       },
+    });
+
+    // Add unpaved overlay
+    map.addLayer({
+      id: this.unpavedLayerId,
+      type: "line",
+      source: this.mapLayerId,
+      before: "ibex_anchor",
+      layout: {
+        "line-join": "round",
+        "line-cap": "round",
+      },
+      paint: {
+        "line-pattern": styleConfig.unpavedPatternExpression(),
+        "line-width": styleConfig.lineWidthExpression, // Keep a base width
+        "line-opacity": 1,
+      },
+      filter: styleConfig.unpavedFilterExpression,
     });
 
     // Add symbol layer
@@ -365,11 +391,7 @@ ${trackPoints}
       const midPoint = this.getMidPoint(feature.geometry.coordinates);
 
       // Priority-based symbol generation with updated color scheme
-      if (surfaceSmoothness == "unpaved_impassable") {
-        symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "times", "#ff0000", 0, 0) // Red
-        );
-      } else if (stress >= 5) {
+      if (stress >= 5) {
         symbolFeatures.push(
           this.createSymbolFeature(midPoint, "car", "#DC2626", 0, 0) // Red
         );
@@ -673,6 +695,7 @@ ${trackPoints}
     if (map.getLayer(this.distanceMarkersLayerId))
       map.removeLayer(this.distanceMarkersLayerId);
     if (map.getLayer(this.symbolLayerId)) map.removeLayer(this.symbolLayerId);
+    if (map.getLayer(this.unpavedLayerId)) map.removeLayer(this.unpavedLayerId);
     if (map.getLayer(this.outlineLayerId)) map.removeLayer(this.outlineLayerId);
     if (map.getLayer(this.mapLayerId)) map.removeLayer(this.mapLayerId);
 

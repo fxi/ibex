@@ -119,7 +119,7 @@ function App() {
     stairs: "AVOID_IF_POSSIBLE",
     pavements: "AVOID_IF_POSSIBLE",
     oneways: "AVOID_IF_POSSIBLE",
-    surface: "PREFER_NON_PAVED",
+    surface: "IGNORE",
     optimizeWaypointsOrder: true,
   });
 
@@ -297,7 +297,7 @@ function App() {
             minZoom: 5,
             pitch: 0,
             bearing: 0,
-            rollEnabled: true,
+            rollEnabled: false,
           });
 
           mapRef.current = map;
@@ -1166,20 +1166,39 @@ function App() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="GRAVEL_BIKE">
-                              Gravel Bike
-                            </SelectItem>
+                            <SelectItem value="GRAVEL_BIKE">Gravel Bike</SelectItem>
                             <SelectItem value="ROAD_BIKE">Road Bike</SelectItem>
-                            <SelectItem value="MOUNTAIN_BIKE">
-                              Mountain Bike
-                            </SelectItem>
-                            <SelectItem value="HYBRID_BIKE">
-                              Hybrid Bike
-                            </SelectItem>
-                            <SelectItem value="ELECTRIC_BIKE">
-                              E-Bike
-                            </SelectItem>
+                            <SelectItem value="MOUNTAIN_BIKE">Mountain Bike</SelectItem>
+                            <SelectItem value="HYBRID_BIKE">Hybrid Bike</SelectItem>
+                            <SelectItem value="ELECTRIC_BIKE">E-Bike</SelectItem>
                             <SelectItem value="CITY_BIKE">City Bike</SelectItem>
+                            <SelectItem value="FOLDING_BIKE">Folding Bike</SelectItem>
+                            <SelectItem value="CARGO_BIKE">Cargo Bike</SelectItem>
+                            <SelectItem value="ELECTRIC_SCOOTER">E-Scooter</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="surface">Surface Preference</Label>
+                        <Select
+                          value={routingSettings.surface}
+                          onValueChange={(value) =>
+                            setRoutingSettings((prev) => ({
+                              ...prev,
+                              surface: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="IGNORE">Ignore</SelectItem>
+                            <SelectItem value="PREFER_NON_PAVED">Prefer Unpaved</SelectItem>
+                            <SelectItem value="AVOID_BAD_SMOOTHNESS_ONLY">Avoid Bad Surfaces</SelectItem>
+                            <SelectItem value="PREFER_SMOOTH">Prefer Smooth</SelectItem>
+                            <SelectItem value="AVOID_NON_SMOOTH">Avoid Unpaved</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -1259,6 +1278,47 @@ function App() {
                             </SelectItem>
                           </SelectContent>
                         </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="avoid-stairs"
+                          checked={routingSettings.stairs === 'STRICTLY_AVOID'}
+                          onCheckedChange={(checked) =>
+                            setRoutingSettings((prev) => ({
+                              ...prev,
+                              stairs: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
+                            }))
+                          }
+                        />
+                        <Label htmlFor="avoid-stairs">Avoid Stairs</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="avoid-pavements"
+                          checked={routingSettings.pavements === 'STRICTLY_AVOID'}
+                          onCheckedChange={(checked) =>
+                            setRoutingSettings((prev) => ({
+                              ...prev,
+                              pavements: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
+                            }))
+                          }
+                        />
+                        <Label htmlFor="avoid-pavements">Avoid Pavements</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="avoid-oneways"
+                          checked={routingSettings.oneways === 'STRICTLY_AVOID'}
+                          onCheckedChange={(checked) =>
+                            setRoutingSettings((prev) => ({
+                              ...prev,
+                              oneways: checked ? 'STRICTLY_AVOID' : 'AVOID_IF_POSSIBLE',
+                            }))
+                          }
+                        />
+                        <Label htmlFor="avoid-oneways">Avoid Oneways</Label>
                       </div>
                     </div>
                   </CardContent>

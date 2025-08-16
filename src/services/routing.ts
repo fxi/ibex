@@ -11,7 +11,7 @@ const defaultSettings: RouteSettings = {
   pavements: 'AVOID_IF_POSSIBLE',
   oneways: 'AVOID_IF_POSSIBLE',
   traffic: 'AVOID_IF_REASONABLE',
-  surface: 'PREFER_NON_PAVED',
+  surface: 'IGNORE',
   climbs: 'IGNORE',
   bikeSharingProvidersIds: [],
   addRouteGeoJson: true,

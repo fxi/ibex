@@ -31,11 +31,27 @@
     "y": 26,
     "sdf": true
   },
+  "dot": {
+    "height": 26,
+    "pixelRatio": 1,
+    "width": 26,
+    "x": 52,
+    "y": 0,
+    "sdf": true
+  },
   "times": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
     "x": 52,
+    "y": 26,
+    "sdf": true
+  },
+  "triangle": {
+    "height": 26,
+    "pixelRatio": 1,
+    "width": 26,
+    "x": 78,
     "y": 0,
     "sdf": true
   }
