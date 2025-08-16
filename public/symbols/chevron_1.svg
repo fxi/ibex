@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   version="1.1"
+   id="svg433"
+   width="20"
+   height="20"
+   viewBox="0 0 20 20"
+   sodipodi:docname="chevron_1.svg"
+   inkscape:export-filename="public/symbols/chevron.svg"
+   inkscape:export-xdpi="192"
+   inkscape:export-ydpi="192"
+   inkscape:version="1.2.1 (9c6d41e, 2022-07-14)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs437" />
+  <sodipodi:namedview
+     id="namedview435"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="8.34386"
+     inkscape:cx="-16.239486"
+     inkscape:cy="16.359335"
+     inkscape:window-width="1728"
+     inkscape:window-height="1051"
+     inkscape:window-x="0"
+     inkscape:window-y="38"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g1465" />
+  <g
+     inkscape:groupmode="layer"
+     inkscape:label="Image"
+     id="g439">
+    <g
+       id="g1465"
+       transform="matrix(0.08481373,0,0,0.08481373,-63.689629,-22.194768)"
+       style="stroke:none;stroke-width:11.7905;stroke-dasharray:none;stroke-opacity:1">
+      <path
+         style="fill:#000000;stroke:none;stroke-width:7.22884;stroke-dasharray:none;stroke-opacity:1"
+         d="m 833.99029,411.52873 c -2.51322,-1.26886 -6.06223,-5.28085 -6.59519,-7.45553 -0.93803,-3.82757 0.46765,-5.58998 22.436,-28.13034 22.29145,-22.87185 22.60358,-23.12811 26.86325,-22.05205 1.10312,0.27867 8.90138,7.83616 22.97254,22.26319 18.46907,18.93626 21.35912,22.15038 21.72813,24.1649 0.73168,3.99424 -2.02302,8.7144 -6.42931,11.01655 -4.65728,2.43331 -4.09421,2.83751 -22.95012,-16.47341 l -17.27041,-17.68713 -16.66858,17.00128 c -9.16771,9.3507 -17.26405,17.3099 -17.99185,17.68712 -1.82249,0.94456 -3.773,0.83747 -6.09446,-0.33458 z"
+         id="path841" />
+    </g>
+  </g>
+</svg>

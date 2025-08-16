@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sheet,
   SheetContent,
@@ -107,6 +108,9 @@ function App() {
     direction: "desc", // Default: most recent first
   });
 
+  // Visualization Settings
+  const [useSurfaceQualityColors, setUseSurfaceQualityColors] = useState(false);
+
   // API Routing Settings
   const [routingSettings, setRoutingSettings] = useState({
     bikeType: "GRAVEL_BIKE",
@@ -193,6 +197,7 @@ function App() {
     clearTemporaryTracks,
     clearAllTracks,
     getLastHoveredFeature,
+    updateAllTracksVisibility,
     initializeManager: initializeTrackManager,
   } = useTrackManager();
 
@@ -264,6 +269,13 @@ function App() {
       clearRoutes(mapRef);
     }
   }, [waypoints.length, currentRoutes.length, clearRoutes]);
+
+  // Update track visualization when color mode changes
+  useEffect(() => {
+    if (updateAllTracksVisibility) {
+      updateAllTracksVisibility(useSurfaceQualityColors);
+    }
+  }, [useSurfaceQualityColors, updateAllTracksVisibility]);
 
   // Initialize map
   useEffect(() => {
@@ -378,7 +390,7 @@ function App() {
     const routes = await processRoute(waypoints, mapRef, routingSettings);
 
     if (routes.length > 0) {
-      addTemporaryTracks(routes, waypoints);
+      addTemporaryTracks(routes, waypoints, useSurfaceQualityColors);
     }
   };
 
@@ -402,7 +414,7 @@ function App() {
         routingSettings
       );
       if (routes.length > 0) {
-        addTemporaryTracks(routes, waypoints);
+        addTemporaryTracks(routes, waypoints, useSurfaceQualityColors);
       }
     };
 
@@ -437,7 +449,7 @@ function App() {
         "This will clear current waypoints and temporary tracks. Are you sure you want to continue?",
         () => {
           if (!track.isVisible()) {
-            toggleTrackVisibility(track.getId());
+            toggleTrackVisibility(track.getId(), useSurfaceQualityColors);
           }
           clearWaypoints();
           clearTemporaryTracks();
@@ -455,6 +467,7 @@ function App() {
       clearTemporaryTracks,
       setAllWaypoints,
       toggleTrackVisibility,
+      useSurfaceQualityColors,
     ]
   );
 
@@ -465,7 +478,11 @@ function App() {
         "Save Track",
         "Track name",
         (newTrackName) => {
-          saveTrackAsPermanent(trackId, newTrackName);
+          saveTrackAsPermanent(
+            trackId,
+            newTrackName,
+            useSurfaceQualityColors
+          );
           toast.success("Track saved permanently!");
         },
         {
@@ -476,7 +493,7 @@ function App() {
         }
       );
     },
-    [saveTrackAsPermanent]
+    [saveTrackAsPermanent, useSurfaceQualityColors]
   );
 
   // Tri-state sorting handler
@@ -663,7 +680,9 @@ function App() {
                         handleReloadWaypoints={handleReloadWaypoints}
                         exportTrack={exportTrack}
                         zoomToTrack={zoomToTrack}
-                        toggleTrackVisibility={toggleTrackVisibility}
+                        toggleTrackVisibility={(trackId) =>
+                          toggleTrackVisibility(trackId, useSurfaceQualityColors)
+                        }
                         showConfirmDialog={showConfirmDialog}
                         deleteTrack={deleteTrack}
                       />
@@ -797,7 +816,8 @@ function App() {
                                         (newColor) => {
                                           updateTrackColor(
                                             track.getId(),
-                                            newColor
+                                            newColor,
+                                            useSurfaceQualityColors
                                           );
                                           toast.success("Track color updated!");
                                         },
@@ -944,7 +964,10 @@ function App() {
                                 </Button>
                                 <Button
                                   onClick={() =>
-                                    toggleTrackVisibility(track.getId())
+                                    toggleTrackVisibility(
+                                      track.getId(),
+                                      useSurfaceQualityColors
+                                    )
                                   }
                                   size="sm"
                                   variant="ghost"
@@ -1082,24 +1105,39 @@ function App() {
             >
               <div className="space-y-4">
                 {/* Route Visualization Controls */}
-                {(temporaryTracks.length > 0 || permanentTracks.length > 0) && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">
-                        Route Visualization
-                      </CardTitle>
-                      <CardDescription>
-                        Change how route segments are colored
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col md:flex-row gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Route Visualization
+                    </CardTitle>
+                    <CardDescription>
+                      Change how route segments are colored
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="surface-quality-colors"
+                        checked={useSurfaceQualityColors}
+                        onCheckedChange={(checked: boolean) =>
+                          setUseSurfaceQualityColors(checked)
+                        }
+                      />
+                      <Label
+                        htmlFor="surface-quality-colors"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        Use surface quality colors
+                      </Label>
+                    </div>
+                    {useSurfaceQualityColors && (
                       <RouteLegend
                         colorMapping={getColorMapping()}
                         className="flex-grow"
                       />
-                    </CardContent>
-                  </Card>
-                )}
+                    )}
+                  </CardContent>
+                </Card>
 
                 {/* Routing Settings */}
                 <Card>

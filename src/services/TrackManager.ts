@@ -46,15 +46,16 @@ export class Track {
   }
 
   private generateColor(): string {
+    // Brighter, more saturated colors
     const colors = [
-      "#3B82F6",
-      "#EF4444",
-      "#10B981",
-      "#F59E0B",
-      "#8B5CF6",
-      "#EC4899",
-      "#14B8A6",
-      "#F97316",
+      "#FF1493", // DeepPink
+      "#FF4500", // OrangeRed
+      "#FFD700", // Gold
+      "#ADFF2F", // GreenYellow
+      "#00FFFF", // Aqua
+      "#1E90FF", // DodgerBlue
+      "#9932CC", // DarkOrchid
+      "#FF00FF", // Magenta
     ];
     const index = Math.abs(
       this.data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)
@@ -224,14 +225,14 @@ ${trackPoints}
     }
   }
 
-  addToMap(map: any): void {
+  addToMap(map: any, useSurfaceQuality: boolean = false): void {
     if (!map || !this.data.route?.geojson) return;
 
     try {
       // Remove existing layers if they exist
       this.removeFromMap(map);
 
-      this.addGeoJSONBasedVisualization(map);
+      this.addGeoJSONBasedVisualization(map, useSurfaceQuality);
 
       // Add interactive features to both layers
       this.addInteractiveFeatures(map);
@@ -242,7 +243,10 @@ ${trackPoints}
     }
   }
 
-  private addGeoJSONBasedVisualization(map: any): void {
+  private addGeoJSONBasedVisualization(
+    map: any,
+    useSurfaceQuality: boolean
+  ): void {
     const styleConfig = RouteVisualization.getStyleConfig();
     const segmentGeoJSON = this.data.route.geojson;
     const symbolFeatures = this.generateSymbolFeatures(segmentGeoJSON.features);
@@ -293,7 +297,9 @@ ${trackPoints}
       before: "ibex_anchor",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": styleConfig.surfaceColorExpression(),
+        "line-color": useSurfaceQuality
+          ? styleConfig.surfaceColorExpression()
+          : this.getColor(),
         "line-width": styleConfig.lineWidthExpression,
         "line-opacity": 1,
       },
@@ -354,35 +360,66 @@ ${trackPoints}
 
   private generateSymbolFeatures(features: any[]): any[] {
     const symbolFeatures: any[] = [];
-
     features.forEach((feature) => {
-      const { stress, slope } = feature.properties;
+      const { stress, slope, surfaceSmoothness } = feature.properties;
       const midPoint = this.getMidPoint(feature.geometry.coordinates);
 
-      // Priority-based symbol generation with high-contrast colors
-      if (stress >= 4) {
+      // Priority-based symbol generation with updated color scheme
+      if (surfaceSmoothness == "unpaved_impassable") {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#DC2626", 0, 0) // Dark Red - high danger
+          this.createSymbolFeature(midPoint, "times", "#ff0000", 0, 0) // Red
+        );
+      } else if (stress >= 5) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "car", "#DC2626", 0, 0) // Red
+        );
+      } else if (stress >= 4) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "car", "#EA580C", 0, 0) // Orange
         );
       } else if (stress >= 3) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#EA580C", 10, 0) // Dark Orange - moderate danger
+          this.createSymbolFeature(midPoint, "car", "#EAB308", 10, 0) // Yellow
         );
-      } else if (slope > 12) {
+      } else if (slope > 20) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_double", "#B91C1C", 20, 0) // Deep Red - steep up
+          this.createSymbolFeature(midPoint, "chevron_4", "#ff0000", 20, 0) // red strong
         );
-      } else if (slope < -12) {
+      } else if (slope < -20) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_double", "#B91C1C", 20, 180) // Deep Red - steep down
+          this.createSymbolFeature(midPoint, "chevron_4", "#ff0000", 20, 180) // red strong
         );
-      } else if (slope > 8) {
+      } else if (slope > 15) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron", "#C2410C", 30, 0) // Dark Orange - moderate up
+          this.createSymbolFeature(midPoint, "chevron_3", "#EA580C", 20, 0) // Red
         );
-      } else if (slope < -8) {
+      } else if (slope < -15) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron", "#C2410C", 30, 180) // Dark Orange - moderate down
+          this.createSymbolFeature(midPoint, "chevron_3", "#EA580C", 20, 180) // Red
+        );
+      } else if (slope > 10) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_2", "#ff9700", 30, 0) // Orange
+        );
+      } else if (slope < -10) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_2", "#ff9700", 30, 180) // Orange
+        );
+      } else if (slope > 6) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_1", "#EAB308", 30, 0) // Yellow
+        );
+      } else if (slope < -6) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_1", "#EAB308", 30, 180) // Yellow
+        );
+      } else if (slope > 2) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_1", "#afff00", 30, 0) // Light Yellow
+        );
+      } else if (slope < -2) {
+        symbolFeatures.push(
+          this.createSymbolFeature(midPoint, "chevron_1", "#afff00", 30, 180) // Light Yellow
         );
       }
     });
@@ -661,12 +698,17 @@ ${trackPoints}
     }
   }
 
-  updateMapColor(map: any): void {
+  updateMapColor(map: any, useSurfaceQuality: boolean = false): void {
     if (!map || !this.isVisible()) return;
 
     try {
-      if (map.getLayer(this.mapLayerId)) {
-        map.setPaintProperty(this.mapLayerId, "line-color", this.getColor());
+      // The solid layer is the first one in surfaceLayerIds
+      const solidLayerId = this.surfaceLayerIds[0];
+      if (solidLayerId && map.getLayer(solidLayerId)) {
+        const color = useSurfaceQuality
+          ? RouteVisualization.getStyleConfig().surfaceColorExpression()
+          : this.getColor();
+        map.setPaintProperty(solidLayerId, "line-color", color);
       }
     } catch (error) {
       console.error("Error updating track color:", error);
@@ -761,13 +803,16 @@ export class TrackManager {
     this.notifyChange();
   }
 
-  toggleTrackVisibility(id: string): boolean {
+  toggleTrackVisibility(
+    id: string,
+    useSurfaceQuality: boolean = false
+  ): boolean {
     const track = this.tracks.get(id);
     if (track) {
       if (track.isVisible()) {
         track.removeFromMap(this.map);
       } else {
-        track.addToMap(this.map);
+        track.addToMap(this.map, useSurfaceQuality);
       }
       this.notifyChange();
       return track.isVisible();
@@ -775,11 +820,15 @@ export class TrackManager {
     return false;
   }
 
-  updateTrackColor(id: string, color: string): void {
+  updateTrackColor(
+    id: string,
+    color: string,
+    useSurfaceQuality: boolean = false
+  ): void {
     const track = this.tracks.get(id);
     if (track) {
       track.setColor(color);
-      track.updateMapColor(this.map);
+      track.updateMapColor(this.map, useSurfaceQuality);
       this.notifyChange();
     }
   }

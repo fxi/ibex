@@ -1,5 +1,5 @@
 {
-  "chevron": {
+  "chevron_1": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
@@ -7,11 +7,35 @@
     "y": 0,
     "sdf": true
   },
-  "chevron_double": {
+  "chevron_2": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 0,
+    "y": 46,
+    "sdf": true
+  },
+  "chevron_3": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
     "x": 46,
+    "y": 0,
+    "sdf": true
+  },
+  "chevron_4": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 46,
+    "y": 46,
+    "sdf": true
+  },
+  "times": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 92,
     "y": 0,
     "sdf": true
   }
