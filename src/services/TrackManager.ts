@@ -20,7 +20,9 @@ export class Track {
   private data: TrackData;
   private mapLayerId: string;
   private outlineLayerId: string;
-  private unpavedLayerId: string;
+  private unpavedSmoothLayerId: string;
+  private unpavedOkLayerId: string;
+  private unpavedTechnicalLayerId: string;
   private symbolLayerId: string;
   private directionsLayerId: string;
   private distanceMarkersLayerId: string;
@@ -38,7 +40,9 @@ export class Track {
     this.data = { ...data };
     this.mapLayerId = `track-${data.id}`;
     this.outlineLayerId = `track-${data.id}-outline`;
-    this.unpavedLayerId = `track-${data.id}-unpaved`;
+    this.unpavedSmoothLayerId = `track-${data.id}-unpaved-smooth`;
+    this.unpavedOkLayerId = `track-${data.id}-unpaved-ok`;
+    this.unpavedTechnicalLayerId = `track-${data.id}-unpaved-technical`;
     this.symbolLayerId = `track-${data.id}-symbols`;
     this.directionsLayerId = `track-${data.id}-directions`;
     this.distanceMarkersLayerId = `track-${data.id}-distance-markers`;
@@ -318,23 +322,47 @@ ${trackPoints}
       },
     });
 
-    // Add unpaved overlay
+    // Add unpaved overlays
+    const unpavedPaint = {
+      "line-opacity": 1,
+      "line-color": "white",
+      "line-width": {
+        base: 1.4,
+        stops: [
+          [15, 2],
+          [20, 6],
+        ],
+      },
+    };
+
     map.addLayer({
-      id: this.unpavedLayerId,
+      id: this.unpavedSmoothLayerId,
       type: "line",
       source: this.mapLayerId,
       before: "ibex_anchor",
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-pattern": styleConfig.unpavedPatternExpression(),
-        "line-width": styleConfig.lineWidthExpression, // Keep a base width
-        "line-opacity": 1,
-        "line-color": "red",
-      },
-      filter: styleConfig.unpavedFilterExpression,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { ...unpavedPaint, "line-dasharray": [1] },
+      filter: styleConfig.unpavedSmoothFilter,
+    });
+
+    map.addLayer({
+      id: this.unpavedOkLayerId,
+      type: "line",
+      source: this.mapLayerId,
+      before: "ibex_anchor",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { ...unpavedPaint, "line-dasharray": [8, 4] },
+      filter: styleConfig.unpavedOkFilter,
+    });
+
+    map.addLayer({
+      id: this.unpavedTechnicalLayerId,
+      type: "line",
+      source: this.mapLayerId,
+      before: "ibex_anchor",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { ...unpavedPaint, "line-dasharray": [2, 2] },
+      filter: styleConfig.unpavedTechnicalFilter,
     });
 
     // Add symbol layer
@@ -345,7 +373,7 @@ ${trackPoints}
       before: "ibex_anchor",
       layout: {
         "icon-image": ["get", "symbol"],
-        "icon-size": 1.5,
+        "icon-size": 1.3,
         "icon-allow-overlap": false,
         "symbol-avoid-edges": true,
         "icon-rotate": ["get", "rotation"],
@@ -473,11 +501,12 @@ ${trackPoints}
         symbolFeatures.push(
           this.createSymbolFeature(midPoint, "chevron_1", palette2[1], 30, 180) // Yellow
         );
-      } else if (slope > 2) {
+      } else if (slope > 4) {
+        
         symbolFeatures.push(
           this.createSymbolFeature(midPoint, "chevron_1", palette2[0], 30, 0) // Light Yellow
         );
-      } else if (slope < -2) {
+      } else if (slope < -4) {
         symbolFeatures.push(
           this.createSymbolFeature(midPoint, "chevron_1", palette2[0], 30, 180) // Light Yellow
         );
@@ -735,7 +764,12 @@ ${trackPoints}
     if (map.getLayer(this.symbolLayerId)) map.removeLayer(this.symbolLayerId);
     if (map.getLayer(this.directionsLayerId))
       map.removeLayer(this.directionsLayerId);
-    if (map.getLayer(this.unpavedLayerId)) map.removeLayer(this.unpavedLayerId);
+    if (map.getLayer(this.unpavedSmoothLayerId))
+      map.removeLayer(this.unpavedSmoothLayerId);
+    if (map.getLayer(this.unpavedOkLayerId))
+      map.removeLayer(this.unpavedOkLayerId);
+    if (map.getLayer(this.unpavedTechnicalLayerId))
+      map.removeLayer(this.unpavedTechnicalLayerId);
     if (map.getLayer(this.outlineLayerId)) map.removeLayer(this.outlineLayerId);
     if (map.getLayer(this.mapLayerId)) map.removeLayer(this.mapLayerId);
 

@@ -58,22 +58,17 @@ const TrackStyleConfig = {
     ["==", ["get", "surfaceSmoothness"], "UNPAVED_IMPASSABLE"],
   ],
 
-  unpavedPatternExpression: () => {
-    return [
-      "case",
-      [
-        "any",
-        ["==", ["get", "surfaceSmoothness"], "UNPAVED_INTERMEDIATE"],
-        ["==", ["get", "surfaceSmoothness"], "UNPAVED_BAD"],
-      ],
-      "dot",
-      ["==", ["get", "surfaceSmoothness"], "UNPAVED_HORRIBLE"],
-      "triangle",
-      ["==", ["get", "surfaceSmoothness"], "UNPAVED_IMPASSABLE"],
-      "times",
-      "solid", // Default
-    ];
-  },
+  unpavedSmoothFilter: [
+    "==",
+    ["get", "surfaceSmoothness"],
+    "UNPAVED_INTERMEDIATE",
+  ],
+  unpavedOkFilter: ["==", ["get", "surfaceSmoothness"], "UNPAVED_BAD"],
+  unpavedTechnicalFilter: [
+    "any",
+    ["==", ["get", "surfaceSmoothness"], "UNPAVED_HORRIBLE"],
+    ["==", ["get", "surfaceSmoothness"], "UNPAVED_IMPASSABLE"],
+  ],
 };
 
 export class RouteVisualization {
