@@ -39,7 +39,7 @@
     "y": 0,
     "sdf": true
   },
-  "times": {
+  "marker": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
@@ -47,11 +47,19 @@
     "y": 46,
     "sdf": true
   },
-  "triangle": {
+  "times": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
     "x": 138,
+    "y": 0,
+    "sdf": true
+  },
+  "triangle": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 184,
     "y": 0,
     "sdf": true
   }

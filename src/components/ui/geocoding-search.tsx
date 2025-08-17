@@ -25,6 +25,7 @@ export function GeocodingSearch({ mapRef, addWaypoint }: GeocodingSearchProps) {
     setIsLoading(true)
     try {
       const center = mapRef.current?.getCenter()
+      debugger;
       const response = await geocoding.forward(searchTerm, {
         limit: 5,
         proximity: center ? [center.lng, center.lat] : undefined,

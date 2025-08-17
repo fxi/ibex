@@ -75,8 +75,6 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -115,7 +113,6 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -129,10 +126,10 @@
   }
 }
 
-
-
 /* Base styles for full viewport */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   margin: 0;
@@ -145,19 +142,19 @@ html, body, #root {
   overscroll-behavior-y: contain;
 }
 
-/* Custom numbered marker styles */
 .numbered-marker {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background-color: #000000;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 14px;
-  border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   cursor: pointer;
+  transition: all 0.2s ease;
+  translate: 0 -10px;
+}
+
+.numbered-marker:hover {
+  transform: scale(1.3);
+}
+
+.control-button {
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
 }
