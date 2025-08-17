@@ -8,8 +8,10 @@ export interface LocationPoint {
   point: Point;
 }
 
+import { BikeType } from "@/constants/bikeTypes";
+
 export interface RouteSettings {
-  bikeType: 'CITY_BIKE' | 'ROAD_BIKE' | 'MOUNTAIN_BIKE' | 'HYBRID_BIKE' | 'FOLDING_BIKE' | 'ELECTRIC_BIKE' | 'CARGO_BIKE' | 'FIXIE_BIKE' | 'GRAVEL_BIKE' | 'RECUMBENT_BIKE' | 'ELECTRIC_CITY_BIKE' | 'ELECTRIC_ROAD_BIKE' | 'ELECTRIC_FOLDING_BIKE' | 'ELECTRIC_CARGO_BIKE' | 'ELECTRIC_FIXIE_BIKE' | 'ELECTRIC_HYBRID_BIKE' | 'ELECTRIC_GRAVEL_BIKE' | 'ELECTRIC_RECUMBENT_BIKE' | 'SCOOTER' | 'BIG_WHEEL_SCOOTER' | 'ELECTRIC_SCOOTER';
+  bikeType: BikeType;
   averageSpeed: number;
   allowedTransportModes: string[];
   stairs: 'AVOID_IF_POSSIBLE' | 'STRICTLY_AVOID';

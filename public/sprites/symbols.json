@@ -7,7 +7,7 @@
     "y": 0,
     "sdf": true
   },
-  "chevron": {
+  "car": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
@@ -15,7 +15,7 @@
     "y": 0,
     "sdf": true
   },
-  "chevron_1": {
+  "chevron": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
@@ -23,7 +23,7 @@
     "y": 0,
     "sdf": true
   },
-  "chevron_2": {
+  "chevron_1": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
@@ -31,7 +31,7 @@
     "y": 0,
     "sdf": true
   },
-  "chevron_3": {
+  "chevron_2": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
@@ -39,7 +39,7 @@
     "y": 26,
     "sdf": true
   },
-  "chevron_4": {
+  "chevron_3": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
@@ -47,12 +47,20 @@
     "y": 52,
     "sdf": true
   },
-  "circle": {
+  "chevron_4": {
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
     "x": 0,
     "y": 78,
+    "sdf": true
+  },
+  "circle": {
+    "height": 26,
+    "pixelRatio": 1,
+    "width": 26,
+    "x": 26,
+    "y": 26,
     "sdf": true
   },
   "dot": {
@@ -67,7 +75,7 @@
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
-    "x": 26,
+    "x": 52,
     "y": 26,
     "sdf": true
   },
@@ -75,7 +83,7 @@
     "height": 26,
     "pixelRatio": 1,
     "width": 26,
-    "x": 52,
+    "x": 78,
     "y": 26,
     "sdf": true
   },

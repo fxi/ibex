@@ -19,12 +19,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { RoutingProfile } from "@/types/profiles";
 import { useEffect, useState } from "react";
+import { BIKE_TYPES, BIKE_TYPE_LABELS } from "@/constants/bikeTypes";
 
 interface ProfileManagementDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   profile: Partial<RoutingProfile> | null;
-  onSave: (profile: Omit<RoutingProfile, 'id' | 'isCustom'>) => void;
+  onSave: (profile: Omit<RoutingProfile, "id" | "isCustom">) => void;
 }
 
 export function ProfileManagementDialog({
@@ -40,7 +41,7 @@ export function ProfileManagementDialog({
   }, [profile]);
 
   const handleSave = () => {
-    onSave(formData as Omit<RoutingProfile, 'id' | 'isCustom'>);
+    onSave(formData as Omit<RoutingProfile, "id" | "isCustom">);
     onOpenChange(false);
   };
 
@@ -48,7 +49,9 @@ export function ProfileManagementDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{profile?.id ? "Edit Profile" : "New Profile"}</DialogTitle>
+          <DialogTitle>
+            {profile?.id ? "Edit Profile" : "New Profile"}
+          </DialogTitle>
           <DialogDescription>
             Create or edit a custom routing profile.
           </DialogDescription>
@@ -59,7 +62,9 @@ export function ProfileManagementDialog({
             <Input
               id="name"
               value={formData.name || ""}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
             />
           </div>
           <div className="space-y-2">
@@ -85,12 +90,11 @@ export function ProfileManagementDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="GRAVEL_BIKE">Gravel Bike</SelectItem>
-                  <SelectItem value="ROAD_BIKE">Road Bike</SelectItem>
-                  <SelectItem value="MOUNTAIN_BIKE">Mountain Bike</SelectItem>
-                  <SelectItem value="HYBRID_BIKE">Hybrid Bike</SelectItem>
-                  <SelectItem value="ELECTRIC_BIKE">E-Bike</SelectItem>
-                  <SelectItem value="CITY_BIKE">City Bike</SelectItem>
+                  {BIKE_TYPES.map((bikeType) => (
+                    <SelectItem key={bikeType} value={bikeType}>
+                      {BIKE_TYPE_LABELS[bikeType]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -107,12 +111,16 @@ export function ProfileManagementDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="IGNORE">Ignore</SelectItem>
-                  <SelectItem value="PREFER_NON_PAVED">Prefer Unpaved</SelectItem>
+                  <SelectItem value="PREFER_NON_PAVED">
+                    Prefer Unpaved
+                  </SelectItem>
                   <SelectItem value="AVOID_BAD_SMOOTHNESS_ONLY">
                     Avoid Bad Surfaces
                   </SelectItem>
                   <SelectItem value="PREFER_SMOOTH">Prefer Smooth</SelectItem>
-                  <SelectItem value="AVOID_NON_SMOOTH">Avoid Unpaved</SelectItem>
+                  <SelectItem value="AVOID_NON_SMOOTH">
+                    Avoid Unpaved
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
