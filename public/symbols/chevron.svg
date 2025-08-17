@@ -4,10 +4,10 @@
 <svg
    version="1.1"
    id="svg433"
-   width="16"
-   height="16"
-   viewBox="0 0 16 16"
-   sodipodi:docname="triangle.svg"
+   width="20"
+   height="20"
+   viewBox="0 0 20 20"
+   sodipodi:docname="chevron_1.svg"
    inkscape:export-filename="public/symbols/chevron.svg"
    inkscape:export-xdpi="192"
    inkscape:export-ydpi="192"
@@ -28,9 +28,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="19.997829"
-     inkscape:cx="-3.3503637"
-     inkscape:cy="12.026305"
+     inkscape:zoom="8.34386"
+     inkscape:cx="-16.239486"
+     inkscape:cy="16.359335"
      inkscape:window-width="1728"
      inkscape:window-height="1051"
      inkscape:window-x="0"
@@ -43,25 +43,12 @@
      id="g439">
     <g
        id="g1465"
-       transform="matrix(0.08481373,0,0,0.08481373,-4.2006731,-22.797952)"
+       transform="matrix(0.08481373,0,0,0.08481373,-63.689629,-22.194768)"
        style="stroke:none;stroke-width:11.7905;stroke-dasharray:none;stroke-opacity:1">
       <path
-         sodipodi:type="star"
-         style="fill:#2d2d2d;stroke-width:139.016;stroke-linecap:round;paint-order:markers stroke fill"
-         id="path479"
-         inkscape:flatsided="true"
-         sodipodi:sides="3"
-         sodipodi:cx="7.850852"
-         sodipodi:cy="7.0007601"
-         sodipodi:r1="6.5438366"
-         sodipodi:r2="3.2719183"
-         sodipodi:arg1="0.52359878"
-         sodipodi:arg2="1.5707963"
-         inkscape:rounded="0"
-         inkscape:randomized="0"
-         d="m 13.517981,10.272678 -11.3342577,0 5.6671287,-9.81575452 z"
-         transform="matrix(11.790544,0,0,11.790544,51.286755,295.33185)"
-         inkscape:transform-center-y="-1.6359592" />
+         style="fill:#000000;stroke:none;stroke-width:7.22884;stroke-dasharray:none;stroke-opacity:1"
+         d="m 833.99029,411.52873 c -2.51322,-1.26886 -6.06223,-5.28085 -6.59519,-7.45553 -0.93803,-3.82757 0.46765,-5.58998 22.436,-28.13034 22.29145,-22.87185 22.60358,-23.12811 26.86325,-22.05205 1.10312,0.27867 8.90138,7.83616 22.97254,22.26319 18.46907,18.93626 21.35912,22.15038 21.72813,24.1649 0.73168,3.99424 -2.02302,8.7144 -6.42931,11.01655 -4.65728,2.43331 -4.09421,2.83751 -22.95012,-16.47341 l -17.27041,-17.68713 -16.66858,17.00128 c -9.16771,9.3507 -17.26405,17.3099 -17.99185,17.68712 -1.82249,0.94456 -3.773,0.83747 -6.09446,-0.33458 z"
+         id="path841" />
     </g>
   </g>
 </svg>

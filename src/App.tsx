@@ -102,6 +102,7 @@ function App() {
     | "distance"
     | "time"
     | "elevation"
+    | "match"
     | "saved";
   type SortDirection = "asc" | "desc" | "none";
   const [sortConfig, setSortConfig] = useState<{
@@ -559,6 +560,10 @@ function App() {
           aValue = a.getRoute()?.stats?.elevationGainMeters || 0;
           bValue = b.getRoute()?.stats?.elevationGainMeters || 0;
           break;
+        case "match":
+          aValue = a.getRoute()?.stats?.userSettingsMatch || 0;
+          bValue = b.getRoute()?.stats?.userSettingsMatch || 0;
+          break;
         case "saved":
           aValue = a.isPermanentTrack() ? 1 : 0;
           bValue = b.isPermanentTrack() ? 1 : 0;
@@ -786,6 +791,20 @@ function App() {
                                 ))}
                             </button>
                           </th>
+                          <th className="pb-2 font-medium text-right">
+                            <button
+                              onClick={() => handleSort("match")}
+                              className="flex items-center gap-1 hover:text-foreground transition-colors ml-auto"
+                            >
+                              Match
+                              {sortConfig.column === "match" &&
+                                (sortConfig.direction === "asc" ? (
+                                  <ChevronUp className="h-3 w-3" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                ))}
+                            </button>
+                          </th>
                           <th className="pb-2 font-medium text-center">
                             <button
                               onClick={() => handleSort("saved")}
@@ -917,6 +936,11 @@ function App() {
                                     .getRoute()!
                                     .stats!.elevationGainMeters.toFixed(0) +
                                   "m"
+                                : "N/A"}
+                            </td>
+                            <td className="py-2 text-right">
+                              {track.getRoute()?.stats?.userSettingsMatch != null
+                                ? `${track.getRoute()?.stats?.userSettingsMatch}%`
                                 : "N/A"}
                             </td>
                             <td className="py-2 text-center">

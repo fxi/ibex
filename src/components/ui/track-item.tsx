@@ -60,6 +60,11 @@ export const TrackItem = ({
                   ? `↗${stats.elevationGainMeters.toFixed(0)}m`
                   : 'N/A'}
               </span>
+              <span>
+                {stats?.userSettingsMatch != null
+                  ? `${stats.userSettingsMatch}%`
+                  : 'N/A'}
+              </span>
             </div>
           </div>
         </div>

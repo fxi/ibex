@@ -1,9 +1,25 @@
 {
-  "chevron_1": {
+  "arrow": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
     "x": 0,
+    "y": 0,
+    "sdf": true
+  },
+  "chevron": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 0,
+    "y": 46,
+    "sdf": true
+  },
+  "chevron_1": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 46,
     "y": 0,
     "sdf": true
   },
@@ -11,7 +27,7 @@
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
-    "x": 0,
+    "x": 46,
     "y": 46,
     "sdf": true
   },
@@ -19,7 +35,7 @@
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
-    "x": 46,
+    "x": 92,
     "y": 0,
     "sdf": true
   },
@@ -27,27 +43,11 @@
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
-    "x": 46,
-    "y": 46,
-    "sdf": true
-  },
-  "dot": {
-    "height": 46,
-    "pixelRatio": 2,
-    "width": 46,
-    "x": 92,
-    "y": 0,
-    "sdf": true
-  },
-  "marker": {
-    "height": 46,
-    "pixelRatio": 2,
-    "width": 46,
     "x": 92,
     "y": 46,
     "sdf": true
   },
-  "times": {
+  "circle": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
@@ -55,12 +55,36 @@
     "y": 0,
     "sdf": true
   },
-  "triangle": {
+  "dot": {
+    "height": 38,
+    "pixelRatio": 2,
+    "width": 38,
+    "x": 184,
+    "y": 46,
+    "sdf": true
+  },
+  "marker": {
     "height": 46,
     "pixelRatio": 2,
     "width": 46,
     "x": 184,
     "y": 0,
+    "sdf": true
+  },
+  "times": {
+    "height": 46,
+    "pixelRatio": 2,
+    "width": 46,
+    "x": 138,
+    "y": 46,
+    "sdf": true
+  },
+  "triangle": {
+    "height": 38,
+    "pixelRatio": 2,
+    "width": 38,
+    "x": 184,
+    "y": 84,
     "sdf": true
   }
 }

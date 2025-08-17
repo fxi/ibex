@@ -14,6 +14,7 @@ export interface Route {
     elevationDropMeters: number
     bikeConvenience?: number
     safetyScore?: number
+    userSettingsMatch?: number
   }
   labels?: string[]
   routeIndex: number

@@ -4,10 +4,10 @@
 <svg
    version="1.1"
    id="svg433"
-   width="16"
-   height="16"
-   viewBox="0 0 16 16"
-   sodipodi:docname="triangle.svg"
+   width="20"
+   height="20"
+   viewBox="0 0 20 20"
+   sodipodi:docname="arrow.svg"
    inkscape:export-filename="public/symbols/chevron.svg"
    inkscape:export-xdpi="192"
    inkscape:export-ydpi="192"
@@ -28,9 +28,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="19.997829"
-     inkscape:cx="-3.3503637"
-     inkscape:cy="12.026305"
+     inkscape:zoom="20.588674"
+     inkscape:cx="-2.8656532"
+     inkscape:cy="16.441078"
      inkscape:window-width="1728"
      inkscape:window-height="1051"
      inkscape:window-x="0"
@@ -46,22 +46,10 @@
        transform="matrix(0.08481373,0,0,0.08481373,-4.2006731,-22.797952)"
        style="stroke:none;stroke-width:11.7905;stroke-dasharray:none;stroke-opacity:1">
       <path
-         sodipodi:type="star"
-         style="fill:#2d2d2d;stroke-width:139.016;stroke-linecap:round;paint-order:markers stroke fill"
          id="path479"
-         inkscape:flatsided="true"
-         sodipodi:sides="3"
-         sodipodi:cx="7.850852"
-         sodipodi:cy="7.0007601"
-         sodipodi:r1="6.5438366"
-         sodipodi:r2="3.2719183"
-         sodipodi:arg1="0.52359878"
-         sodipodi:arg2="1.5707963"
-         inkscape:rounded="0"
-         inkscape:randomized="0"
-         d="m 13.517981,10.272678 -11.3342577,0 5.6671287,-9.81575452 z"
-         transform="matrix(11.790544,0,0,11.790544,51.286755,295.33185)"
-         inkscape:transform-center-y="-1.6359592" />
+         style="fill:#2d2d2d;stroke-width:950.916;stroke-linecap:round;paint-order:markers stroke fill"
+         inkscape:transform-center-y="-1.4102689"
+         d="m 167.43366,304.40137 -26.08487,99.77365 c 6.03394,-4.16195 12.09885,-7.04941 18.20383,-8.47659 v 73.3116 h 15.76209 v -73.58952 c 6.02396,1.24955 12.09125,4.09324 18.20383,8.75451 z" />
     </g>
   </g>
 </svg>

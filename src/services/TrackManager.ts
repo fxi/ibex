@@ -2,6 +2,9 @@ import { Route } from "@/hooks/useRoutes";
 import { WaypointData } from "./MarkerManager";
 import { RouteVisualization } from "./RouteVisualization";
 
+//const palette1 = ["#b09502", "#986408", "#733a0b", "#441b08", "#000000"];
+const palette2 = ["#e2d705", "#eab35a", "#ed8c82", "#ea5fa4", "#e205c4"];
+
 export interface TrackData {
   id: string;
   name: string;
@@ -19,6 +22,7 @@ export class Track {
   private outlineLayerId: string;
   private unpavedLayerId: string;
   private symbolLayerId: string;
+  private directionsLayerId: string;
   private distanceMarkersLayerId: string;
   private surfaceLayerIds: string[] = [];
   private onUpdate: (track: Track) => void;
@@ -36,6 +40,7 @@ export class Track {
     this.outlineLayerId = `track-${data.id}-outline`;
     this.unpavedLayerId = `track-${data.id}-unpaved`;
     this.symbolLayerId = `track-${data.id}-symbols`;
+    this.directionsLayerId = `track-${data.id}-directions`;
     this.distanceMarkersLayerId = `track-${data.id}-distance-markers`;
     this.onUpdate = onUpdate;
     this.onDelete = onDelete;
@@ -327,6 +332,7 @@ ${trackPoints}
         "line-pattern": styleConfig.unpavedPatternExpression(),
         "line-width": styleConfig.lineWidthExpression, // Keep a base width
         "line-opacity": 1,
+        "line-color": "red",
       },
       filter: styleConfig.unpavedFilterExpression,
     });
@@ -339,7 +345,7 @@ ${trackPoints}
       before: "ibex_anchor",
       layout: {
         "icon-image": ["get", "symbol"],
-        "icon-size": 1,
+        "icon-size": 1.5,
         "icon-allow-overlap": false,
         "symbol-avoid-edges": true,
         "icon-rotate": ["get", "rotation"],
@@ -348,22 +354,48 @@ ${trackPoints}
       paint: {
         "icon-color": ["get", "color"],
         "icon-halo-color": "#fff",
-        "icon-halo-width": 3,
-        "icon-halo-blur": 0,
+        "icon-halo-width": 4,
+      },
+    });
+
+    // Add direction arrows layer
+    map.addLayer({
+      id: this.directionsLayerId,
+      type: "symbol",
+      source: this.mapLayerId,
+      layout: {
+        "symbol-placement": "line",
+        "icon-image": "chevron",
+        "icon-size": 2,
+        "icon-rotate": 90,
+        "icon-rotation-alignment": "map",
+        "icon-allow-overlap": false,
+        "icon-ignore-placement": true,
+      },
+      paint: {
+        "icon-color": this.getColor(),
+        "icon-halo-color": "#fff",
+        "icon-halo-width": 4,
       },
     });
 
     // Add distance markers layer
     map.addLayer({
       id: this.distanceMarkersLayerId,
-      type: "circle",
+      type: "symbol",
       source: this.distanceMarkersLayerId,
       before: "ibex_anchor",
+      layout: {
+        "icon-image": "circle",
+        "icon-size": 20,
+        "icon-allow-overlap": false,
+        "symbol-avoid-edges": true,
+        "symbol-sort-key": 0,
+      },
       paint: {
-        "circle-radius": 8,
-        "circle-color": this.getColor(),
-        "circle-stroke-color": "white",
-        "circle-stroke-width": 2,
+        "icon-color": this.getColor(),
+        "icon-halo-color": "#fff",
+        "icon-halo-width": 4,
       },
     });
 
@@ -373,13 +405,19 @@ ${trackPoints}
       source: this.distanceMarkersLayerId,
       before: "ibex_anchor",
       layout: {
+        "icon-image": "circle",
+        "symbol-sort-key": 0,
+        "icon-size": 1.3,
         "text-field": ["get", "label"],
         "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-        "text-size": 10,
-        "text-allow-overlap": true,
+        "text-size": 12,
+        "text-allow-overlap": false,
       },
       paint: {
-        "text-color": "white",
+        "text-color": "#FFF",
+        "icon-color": this.getColor(),
+        "icon-halo-color": "#fff",
+        "icon-halo-width": 5,
       },
     });
   }
@@ -393,55 +431,55 @@ ${trackPoints}
       // Priority-based symbol generation with updated color scheme
       if (stress >= 5) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#DC2626", 0, 0) // Red
+          this.createSymbolFeature(midPoint, "car", palette2[4], 0, 0) // Red
         );
       } else if (stress >= 4) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#EA580C", 0, 0) // Orange
+          this.createSymbolFeature(midPoint, "car", palette2[3], 0, 0) // Orange
         );
       } else if (stress >= 3) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "car", "#EAB308", 10, 0) // Yellow
+          this.createSymbolFeature(midPoint, "car", palette2[1], 10, 0) // Yellow
         );
       } else if (slope > 20) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_4", "#ff0000", 20, 0) // red strong
+          this.createSymbolFeature(midPoint, "chevron_4", palette2[4], 20, 0) // red strong
         );
       } else if (slope < -20) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_4", "#ff0000", 20, 180) // red strong
+          this.createSymbolFeature(midPoint, "chevron_4", palette2[4], 20, 180) // red strong
         );
       } else if (slope > 15) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_3", "#EA580C", 20, 0) // Red
+          this.createSymbolFeature(midPoint, "chevron_3", palette2[3], 20, 0) // Red
         );
       } else if (slope < -15) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_3", "#EA580C", 20, 180) // Red
+          this.createSymbolFeature(midPoint, "chevron_3", palette2[3], 20, 180) // Red
         );
       } else if (slope > 10) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_2", "#ff9700", 30, 0) // Orange
+          this.createSymbolFeature(midPoint, "chevron_2", palette2[2], 30, 0) // Orange
         );
       } else if (slope < -10) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_2", "#ff9700", 30, 180) // Orange
+          this.createSymbolFeature(midPoint, "chevron_2", palette2[2], 30, 180) // Orange
         );
       } else if (slope > 6) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_1", "#EAB308", 30, 0) // Yellow
+          this.createSymbolFeature(midPoint, "chevron_1", palette2[1], 30, 0) // Yellow
         );
       } else if (slope < -6) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_1", "#EAB308", 30, 180) // Yellow
+          this.createSymbolFeature(midPoint, "chevron_1", palette2[1], 30, 180) // Yellow
         );
       } else if (slope > 2) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_1", "#afff00", 30, 0) // Light Yellow
+          this.createSymbolFeature(midPoint, "chevron_1", palette2[0], 30, 0) // Light Yellow
         );
       } else if (slope < -2) {
         symbolFeatures.push(
-          this.createSymbolFeature(midPoint, "chevron_1", "#afff00", 30, 180) // Light Yellow
+          this.createSymbolFeature(midPoint, "chevron_1", palette2[0], 30, 180) // Light Yellow
         );
       }
     });
@@ -456,7 +494,7 @@ ${trackPoints}
   private generateDistanceMarkers(features: any[]): any[] {
     const markers = [];
     let totalDistance = 0;
-    const interval = 10000; // 10km
+    const interval = 5000; // 7km
     let nextMarkerDistance = interval;
 
     for (const feature of features) {
@@ -695,6 +733,8 @@ ${trackPoints}
     if (map.getLayer(this.distanceMarkersLayerId))
       map.removeLayer(this.distanceMarkersLayerId);
     if (map.getLayer(this.symbolLayerId)) map.removeLayer(this.symbolLayerId);
+    if (map.getLayer(this.directionsLayerId))
+      map.removeLayer(this.directionsLayerId);
     if (map.getLayer(this.unpavedLayerId)) map.removeLayer(this.unpavedLayerId);
     if (map.getLayer(this.outlineLayerId)) map.removeLayer(this.outlineLayerId);
     if (map.getLayer(this.mapLayerId)) map.removeLayer(this.mapLayerId);

@@ -4,10 +4,10 @@
 <svg
    version="1.1"
    id="svg433"
-   width="20"
-   height="20"
-   viewBox="0 0 20 20"
-   sodipodi:docname="times copy.svg"
+   width="16"
+   height="16"
+   viewBox="0 0 16 16"
+   sodipodi:docname="dot.svg"
    inkscape:export-filename="public/symbols/chevron.svg"
    inkscape:export-xdpi="192"
    inkscape:export-ydpi="192"
@@ -29,8 +29,8 @@
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
      inkscape:zoom="19.997829"
-     inkscape:cx="2.5752795"
-     inkscape:cy="10.376126"
+     inkscape:cx="2.6002823"
+     inkscape:cy="8.1758875"
      inkscape:window-width="1728"
      inkscape:window-height="1051"
      inkscape:window-x="0"
@@ -48,8 +48,8 @@
       <circle
          style="fill:#2d2d2d;stroke-width:139.016;stroke-linecap:round;paint-order:markers stroke fill"
          id="path586"
-         cx="167.43365"
-         cy="386.70569"
+         cx="143.85257"
+         cy="363.1246"
          r="16.69426" />
     </g>
   </g>
