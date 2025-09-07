@@ -36,7 +36,7 @@ export class Marker {
     svgElement.classList.add("numbered-marker");
 
     const textElement = svgElement.querySelector(".marker_content");
-    if (textElement) {
+    if (textElement instanceof SVGTextElement) {
       this.textElement = textElement;
       this.textElement.setAttribute("fill", "black");
       this.textElement.setAttribute("font-size", "60");
