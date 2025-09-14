@@ -6,6 +6,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Archives
+_archives
+
 # Build outputs
 dist/
 build/
