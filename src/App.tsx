@@ -675,7 +675,7 @@ function App() {
                 <Card>
                   <CardContent className="p-3">
                     <p className="text-sm text-muted-foreground">
-                      No tracks available
+                      No tracks available. Tap on the map to create a track points markers. 
                     </p>
                   </CardContent>
                 </Card>
