@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 test("map and planner render without application errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -11,4 +11,62 @@ test("map and planner render without application errors", async ({ page }) => {
     path: `test-results/planner-${test.info().project.name}.png`,
   });
   expect(errors).toEqual([]);
+  await expect(page.getByTestId("map-error")).toHaveCount(0);
+});
+
+test("missing local key makes no MapTiler requests and keeps routing usable", async ({
+  page,
+}) => {
+  // Simulate the empty build-time value, without changing the user's .env.
+  await page.route("**/assets/*.js", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      body: (await response.text()).replaceAll(
+        "cyclatractor-browser-test-key",
+        "",
+      ),
+    });
+  });
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().startsWith("https://api.maptiler.com/")) requests.push(r.url());
+  });
+  await page.goto("./");
+  await expect(page.getByTestId("map-error")).toContainText(
+    "no map access key",
+  );
+  await page.getByRole("button", { name: /Save offline/ }).click();
+  await expect(
+    page.getByText("Region saved offline", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await expect(
+    page.getByRole("button", { name: "Export your route" }),
+  ).toBeVisible();
+  expect(requests).toEqual([]);
+});
+
+test("resource failures report map status without switching style or blocking routes", async ({
+  page,
+}) => {
+  const styles: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/style.json")) styles.push(r.url());
+  });
+  await page.route("https://api.maptiler.com/**", (route) => route.abort());
+  await page.goto("./");
+  await expect(page.getByTestId("map-error")).toContainText(
+    "Map resources unavailable",
+  );
+  await page.getByRole("button", { name: /Save offline/ }).click();
+  await expect(
+    page.getByText("Region saved offline", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await expect(
+    page.getByRole("button", { name: "Export your route" }),
+  ).toBeVisible();
+  expect(styles).toEqual([]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });

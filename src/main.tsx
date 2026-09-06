@@ -29,7 +29,6 @@ const manifestURL = new URL(
   import.meta.env.VITE_REGION_MANIFEST || DEFAULT_REGION_MANIFEST,
   base,
 ).href;
-const remoteMap = new URL("basemap.pmtiles", manifestURL).href;
 const examples: { name: string; anchors: Point[] }[] = [
   {
     name: "Geneva → Salève",
@@ -207,8 +206,6 @@ function App() {
     <main>
       {packsReady && (pack || online) && (
         <MapView
-          pack={pack}
-          remoteMap={remoteMap}
           anchors={anchors}
           attraction={attraction}
           comparison={comparison}
@@ -217,7 +214,6 @@ function App() {
           history={history}
           onPoint={addPoint}
           onMove={changeAnchor}
-          onError={setError}
         />
       )}
       <header className="brand">

@@ -1,5 +1,21 @@
 # Prototype validation
 
+## Review-fix checkpoint
+
+The topology/restriction and single-style changes pass 24 TypeScript tests,
+7 Python tests, typechecking, and ESLint. The isolated browser-test build passes.
+The browser run completed 10 tests successfully, then was interrupted during
+WebKit offline reload; three subsequent WebKit tests did not run. A follow-up
+fixture change waits for initial map loading before going offline and has not
+been validated. These results supersede the historical browser claims below
+for this checkpoint.
+
+These checks do not establish route rideability. Road and Gravel still select
+unsuitable steep hiking paths in the reported Voirons example. Terrain data,
+profile eligibility, and route cost behavior remain unresolved.
+
+## Earlier baseline results
+
 Recorded 2026-09-06. This is a comparative prototype, not physical-device certification.
 
 - Public Geneva pack: 54,561,151 bytes, 181,920 graph nodes and 403,744 directed edges. All published artifacts were downloaded and checksum-verified; PMTiles byte ranges return HTTP 206. CORS was also verified for `http://192.168.1.104:5173`.

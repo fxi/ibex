@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 test.afterEach(async ({ request }) => {
   await request.post("/__test/fault", { data: { fault: null } });
 });

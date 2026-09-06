@@ -24,6 +24,53 @@ def xy(p):
     return (p[0] * SCALE * COS, p[1] * SCALE)
 
 
+def restriction_checker(rules):
+    """Match the runtime router's restriction semantics on directed way history."""
+    index = defaultdict(list)
+    for rule in rules:
+        keys = (
+            rule["ways"][:-1]
+            if rule["only"] and "via" not in rule
+            else [rule["ways"][-2]]
+        )
+        for key in set(keys):
+            index[key].append(rule)
+
+    def allowed(history, previous, next_edge):
+        for rule in index[history[-1]]:
+            if "via" in rule and rule["via"] != previous["to"]:
+                continue
+            if rule["only"] and "via" not in rule:
+                for length in range(1, len(rule["ways"])):
+                    if (
+                        len(history) < length
+                        or list(history[-length:]) != rule["ways"][:length]
+                    ):
+                        continue
+                    if next_edge["way"] not in (history[-1], rule["ways"][length]):
+                        return False
+                continue
+            prefix = rule["ways"][:-1]
+            if list(history[-len(prefix):]) != prefix:
+                continue
+            if "via" not in rule and next_edge["way"] == history[-1]:
+                continue
+            same_way_uturn = (
+                rule.get("uTurn")
+                and "via" in rule
+                and len(rule["ways"]) == 2
+                and rule["ways"][0] == rule["ways"][1]
+            )
+            matches = next_edge["way"] == rule["ways"][-1] and (
+                not same_way_uturn or next_edge["to"] == previous["from"]
+            )
+            if (rule["only"] and not matches) or (not rule["only"] and matches):
+                return False
+        return True
+
+    return allowed
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=80)
@@ -49,26 +96,8 @@ def main():
     directed = {(e["way"], e["from"], e["to"]): e for e in graph["edges"]}
     for e in graph["edges"]:
         adjacent[e["from"]].append(e)
-    restriction_index = defaultdict(list)
-    for rule in graph["restrictions"]:
-        restriction_index[rule["ways"][-2]].append(rule)
+    allowed = restriction_checker(graph["restrictions"])
     history_size = max([1] + [len(r["ways"]) - 1 for r in graph["restrictions"]])
-
-    def allowed(history, previous, next_edge):
-        for rule in restriction_index[history[-1]]:
-            if "via" in rule and rule["via"] != previous["to"]:
-                continue
-            prefix = rule["ways"][:-1]
-            if list(history[-len(prefix) :]) != prefix:
-                continue
-            if "via" not in rule and next_edge["way"] == history[-1]:
-                continue
-            matches = next_edge["way"] == rule["ways"][-1] and (
-                not rule.get("uTurn") or next_edge["to"] == previous["from"]
-            )
-            if (rule["only"] and not matches) or (not rule["only"] and matches):
-                return False
-        return True
 
     def transition(previous, target, history, limit):
         initial = (previous["id"], history)

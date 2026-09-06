@@ -245,12 +245,18 @@ export function snapAnchors(
     points.push(best.point);
     const targets = edges.filter(
       (e) =>
-        e.way === selected.way &&
-        ((e.from === selected.from && e.to === selected.to) ||
-          (e.from === selected.to && e.to === selected.from)),
+        e === selected ||
+        (e.way === selected.way &&
+          e.from === selected.to &&
+          e.to === selected.from &&
+          e.geometry.length === selected.geometry.length &&
+          e.geometry.every((p, i) => {
+            const q = selected.geometry[selected.geometry.length - 1 - i];
+            return p[0] === q[0] && p[1] === q[1];
+          })),
     );
     for (const edge of targets) {
-      const forward = edge.from === selected.from;
+      const forward = edge === selected;
       const geom = forward
         ? selected.geometry
         : [...selected.geometry].reverse();
@@ -422,6 +428,22 @@ function restrictionAllows(
 ): boolean {
   for (const rule of rules) {
     if (rule.via !== undefined && rule.via !== at) continue;
+    // Via-way only restrictions constrain every departure in the sequence,
+    // not just the final turn. History retains progress across split edges.
+    if (rule.only && rule.via === undefined) {
+      for (let length = 1; length < rule.ways.length; length++) {
+        if (
+          history.length < length ||
+          !rule.ways
+            .slice(0, length)
+            .every((way, i) => history[history.length - length + i] === way)
+        )
+          continue;
+        if (next.way !== history.at(-1) && next.way !== rule.ways[length])
+          return false;
+      }
+      continue;
+    }
     const prefix = rule.ways.slice(0, -1);
     if (
       history.length < prefix.length ||
@@ -431,7 +453,13 @@ function restrictionAllows(
     if (rule.via === undefined && next.way === history.at(-1)) continue;
     const matches =
       next.way === rule.ways.at(-1) &&
-      (!rule.uTurn || previous?.from === next.to);
+      (!(
+        rule.uTurn &&
+        rule.via !== undefined &&
+        rule.ways.length === 2 &&
+        rule.ways[0] === rule.ways[1]
+      ) ||
+        previous?.from === next.to);
     if (rule.only ? !matches : matches) return false;
   }
   return true;
@@ -510,10 +538,15 @@ export function route(
   const tiles = new Set<string>();
   const rulesByWay = new Map<string, Graph["restrictions"]>();
   for (const rule of graph.restrictions) {
-    const key = rule.ways[rule.ways.length - 2];
-    const list = rulesByWay.get(key) ?? [];
-    list.push(rule);
-    rulesByWay.set(key, list);
+    const keys =
+      rule.only && rule.via === undefined
+        ? rule.ways.slice(0, -1)
+        : [rule.ways[rule.ways.length - 2]];
+    for (const key of new Set(keys)) {
+      const list = rulesByWay.get(key) ?? [];
+      list.push(rule);
+      rulesByWay.set(key, list);
+    }
   }
   const radii = f
     ? fixedRadius !== undefined

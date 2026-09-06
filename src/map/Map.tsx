@@ -1,20 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { PMTiles, Protocol, type Source } from "pmtiles";
-import { readRange, type Installed } from "../offline/store";
+import { Protocol } from "pmtiles";
 import type {
   Attraction,
   Comparison,
   Point,
   RouteResult,
 } from "../routing/types";
-import { customMapStyle, mapResourceURL, mapStyle } from "./style";
+import { customMapStyle, mapResourceURL } from "./style";
 const empty = { type: "FeatureCollection" as const, features: [] };
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 export function MapView({
-  pack,
-  remoteMap,
   anchors,
   attraction,
   comparison,
@@ -23,10 +20,7 @@ export function MapView({
   history,
   onPoint,
   onMove,
-  onError,
 }: {
-  pack?: Installed;
-  remoteMap: string;
   anchors: Point[];
   attraction?: Attraction;
   comparison?: Comparison;
@@ -35,13 +29,13 @@ export function MapView({
   history: boolean;
   onPoint: (p: Point) => void;
   onMove: (i: number, p: Point) => void;
-  onError: (error: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<maplibregl.Map | undefined>(undefined),
     markers = useRef<maplibregl.Marker[]>([]);
-  const handlers = useRef({ onPoint, onMove, onError });
-  handlers.current = { onPoint, onMove, onError };
+  const [mapError, setMapError] = useState("");
+  const handlers = useRef({ onPoint, onMove });
+  handlers.current = { onPoint, onMove };
   const snapshot = useRef({
     anchors,
     attraction,
@@ -59,23 +53,14 @@ export function MapView({
     history,
   };
   useEffect(() => {
-    let url = `pmtiles://${remoteMap}`;
-    if (pack) {
-      const key = `cyclatractor-${pack.directory}`;
-      const source: Source = {
-        getKey: () => key,
-        getBytes: async (offset, length) => ({
-          data: await readRange(pack, "basemap.pmtiles", offset, length),
-        }),
-      };
-      protocol.add(new PMTiles(source));
-      url = `pmtiles://${key}`;
+    const key = import.meta.env.VITE_MAPTILER_API_KEY;
+    if (!key?.trim()) {
+      setMapError("Map unavailable: no map access key is configured.");
+      return;
     }
-    const customURL = customMapStyle(import.meta.env.VITE_MAPTILER_API_KEY);
-    let usingCustom = Boolean(customURL && navigator.onLine);
     const m = new maplibregl.Map({
       container: container.current!,
-      style: usingCustom ? customURL! : mapStyle(url),
+      style: customMapStyle(key),
       transformRequest: (resource) => ({
         url: mapResourceURL(resource, import.meta.env.VITE_MAPTILER_API_KEY),
       }),
@@ -97,31 +82,31 @@ export function MapView({
     m.on("click", (e) =>
       handlers.current.onPoint([e.lngLat.lng, e.lngLat.lat]),
     );
+    let disposed = false;
     m.on("idle", () => {
-      if (
-        container.current &&
-        m
-          .queryRenderedFeatures()
-          .some((f) => usingCustom || f.source === "basemap")
-      )
-        container.current.dataset.ready = "true";
+      if (!disposed && m.isStyleLoaded() && m.areTilesLoaded()) {
+        container.current!.dataset.ready = "true";
+      }
     });
-    let reported = false,
-      disposed = false;
     m.on("error", () => {
-      if (disposed) return;
-      if (usingCustom) {
-        usingCustom = false;
-        m.setStyle(mapStyle(url));
-        return;
-      }
-      if (!reported && !disposed) {
-        reported = true;
-        handlers.current.onError(
-          "Map data unavailable. Build or install the Geneva region.",
+      if (!disposed)
+        setMapError(
+          "Map resources unavailable. Check your connection and map access key. Routing and export remain available.",
         );
-      }
     });
+    const changeConnection = () => {
+      if (!navigator.onLine)
+        setMapError(
+          "Map resources require an internet connection. Routing and export remain available.",
+        );
+      else {
+        setMapError("");
+        m.triggerRepaint();
+      }
+    };
+    changeConnection();
+    window.addEventListener("online", changeConnection);
+    window.addEventListener("offline", changeConnection);
     m.on("style.load", () => {
       for (const id of [
         "field",
@@ -202,35 +187,8 @@ export function MapView({
       });
       update();
     });
-    const places: [string, Point][] = [
-      ["GENÈVE", [6.1432, 46.2044]],
-      ["Annemasse", [6.235, 46.195]],
-      ["LE SALÈVE", [6.19, 46.1]],
-      ["LES VOIRONS", [6.37, 46.235]],
-      ["Saint-Julien", [6.081, 46.145]],
-      ["Lac Léman", [6.25, 46.32]],
-    ];
-    const placeMarkers: maplibregl.Marker[] = [];
-    for (const [name, p] of places) {
-      const el = document.createElement("div");
-      el.className = "place-label";
-      el.textContent = name;
-      el.hidden = usingCustom;
-      placeMarkers.push(
-        new maplibregl.Marker({ element: el }).setLngLat(p).addTo(m),
-      );
-    }
-    m.on("style.load", () => {
-      for (const marker of placeMarkers)
-        marker.getElement().hidden = usingCustom;
-    });
-    const changeConnection = () => {
-      usingCustom = Boolean(customURL && navigator.onLine);
-      m.setStyle(usingCustom ? customURL! : mapStyle(url));
-    };
-    window.addEventListener("online", changeConnection);
-    window.addEventListener("offline", changeConnection);
     function update() {
+      if (!m.getSource("route")) return;
       const s = snapshot.current;
       const route = s.comparison?.corridor ?? s.partial;
       (m.getSource("field") as maplibregl.GeoJSONSource)?.setData(
@@ -308,7 +266,7 @@ export function MapView({
       m.remove();
       map.current = undefined;
     };
-  }, [pack?.directory, remoteMap]);
+  }, []);
   useEffect(() => {
     const m = map.current;
     if (!m) return;
@@ -328,16 +286,19 @@ export function MapView({
       });
       return marker;
     });
-  }, [
-    anchors,
-    attraction,
-    comparison,
-    partial,
-    debug,
-    history,
-    pack?.directory,
-  ]);
+  }, [anchors, attraction, comparison, partial, debug, history]);
   return (
-    <div ref={container} className="map" aria-label="Geneva basin route map" />
+    <>
+      <div
+        ref={container}
+        className="map"
+        aria-label="Geneva basin route map"
+      />
+      {mapError && (
+        <p className="map-error" role="status" data-testid="map-error">
+          {mapError}
+        </p>
+      )}
+    </>
   );
 }

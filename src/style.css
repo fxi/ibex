@@ -614,3 +614,16 @@ footer {
     animation: none;
   }
 }
+
+.map-error {
+  position: absolute;
+  z-index: 3;
+  bottom: 42px;
+  left: 16px;
+  max-width: min(420px, 80vw);
+  padding: 10px 14px;
+  background: #fffdf5;
+  color: #743e2e;
+  border-radius: 8px;
+  font-size: 13px;
+}

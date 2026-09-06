@@ -1,25 +1,20 @@
-import { readFileSync } from "node:fs";
+import { localEnv } from "./scripts/local-env";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-// loadEnv() gives an already-exported shell var priority over .env, so an
-// unrelated ambient VITE_MAPTILER_API_KEY (e.g. a secrets-manager placeholder)
-// would otherwise silently shadow this project's real key. Read .env directly
-// instead so the project's own value always wins.
-function readDotEnvKey(key: string): string | undefined {
-  try {
-    const text = readFileSync(new URL(".env", import.meta.url), "utf8");
-    const match = text.match(new RegExp(`^${key}=(.*)$`, "m"));
-    return match?.[1]?.trim().replace(/^["']|["']$/g, "");
-  } catch {
-    return undefined;
-  }
-}
-
 export default defineConfig(() => {
-  process.env.VITE_MAPTILER_API_KEY = readDotEnvKey("VITE_MAPTILER_API_KEY");
+  const env = localEnv(new URL(".env", import.meta.url));
   return {
+    envDir: false as const,
+    define: {
+      "import.meta.env.VITE_MAPTILER_API_KEY": JSON.stringify(
+        env.VITE_MAPTILER_API_KEY?.trim() ?? "",
+      ),
+      "import.meta.env.VITE_REGION_MANIFEST": JSON.stringify(
+        process.env.VITE_REGION_MANIFEST ?? env.VITE_REGION_MANIFEST ?? "",
+      ),
+    },
     base: "/cyclatractor/",
     plugins: [
       react(),

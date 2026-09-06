@@ -1,5 +1,5 @@
 import { networkInterfaces } from "node:os";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 const address = Object.values(networkInterfaces())
   .flat()
   .find((n) => n?.family === "IPv4" && !n.internal)?.address;

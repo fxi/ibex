@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "benchmark": "tsx scripts/benchmark.ts"
+    "benchmark": "tsx scripts/benchmark.ts",
+    "build:test": "node --import tsx scripts/build_browser_tests.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
@@ -28,6 +29,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.5.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9.0.0",
     "prettier": "^3.9.6",
     "tsx": "^4.19.0",

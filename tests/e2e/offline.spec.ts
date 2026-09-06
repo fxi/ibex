@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 test.afterEach(async ({ request }) => {
   await request.post("http://127.0.0.1:4173/__test/network", {
     data: { offline: false },
@@ -32,6 +32,7 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
     await navigator.serviceWorker.ready;
   });
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
   const previousTimeOrigin = await page.evaluate(() => performance.timeOrigin);
   if (browserName === "webkit") {
     test

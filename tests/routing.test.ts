@@ -263,7 +263,11 @@ describe("routing invariants", () => {
     g.edges[2].length = 700;
     g.edges[2].grades = [[700, 0]];
     for (const profile of ["road", "gravel", "touring"] as const) {
-      const r = route(g, { anchors: [points[0], points[1]], profile }, "reference");
+      const r = route(
+        g,
+        { anchors: [points[0], points[1]], profile },
+        "reference",
+      );
       expect(r.status).toBe("ok");
       expect(r.edgeIds).toEqual([1, 2]);
       expect(r.distanceM).toBeCloseTo(1400, 0);
@@ -319,4 +323,126 @@ describe("routing invariants", () => {
       0, 1, 2, 4, 9,
     ]);
   });
+});
+
+describe("review regressions", () => {
+  it("preserves distinct one-way roundabout arcs when snapping repeatedly", () => {
+    const g = fixture(p, [
+      [0, 2, "circle"],
+      [2, 0, "circle"],
+    ]);
+    g.edges[1].geometry = [p[2], p[3], p[0]];
+    const untouched = structuredClone(g.edges[1]);
+    const s = snapAnchors(g, [
+      [6.105, 46.1],
+      [6.115, 46.1],
+    ])!;
+    expect(s.graph.edges.find((e) => e.id === untouched.id)).toEqual(untouched);
+    const split = s.graph.edges.filter((e) => e.id !== untouched.id);
+    expect(split.reduce((sum, e) => sum + e.length, 0)).toBeCloseTo(
+      g.edges[0].length,
+    );
+    expect(
+      split.flatMap((e) => e.grades!).reduce((sum, [l]) => sum + l, 0),
+    ).toBeCloseTo(g.edges[0].length);
+    const r = route(
+      g,
+      {
+        anchors: [
+          [6.115, 46.1],
+          [6.105, 46.1],
+        ],
+        profile: "road",
+      },
+      "reference",
+    );
+    expect(r.status).toBe("ok");
+    expect(r.geometry).toContainEqual(p[3]);
+  });
+  it("blocks premature only-turn exits at every prefix, including hard waypoints", () => {
+    const points: Point[] = Array.from({ length: 8 }, (_, i) => [
+      6.1 + i * 0.001,
+      46.1,
+    ]);
+    const g = fixture(points, [
+      [0, 1, "a"],
+      [1, 2, "v1"],
+      [2, 3, "v1"],
+      [3, 4, "v2"],
+      [4, 5, "b"],
+      [1, 6, "exit"],
+      [2, 6, "exit"],
+      [3, 6, "exit"],
+      [4, 6, "exit"],
+      [7, 2, "other"],
+    ]);
+    g.restrictions = [{ ways: ["a", "v1", "v2", "b"], only: true }];
+    expect(
+      route(
+        g,
+        { anchors: [points[0], points[1], points[6]], profile: "road" },
+        "reference",
+      ).status,
+    ).toBe("no-path");
+    expect(
+      route(
+        g,
+        { anchors: [points[0], points[2], points[5]], profile: "road" },
+        "reference",
+      ).status,
+    ).toBe("ok");
+    expect(
+      route(
+        g,
+        { anchors: [points[7], points[6]], profile: "road" },
+        "reference",
+      ).status,
+    ).toBe("ok");
+  });
+  it("enforces distinct-way and via-way U-turn sequences without immediate reversal", () => {
+    const g = fixture(p, [
+      [0, 1, "a"],
+      [1, 2, "b"],
+      [2, 3, "c"],
+    ]);
+    g.restrictions = [{ ways: ["a", "b"], via: 1, only: false, uTurn: true }];
+    expect(
+      route(g, { anchors: [p[0], p[2]], profile: "road" }, "reference").status,
+    ).toBe("no-path");
+    g.restrictions = [{ ways: ["a", "b", "c"], only: false, uTurn: true }];
+    expect(
+      route(g, { anchors: [p[0], p[3]], profile: "road" }, "reference").status,
+    ).toBe("no-path");
+  });
+});
+
+it("preserves directional grades when splitting a genuine reverse pair twice", () => {
+  const g = fixture(p, [
+    [0, 2, "road"],
+    [2, 0, "road"],
+  ]);
+  const length = g.edges[0].length;
+  g.edges[0].grades = [
+    [length / 2, 0.1],
+    [length / 2, 0.2],
+  ];
+  g.edges[1].grades = [
+    [length / 2, -0.2],
+    [length / 2, -0.1],
+  ];
+  const s = snapAnchors(g, [
+    [6.105, 46.1],
+    [6.115, 46.1],
+  ])!;
+  for (const sign of [-1, 1]) {
+    const samples = s.graph.edges
+      .filter((e) => Math.sign(e.grades![0][1]) === sign)
+      .flatMap((e) => e.grades!);
+    expect(samples.reduce((sum, [meters]) => sum + meters, 0)).toBeCloseTo(
+      length,
+    );
+    expect(
+      samples.reduce((sum, [meters, grade]) => sum + meters * grade, 0),
+    ).toBeCloseTo(sign * length * 0.15);
+  }
 });

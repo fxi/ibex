@@ -11,6 +11,8 @@ npm ci
 npm run dev
 ```
 
+The map always uses the bundled `src/map/custom-style.json`. Copy `.env.example` to `.env` and set `VITE_MAPTILER_API_KEY` there for online MapTiler tiles, fonts, and sprites. Vite and the manual style downloader read only this workspace’s `.env`; ambient MapTiler variables, ancestor files, other dotenv files, and secret-reference expansion are not used. A missing key or resource failure displays a map status message and never selects another style. The key is a browser resource credential embedded at build time.
+
 To rebuild the data locally, also install `uv` and `tippecanoe`:
 
 ```sh
@@ -50,7 +52,7 @@ The cached OSM response, its hash and timestamp make the build reproducible. Del
 
 ## Pack format and storage
 
-`manifest.json` declares schema/model versions, coverage, source date, byte lengths and SHA-256 checksums. `index.bin` and `graph-*.bin` contain gzip-compressed JSON; `.bin` prevents servers from transparently applying HTTP content decoding. `basemap.pmtiles` is a local vector basemap. `attribution.json` preserves source notices. No remote fonts, sprites, map keys or terrain API calls are needed after installation.
+`manifest.json` declares schema/model versions, coverage, source date, byte lengths and SHA-256 checksums. `index.bin` and `graph-*.bin` contain gzip-compressed JSON; `.bin` prevents servers from transparently applying HTTP content decoding. `basemap.pmtiles` is a local vector basemap. `attribution.json` preserves source notices. This basemap artifact remains in existing packs for compatibility but is no longer displayed. Routing and GPX export work offline after installation; the bundled custom style needs online MapTiler resources to render its map.
 
 Downloads are staged and verified before the installed record changes. Interrupted downloads resume at completed file boundaries. Cancel removes the current staging data. OPFS is preferred; IndexedDB is the capability fallback. Browser persistence is requested but can be denied. Removing browser site data removes installed packs. Storage is namespaced but shares the `fxi.io` origin quota with other applications.
 
@@ -78,12 +80,12 @@ npm run lint
 npm run typecheck
 npm test
 uv run python -m unittest discover -s scripts -p 'test_*.py'
-VITE_REGION_MANIFEST=/cyclatractor/packs/test/manifest.json npm run build
+npm run build:test
 npx playwright install chromium webkit
 npm run test:e2e
 ```
 
-Browser regression tests require the synthetic pack build shown above. CI uses the same checked-in pack without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_fixture.ts` when its schema changes. Run `npm run build` afterwards to restore the real region configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
+Browser regression tests require the synthetic pack build shown above. It builds an isolated test checkout with a dummy key in its own `.env`, without reading or modifying your credentials. Browser fixtures intercept MapTiler resources while retaining the production style. CI uses the same checked-in pack without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_fixture.ts` when its schema changes. Run `npm run build` afterwards to restore the real region configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
 
 ## Limits of this experiment
 
