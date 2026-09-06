@@ -1,0 +1,21 @@
+# Prototype validation
+
+Recorded 2026-09-06. This is a comparative prototype, not physical-device certification.
+
+- Public Geneva pack: 54,561,151 bytes, 181,920 graph nodes and 403,744 directed edges. All published artifacts were downloaded and checksum-verified; PMTiles byte ranges return HTTP 206. CORS was also verified for `http://192.168.1.104:5173`.
+- Real LAN development smoke: downloaded the public pack, stored it with IndexedDB and calculated the Arve example with no uncaught JavaScript errors. The origin was explicitly verified to be insecure. SHA-256 verification remains enabled using the JavaScript fallback.
+- 16 TypeScript unit tests and 5 Python data tests pass. Type checking, ESLint and the production build pass.
+- Chromium and mobile WebKit regression scenarios pass: map rendering, insecure LAN installation and routing, checksum rejection, interrupted-download resumption, offline restart, route comparison and GPX export. These regressions use the checked-in synthetic network. Real-pack LAN smoke is a separate check.
+- WebKit offline restart uses an actual local-server transport outage and HTTP interception. Playwright offline emulation in the installed WebKit build prevents even a standalone Blob worker from starting; `scripts/repro-webkit-offline.mjs` isolates this tooling limitation. Physical iPhone memory, battery and storage retention still require manual validation over HTTPS.
+
+## Routing experiment
+
+Nine real-region desktop comparisons completed successfully: three profiles on Geneva–Salève, Geneva–Voirons and the Arve example. Corridor cost differences against full-region Dijkstra ranged from 0% to 5.10%. These resident-graph benchmarks exclude disk reads; the application separately measures actual worker file reads. They do not establish iPhone performance.
+
+The current utility ablation did not change the selected Salève path. Removing slope changed the corridor result. The tested attraction lay outside the resulting route and had no effect. More discriminating cases are needed before tuning these terms from such results.
+
+## Personal tracks
+
+The complete private audit prepared 793 portions. Of these, 76 passed spatial checks and 29 passed the stricter sequence checks. Grouped splitting left only one quantitatively eligible evaluation portion versus 28 calibration portions. This is insufficient for reliable personalized cost fitting, so personalization remains disabled. Original tracks and detailed reports stay under ignored `data/` and were not published with the OSM pack.
+
+The public data pack is published. The application itself has not been deployed to GitHub Pages; the repository has no remote configured.

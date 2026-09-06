@@ -5,6 +5,22 @@
 > **Primary platform:** mobile web, installable PWA, routing on-device  
 > **Core idea:** **semantic field → candidate corridor → topological graph → valid route**
 
+## Implementation baseline — September 2026
+
+The executable comparative prototype is documented in `README.md`. This section takes precedence over the exploratory alternatives below for the current implementation.
+
+- **Study area:** Geneva basin `[5.80, 45.95, 6.55, 46.45]`, with Geneva–Salève–Voirons scenarios and coherent French/Swiss OSM topology.
+- **Reference:** full-region Dijkstra. **Experiment:** 700 m raster Dijkstra, graph-chunk selection, exact restricted graph search, and corridor expansion at 2, 5 and 12 cells before full coverage. Both use the same positive cost decomposition. A valid corridor result is not assumed globally optimal.
+- **Execution:** TypeScript workers first. New requests terminate obsolete computations; no GPU or WASM dependency. Compare elapsed time, explored states, actual compressed graph bytes read, cost and expansion count.
+- **Costs:** directional slope samples, surfaces, deterministic road-stress proxies, uncertainty and 1 km reachable low-stress network utility. Attraction discounts are capped at 65%, retaining positive costs. Personalization is disabled in the baseline.
+- **Topology:** stable OSM node IDs, directed bicycle access, node/via-way turn restrictions, incoming-edge state and edge-split waypoint snapping. Unsupported conditional rules are handled conservatively, with exclusion counts in build metadata.
+- **Data:** Python uses `uv`; scripts live in `./scripts`. Private source traces stay in `data/`. Deduplication, gap splitting, boundary clipping, matching confidence and overlap-grouped evaluation are explicit preprocessing stages.
+- **Offline:** checksummed immutable packs, gzip-JSON graph chunks with `.bin` names, PMTiles basemap, local source attribution, staged/resumable file downloads, OPFS with IndexedDB fallback, and a scoped production service worker. No external fonts or sprites are required by the minimal basemap.
+- **Publication:** build-time S3 credentials only. `VITE_REGION_MANIFEST` selects the public pack. The reserved optional MapTiler setting is `VITE_MAPTILER_API_KEY`.
+- **Acceptance:** automated software and desktop browser checks plus geographic benchmarks. Physical iPhone memory, battery and persistence must be measured separately; browser emulation is not equivalent to a real-device pass.
+
+The remaining sections retain the long-term vision. Optional GPU backends, terrain archives for map relief, advanced alternatives, navigation and learned personalization are subsequent experiments rather than claims about the current build.
+
 ---
 
 ## 0. Executive summary
