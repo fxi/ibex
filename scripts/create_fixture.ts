@@ -59,7 +59,7 @@ await record(
   gzipSync(JSON.stringify({ nodes: graph.nodes, edges: graph.edges })),
 );
 const fields = Object.fromEntries(
-  (["gravel", "road", "touring"] as Profile[]).map((profile) => [
+  (["gravel", "road", "touring", "scenic"] as Profile[]).map((profile) => [
     profile,
     buildField(graph, { anchors: [], profile }),
   ]),
@@ -119,7 +119,7 @@ await fs.writeFile(
         .slice(0, 16),
       bbox: graph.bbox,
       osmTimestamp: "synthetic",
-      costModelVersion: 2,
+      costModelVersion: 3,
       terrainCoverage: 1,
       attribution: "Synthetic test data — not a real cycling network",
       files,

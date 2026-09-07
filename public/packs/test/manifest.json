@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "synthetic",
   "name": "Synthetic CI fixture",
-  "version": "2a4b556647c4e8b9",
+  "version": "a1af8e2295cf703c",
   "bbox": [
     5.8,
     45.95,
@@ -10,7 +10,7 @@
     46.45
   ],
   "osmTimestamp": "synthetic",
-  "costModelVersion": 2,
+  "costModelVersion": 3,
   "terrainCoverage": 1,
   "attribution": "Synthetic test data — not a real cycling network",
   "files": [
@@ -21,8 +21,8 @@
     },
     {
       "path": "index.bin",
-      "bytes": 347,
-      "sha256": "5a18279b6b6d344a2cd0f40e14bb727d7493c146b43c721ac35127efe6dfee99"
+      "bytes": 410,
+      "sha256": "1cfd32d6000fc17392cc39e0566d873238bb782a4ecf505ae5de35a549f34fed"
     },
     {
       "path": "basemap.pmtiles",

@@ -99,7 +99,7 @@ function App() {
     listPacks()
       .then((packs) => {
         const current = packs
-          .filter((p) => p.manifest.costModelVersion === 2)
+          .filter((p) => p.manifest.costModelVersion === 3)
           .sort((a, b) => b.installedAt.localeCompare(a.installedAt))[0];
         setPack(current);
         if (packs.length && !current)
@@ -260,13 +260,19 @@ function App() {
           <br />A little less traffic. A little more possibility.
         </p>
         <div className="profiles" aria-label="Cycling profile">
-          {(["gravel", "road", "touring"] as Profile[]).map((p) => (
+          {(["gravel", "road", "touring", "scenic"] as Profile[]).map((p) => (
             <button
               key={p}
               aria-pressed={profile === p}
               onClick={() => setProfile(p)}
             >
-              {p === "gravel" ? "⌁" : p === "road" ? "↗" : "△"}{" "}
+              {p === "gravel"
+                ? "⌁"
+                : p === "road"
+                  ? "↗"
+                  : p === "scenic"
+                    ? "✺"
+                    : "△"}{" "}
               {p[0].toUpperCase() + p.slice(1)}
             </button>
           ))}

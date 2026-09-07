@@ -17,6 +17,9 @@ from pathlib import Path
 import httpx
 from PIL import Image
 from prepare_tracks import BBOX, distance
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import polygonize, unary_union
+from shapely.prepared import prep
 from terrain_profile import bilinear_height, way_profile, slice_profile
 
 DENIED = {"no", "private", "use_sidepath"}
@@ -75,6 +78,115 @@ def directions(tags):
         and tags.get("bicycle:backward") not in DENIED
     )
     return forward, backward
+
+
+# Golden-gravel quality: how rewarding a surface is to ride, not just how rideable.
+SURFACE_QUALITY = {
+    "fine_gravel": 1.0,
+    "compacted": 0.85,
+    "gravel": 0.7,
+    "unpaved": 0.5,
+    "ground": 0.4,
+    "dirt": 0.35,
+    "cobblestone": 0.3,
+    "grass": 0.2,
+    "paved": 0.15,
+    "sand": 0.0,
+    "mud": 0.0,
+    "rock": 0.0,
+}
+TRACK_QUALITY = {"grade1": 1.0, "grade2": 0.85, "grade3": 0.6, "grade4": 0.2, "grade5": 0.2}
+SMOOTHNESS_QUALITY = {"excellent": 1.0, "good": 1.0, "intermediate": 0.85, "bad": 0.5}
+QUALITY_HIGHWAYS = {"track", "path", "bridleway"}
+
+
+def edge_quality(highway, surface, tags, stress):
+    if highway not in QUALITY_HIGHWAYS:
+        return 0.0
+    surface_score = SURFACE_QUALITY.get(surface, 0.2)
+    track_score = TRACK_QUALITY.get(tags.get("tracktype"), 0.7)
+    smooth_score = SMOOTHNESS_QUALITY.get(tags.get("smoothness"), 0.6)
+    return round(
+        max(0.0, min(1.0, surface_score * track_score * smooth_score * (1 - 0.5 * stress))),
+        3,
+    )
+
+
+def forest_polygons(elements):
+    """Assemble forest/wood polygons from closed ways and multipolygon relations."""
+    polygons = []
+    for e in elements:
+        tags = e.get("tags", {})
+        if e["type"] != "way" or (tags.get("landuse") != "forest" and tags.get("natural") != "wood"):
+            continue
+        coords = [(p["lon"], p["lat"]) for p in e.get("geometry", []) if "lon" in p]
+        if len(coords) > 3 and coords[0] == coords[-1]:
+            polygons.append(Polygon(coords))
+    for r in elements:
+        tags = r.get("tags", {})
+        if r["type"] != "relation" or (tags.get("landuse") != "forest" and tags.get("natural") != "wood"):
+            continue
+        outer, inner = [], []
+        for member in r.get("members", []):
+            coords = [(p["lon"], p["lat"]) for p in member.get("geometry", []) if "lon" in p]
+            if len(coords) < 2:
+                continue
+            (inner if member.get("role") == "inner" else outer).append(LineString(coords))
+        rings = list(polygonize(outer))
+        holes = list(polygonize(inner))
+        if not rings:
+            continue
+        area = unary_union(rings)
+        if holes:
+            area = area.difference(unary_union(holes))
+        polygons.append(area)
+    return polygons
+
+
+def interpolate_polyline(coords, t, total_length):
+    """Point at fraction t (0..1) along a polyline, by arc length."""
+    if len(coords) == 1 or total_length <= 0:
+        return coords[0]
+    target = t * total_length
+    covered = 0.0
+    for a, b in zip(coords, coords[1:]):
+        seg = distance(a, b)
+        if seg == 0:
+            continue
+        if covered + seg >= target:
+            frac = (target - covered) / seg
+            return [a[0] + frac * (b[0] - a[0]), a[1] + frac * (b[1] - a[1])]
+        covered += seg
+    return coords[-1]
+
+
+def edge_forest_fraction(coords, length, forest_geom):
+    if forest_geom is None or length <= 0:
+        return 0.0
+    samples = max(2, math.ceil(length / 30))
+    hits = sum(
+        forest_geom.contains(Point(interpolate_polyline(coords, i / samples, length)))
+        for i in range(samples + 1)
+    )
+    return round(hits / (samples + 1), 3)
+
+
+def viewpoint_index(viewpoints, cell=0.001):
+    index = defaultdict(list)
+    for p in viewpoints:
+        index[(math.floor(p[0] / cell), math.floor(p[1] / cell))].append(p)
+    return index
+
+
+def near_viewpoint(coords, index, cell=0.001, radius_m=60):
+    for p in coords:
+        cx, cy = math.floor(p[0] / cell), math.floor(p[1] / cell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for vp in index.get((cx + dx, cy + dy), ()):
+                    if distance(p, vp) <= radius_m:
+                        return True
+    return False
 
 
 def tile_coord(p, z=12):
@@ -152,6 +264,18 @@ def build(source, output, terrain=True):
         w for w in ways if permitted(w["tags"]) and w["id"] not in conditional_from
     ]
     counts["excludedWays"] = len(ways) - len(roads)
+    viewpoints = [
+        (e["lon"], e["lat"])
+        for e in elements
+        if e["type"] == "node"
+        and (
+            e.get("tags", {}).get("tourism") == "viewpoint"
+            or e.get("tags", {}).get("natural") == "peak"
+        )
+    ]
+    vp_index = viewpoint_index(viewpoints)
+    forest_shapes = forest_polygons(elements)
+    forest_geom = prep(unary_union(forest_shapes)) if forest_shapes else None
     positions = {}
     usage = Counter()
     for way in roads:
@@ -278,10 +402,12 @@ def build(source, output, terrain=True):
                 "length": round(length, 2),
                 "surface": surface,
                 "highway": highway,
-                "tags": {k: tags[k] for k in ("bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "incline", "width") if k in tags},
+                "tags": {k: tags[k] for k in ("bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "mtb:scale:downhill", "incline", "width") if k in tags},
                 "stress": stress,
                 "uncertainty": uncertainty,
                 "utility": 0,
+                "quality": edge_quality(highway, surface, tags, stress),
+                "forest": edge_forest_fraction(coords, length, forest_geom),
                 "bridge": bridge,
                 "tunnel": tunnel,
                 "name": tags.get("name", ""),
@@ -346,6 +472,81 @@ def build(source, output, terrain=True):
         utility[origin] = round(min(1, math.log1p(reach) / math.log1p(15000)), 3)
     for edge in edges:
         edge["utility"] = utility[edge["to"]]
+    # Junction severity: multiple converging ways onto a busy road class, scored at the arrival node.
+    JUNCTION_CLASS_WEIGHT = {
+        "primary": 1.0,
+        "primary_link": 1.0,
+        "secondary": 0.7,
+        "secondary_link": 0.7,
+        "tertiary": 0.4,
+        "tertiary_link": 0.4,
+        "unclassified": 0.25,
+        "residential": 0.15,
+        "living_street": 0.05,
+        "service": 0.05,
+        "cycleway": 0.0,
+    }
+    node_degree = Counter()
+    node_max_class = defaultdict(float)
+    for edge in edges:
+        node_degree[edge["from"]] += 1
+        node_degree[edge["to"]] += 1
+        weight = JUNCTION_CLASS_WEIGHT.get(edge["highway"], 0.1)
+        node_max_class[edge["from"]] = max(node_max_class[edge["from"]], weight)
+        node_max_class[edge["to"]] = max(node_max_class[edge["to"]], weight)
+    node_junction = {
+        n: round(min(1, node_max_class[n] * min(1, max(0, node_degree[n] / 2 - 1) / 3)), 3)
+        for n in node_ids
+    }
+    for edge in edges:
+        edge["junction"] = node_junction[edge["to"]]
+    # Reward-potential field: decayed distance, riding the actual allowed direction, to the
+    # nearest attractor (viewpoint/peak, forest, golden gravel) ahead — a reverse multi-source
+    # Dijkstra over the reversed graph, so cost of a hard section can be discounted when
+    # something rewarding follows soon after.
+    REWARD_TAU = 600.0
+    REWARD_FLOOR = 0.02
+    REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
+    QUALITY_SOURCE_THRESHOLD = 0.7
+    FOREST_SOURCE_THRESHOLD = 0.6
+    SOURCE_STRENGTH = {"viewpoint": 1.0, "quality": 0.7, "forest": 0.5}
+
+    def source_strength(edge):
+        strength = 0.0
+        if near_viewpoint(edge["geometry"], vp_index):
+            strength = max(strength, SOURCE_STRENGTH["viewpoint"])
+        if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
+            strength = max(strength, SOURCE_STRENGTH["quality"])
+        if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
+            strength = max(strength, SOURCE_STRENGTH["forest"])
+        return strength
+
+    reverse_adj = defaultdict(list)
+    for edge in edges:
+        reverse_adj[edge["to"]].append((edge["from"], edge["length"]))
+    node_reward_dist = {}
+    queue = []
+    for edge in edges:
+        strength = source_strength(edge)
+        if strength <= 0:
+            continue
+        d0 = -REWARD_TAU * math.log(strength)
+        for n in (edge["from"], edge["to"]):
+            if d0 < node_reward_dist.get(n, math.inf):
+                node_reward_dist[n] = d0
+                heapq.heappush(queue, (d0, n))
+    while queue:
+        d, node = heapq.heappop(queue)
+        if d != node_reward_dist.get(node) or d > REWARD_HORIZON:
+            continue
+        for neighbor, length in reverse_adj[node]:
+            nd = d + length
+            if nd <= REWARD_HORIZON and nd < node_reward_dist.get(neighbor, math.inf):
+                node_reward_dist[neighbor] = nd
+                heapq.heappush(queue, (nd, neighbor))
+    for edge in edges:
+        d = node_reward_dist.get(edge["to"], math.inf)
+        edge["reward"] = round(math.exp(-d / REWARD_TAU), 3) if d <= REWARD_HORIZON else 0.0
     nodes = [
         {"id": id, "p": positions[id], "elevation": elevations.get(id)}
         for id in sorted(node_ids)
@@ -381,6 +582,22 @@ def build(source, output, terrain=True):
                     },
                 }
             )
+        if element["type"] == "node" and (
+            tags.get("tourism") == "viewpoint" or tags.get("natural") == "peak"
+        ):
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "kind": "peak" if tags.get("natural") == "peak" else "viewpoint",
+                        "name": tags.get("name", ""),
+                    },
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [element["lon"], element["lat"]],
+                    },
+                }
+            )
         if (
             element["type"] == "way"
             and "highway" not in tags
@@ -389,11 +606,18 @@ def build(source, output, terrain=True):
             coords = [[p["lon"], p["lat"]] for p in element["geometry"] if "lon" in p]
             if len(coords) < 2:
                 continue
-            polygon = (
-                tags.get("natural") == "water"
-                and coords[0] == coords[-1]
-                and len(coords) > 3
-            )
+            is_forest = tags.get("landuse") == "forest" or tags.get("natural") == "wood"
+            closed = coords[0] == coords[-1] and len(coords) > 3
+            polygon = tags.get("natural") == "water" and closed
+            if is_forest and closed:
+                features.append(
+                    {
+                        "type": "Feature",
+                        "properties": {"kind": "forest"},
+                        "geometry": {"type": "Polygon", "coordinates": [coords]},
+                    }
+                )
+                continue
             features.append(
                 {
                     "type": "Feature",
@@ -430,7 +654,7 @@ def build(source, output, terrain=True):
         "version": version,
         "bbox": BBOX,
         "osmTimestamp": raw.get("osm3s", {}).get("timestamp_osm_base", "unknown"),
-        "costModelVersion": 2,
+        "costModelVersion": 3,
         "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3

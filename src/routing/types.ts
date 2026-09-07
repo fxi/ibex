@@ -1,5 +1,5 @@
 export type Point = [number, number];
-export type Profile = "gravel" | "road" | "touring";
+export type Profile = "gravel" | "road" | "touring" | "scenic";
 export type Node = { id: number; p: Point; elevation: number | null };
 export type Edge = {
   id: number;
@@ -15,6 +15,10 @@ export type Edge = {
   stress: number;
   uncertainty: number;
   utility: number;
+  quality?: number;
+  forest?: number;
+  reward?: number;
+  junction?: number;
   bridge: boolean;
   tunnel: boolean;
   name: string;
@@ -48,6 +52,8 @@ export type Components = {
   uncertainty: number;
   network: number;
   attraction: number;
+  reward: number;
+  junction: number;
 };
 export type RouteStatus =
   "ok" | "outside-coverage" | "snap-failed" | "no-path" | "budget-exceeded";

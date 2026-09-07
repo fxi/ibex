@@ -38,6 +38,36 @@ const experiments = [
       },
     },
   },
+  {
+    name: "scenic-baseline",
+    graph,
+    request: { ...request, profile: "scenic" as const },
+  },
+  {
+    name: "scenic-reward-disabled",
+    graph: { ...graph, edges: graph.edges.map((e) => ({ ...e, reward: 0 })) },
+    request: { ...request, profile: "scenic" as const },
+  },
+  {
+    name: "scenic-junction-disabled",
+    graph: { ...graph, edges: graph.edges.map((e) => ({ ...e, junction: 0 })) },
+    request: { ...request, profile: "scenic" as const },
+  },
+  {
+    name: "scenic-technical-tags-stripped",
+    graph: {
+      ...graph,
+      edges: graph.edges.map((e) => {
+        if (!e.tags) return e;
+        const rest = { ...e.tags };
+        delete rest["mtb:scale"];
+        delete rest["mtb:scale:uphill"];
+        delete rest["mtb:scale:downhill"];
+        return { ...e, tags: rest };
+      }),
+    },
+    request: { ...request, profile: "scenic" as const },
+  },
 ];
 const rows = [];
 for (const experiment of experiments) {

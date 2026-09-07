@@ -24,7 +24,10 @@ def main():
     query = f"""[out:json][timeout:240][maxsize:536870912];
 way[highway]({box})->.roads;
 (.roads;rel(bw.roads)[type=restriction];node(w.roads)[barrier];
-way[natural=water]({box});way[waterway]({box});node[place~"^(city|town|village)$"]({box}););
+way[natural=water]({box});way[waterway]({box});node[place~"^(city|town|village)$"]({box});
+node[tourism=viewpoint]({box});node[natural=peak]({box});
+way[landuse=forest]({box});way[natural=wood]({box});
+relation[landuse=forest]({box});relation[natural=wood]({box}););
 out geom;"""
     output.parent.mkdir(parents=True, exist_ok=True)
     with httpx.Client(timeout=300, follow_redirects=True) as client:

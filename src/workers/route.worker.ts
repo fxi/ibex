@@ -123,7 +123,7 @@ self.onmessage = async (
 ) => {
   const { id, pack, request } = event.data;
   try {
-    if (pack.manifest.costModelVersion !== 2)
+    if (pack.manifest.costModelVersion !== 3)
       throw new Error("Routing data needs updating. Save the updated region.");
     const start = performance.now();
     const index = await readJSON<Index>(pack, "index.bin");

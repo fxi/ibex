@@ -7,16 +7,20 @@ import {
   snapAnchors,
   total,
 } from "../src/routing/engine";
+import { eligible } from "../src/routing/eligibility";
 import { exportGPX } from "../src/gpx";
 import type { Edge, Graph, Point } from "../src/routing/types";
-function fixture(points: Point[], links: [number, number, string?][]): Graph {
+function fixture(
+  points: Point[],
+  links: [number, number, string?, Partial<Edge>?][],
+): Graph {
   const nodes = points.map((p, id) => ({ id, p, elevation: 0 }));
   return {
     schemaVersion: 1,
     bbox: [5.8, 45.95, 6.55, 46.45],
     nodes,
     restrictions: [],
-    edges: links.map(([from, to, way], id) => ({
+    edges: links.map(([from, to, way, overrides], id) => ({
       id,
       from,
       to,
@@ -33,6 +37,7 @@ function fixture(points: Point[], links: [number, number, string?][]): Graph {
       tunnel: false,
       name: "",
       tile: String(from),
+      ...overrides,
     })),
   };
 }
@@ -323,6 +328,110 @@ describe("routing invariants", () => {
     expect(Array.from({ length: 5 }, () => heap.pop()!.value)).toEqual([
       0, 1, 2, 4, 9,
     ]);
+  });
+});
+
+describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () => {
+  const technicalUphill = (reward: number): Edge =>
+    fixture(p, [
+      [
+        0,
+        1,
+        "a",
+        {
+          tags: { "mtb:scale:uphill": "2", "mtb:scale:downhill": "2" },
+          grades: [[1000, 0.1]],
+          reward,
+        },
+      ],
+    ]).edges[0];
+
+  it("makes a technical section cheaper when a reward is reachable ahead", () => {
+    expect(total(scoreEdge(technicalUphill(1), "scenic"))).toBeLessThan(
+      total(scoreEdge(technicalUphill(0), "scenic")),
+    );
+  });
+
+  it("lets a rewarded technical-but-shorter path beat a longer flat detour, only for scenic", () => {
+    const points: Point[] = [
+      [6.1, 46.1],
+      [6.12, 46.1],
+      [6.11, 46.101],
+    ];
+    const build = () => {
+      const g = fixture(points, [
+        [0, 1, "technical"],
+        [0, 2, "detourA"],
+        [2, 1, "detourB"],
+      ]);
+      g.edges[0].length = 100;
+      g.edges[0].grades = [[100, 0.1]];
+      g.edges[0].tags = { "mtb:scale": "1" };
+      g.edges[0].reward = 1;
+      g.edges[1].length = 450;
+      g.edges[1].grades = [[450, 0]];
+      g.edges[2].length = 450;
+      g.edges[2].grades = [[450, 0]];
+      return g;
+    };
+    const scenic = route(
+      build(),
+      { anchors: [points[0], points[1]], profile: "scenic" },
+      "reference",
+    );
+    expect(scenic.status).toBe("ok");
+    expect(scenic.edgeIds).toEqual([0]);
+    const gravel = route(
+      build(),
+      { anchors: [points[0], points[1]], profile: "gravel" },
+      "reference",
+    );
+    expect(gravel.status).toBe("ok");
+    // mtb:scale-tagged shortcut is ineligible for gravel — takes the flat detour instead.
+    expect(gravel.edgeIds).toEqual([1, 2]);
+  });
+
+  it("costs an uphill technical section far more than the same-scale downhill", () => {
+    const uphill = fixture(p, [
+      [0, 1, "a", { tags: { "mtb:scale:uphill": "2" }, grades: [[1000, 0.1]] }],
+    ]).edges[0];
+    const downhill = fixture(p, [
+      [
+        0,
+        1,
+        "a",
+        { tags: { "mtb:scale:downhill": "2" }, grades: [[1000, -0.1]] },
+      ],
+    ]).edges[0];
+    const up = total(scoreEdge(uphill, "scenic"));
+    const down = total(scoreEdge(downhill, "scenic"));
+    expect(up).toBeGreaterThan(down * 5);
+  });
+
+  it("is a true no-op for gravel/road/touring: reward, junction, and mtb tags don't change cost", () => {
+    const base = fixture(p, [[0, 1]]).edges[0];
+    const decorated: Edge = {
+      ...base,
+      reward: 1,
+      junction: 1,
+      tags: { "mtb:scale:uphill": "3", "mtb:scale:downhill": "3" },
+    };
+    for (const profile of ["gravel", "road", "touring"] as const) {
+      expect(scoreEdge(decorated, profile)).toEqual(scoreEdge(base, profile));
+    }
+  });
+
+  it("allows mtb:scale up to 3 for scenic but not gravel/touring; excludes scale 5 for all", () => {
+    const mk = (scale: string): Edge => ({
+      ...fixture(p, [[0, 1]]).edges[0],
+      highway: "path",
+      tags: { "mtb:scale": scale },
+    });
+    expect(eligible(mk("3"), "scenic")).toBe(true);
+    expect(eligible(mk("3"), "gravel")).toBe(false);
+    expect(eligible(mk("3"), "touring")).toBe(false);
+    expect(eligible(mk("5"), "scenic")).toBe(false);
+    expect(eligible(mk("5"), "gravel")).toBe(false);
   });
 });
 

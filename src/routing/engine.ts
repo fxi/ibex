@@ -19,6 +19,8 @@ export const emptyComponents = (): Components => ({
   uncertainty: 0,
   network: 0,
   attraction: 0,
+  reward: 0,
+  junction: 0,
 });
 export function distance(a: Point, b: Point): number {
   const r = Math.PI / 180;
@@ -72,6 +74,14 @@ export class Heap<T> {
 const SLOPE_REFERENCE_GRADE = 0.08;
 const DOWNHILL_FREE_GRADE = 0.07;
 const DOWNHILL_FACTOR = 0.7;
+// Asymmetric MTB-scale cost: uphill-technical is hike-a-bike (near-infeasible, cubic in
+// scale); downhill-technical is a skill/braking game (moderate, sub-quadratic). Both are
+// proposed defaults, tuned only for the "scenic" profile via w.technical.
+const HIKE_A_BIKE_BASE = 3.0;
+const SKILL_BASE = 0.6;
+// Reward-potential discount cap and junction flat cost — proposed defaults, tune later.
+const REWARD_CAP = 0.6;
+const JUNCTION_FLAT_COST = 30;
 const profiles = {
   gravel: {
     stress: 2.4,
@@ -79,6 +89,9 @@ const profiles = {
     surface: 0.35,
     uncertainty: 0.5,
     network: 0.7,
+    technical: 0,
+    reward: 0,
+    junction: 0,
   },
   road: {
     stress: 1.8,
@@ -86,6 +99,9 @@ const profiles = {
     surface: 3.0,
     uncertainty: 0.8,
     network: 0.5,
+    technical: 0,
+    reward: 0,
+    junction: 0,
   },
   touring: {
     stress: 2.8,
@@ -93,8 +109,40 @@ const profiles = {
     surface: 1.2,
     uncertainty: 1.2,
     network: 0.8,
+    technical: 0,
+    reward: 0,
+    junction: 0,
+  },
+  // Optimizes for "worth it", not shortest/safest: tolerates traffic and technical MTB
+  // terrain when a reward (viewpoint, forest, golden gravel) is reachable soon after.
+  scenic: {
+    stress: 1.6,
+    slope: 0.5,
+    surface: 0.5,
+    uncertainty: 0.6,
+    network: 0.5,
+    technical: 1.0,
+    reward: 1.0,
+    junction: 1.0,
   },
 };
+function technicalFactor(
+  edge: Edge,
+  grade: number,
+  w: (typeof profiles)[Profile],
+): number {
+  const tags = edge.tags;
+  if (!tags || !w.technical) return 0;
+  const scale = Number.parseFloat(
+    (grade > 0 ? tags["mtb:scale:uphill"] : tags["mtb:scale:downhill"]) ??
+      tags["mtb:scale"] ??
+      "0",
+  );
+  if (!(scale > 0)) return 0;
+  return grade > 0
+    ? w.technical * HIKE_A_BIKE_BASE * scale ** 3
+    : w.technical * SKILL_BASE * scale ** 1.5;
+}
 export function scoreEdge(
   edge: Edge,
   profile: Profile,
@@ -123,11 +171,17 @@ export function scoreEdge(
     )[edge.surface] ?? (isStreet(edge) ? 0.15 : 0.8);
   const slope =
     edge.grades?.reduce((sum, [meters, grade]) => {
+      const technical = technicalFactor(edge, grade, w);
+      // A technical descent isn't automatically "free" the way an easy fast
+      // descent is: skip the blanket downhill discount when technical, and add
+      // the surcharge on top instead of double-discounting it.
+      const factor = grade > 0 ? 1 : technical > 0 ? 1 : DOWNHILL_FACTOR;
       const excess =
         grade > 0 ? grade : Math.max(0, -grade - DOWNHILL_FREE_GRADE);
-      const factor = grade > 0 ? 1 : DOWNHILL_FACTOR;
       return (
-        sum + meters * (excess / SLOPE_REFERENCE_GRADE) ** 4 * w.slope * factor
+        sum +
+        meters * (excess / SLOPE_REFERENCE_GRADE) ** 4 * w.slope * factor +
+        meters * technical
       );
     }, 0) ?? l * w.slope * (isStreet(edge) ? 0.5 : 4);
   const c: Components = {
@@ -138,7 +192,15 @@ export function scoreEdge(
     uncertainty: l * edge.uncertainty * w.uncertainty,
     network: l * (1 - edge.utility) * w.network,
     attraction: 0,
+    reward: 0,
+    junction: (edge.junction ?? 0) * w.junction * JUNCTION_FLAT_COST,
   };
+  // Discounts only the hardship components, never distance/network/uncertainty: a
+  // detour still costs distance, only its difficulty becomes cheap when something
+  // rewarding (viewpoint, forest, golden gravel) is reachable soon after.
+  c.reward =
+    -(c.stress + c.slope + c.surface) *
+    Math.min(REWARD_CAP, (edge.reward ?? 0) * w.reward);
   if (attraction) {
     const mid = edge.geometry[Math.floor(edge.geometry.length / 2)];
     const influence = Math.max(

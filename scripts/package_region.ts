@@ -55,7 +55,7 @@ for (const [tile, edges] of [...groups].sort(([a], [b]) =>
   chunks.push({ path, bbox });
 }
 const fields = {} as Record<Profile, ReturnType<typeof buildField>>;
-for (const profile of ["gravel", "road", "touring"] as Profile[])
+for (const profile of ["gravel", "road", "touring", "scenic"] as Profile[])
   fields[profile] = buildField(graph, { profile, anchors: [] });
 await json("index.bin", {
   schemaVersion: 1,
