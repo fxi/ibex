@@ -4,7 +4,7 @@ A mobile-first cycling route laboratory for the Geneva basin. A semantic field s
 
 ## Run locally
 
-Requires Node 22.13+ (or Node 24) and npm. The default app uses the published Geneva pack; rebuilding data is optional.
+Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva/manifest.json`, the locally rebuilt Geneva pack. Generate it with the commands below, or set `VITE_REGION_MANIFEST` to a compatible cost-model-2 pack. The old published model-1 pack is intentionally rejected.
 
 ```sh
 npm ci
@@ -87,12 +87,22 @@ npm run test:e2e
 
 Browser regression tests require the synthetic pack build shown above. It builds an isolated test checkout with a dummy key in its own `.env`, without reading or modifying your credentials. Browser fixtures intercept MapTiler resources while retaining the production style. CI uses the same checked-in pack without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_fixture.ts` when its schema changes. Run `npm run build` afterwards to restore the real region configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
 
+## Routing profiles and data updates
+
+Road accepts paved surfaces and ordinary streets/cycleways with unspecified surfaces. It excludes unpaved tracks and undocumented hiking paths. Gravel accepts roads, usable tracks, and paths documented as paved, gravel/compacted, or MTB difficulty 0. Technical MTB paths, mountain hiking trails, very poor surfaces and grade-4/5 tracks are excluded. These are conservative defaults, not a certification of conditions on the ground.
+
+Eligibility applies before waypoint snapping and search. A waypoint with no suitable connection within 250 m produces an explicit failure rather than routing over an unsuitable path. The original Geneva → Voirons example ends on an off-road path: it works for Gravel; Road requires a road-access endpoint, such as [6.3642228, 46.231931] on Route des Voirons.
+
+The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 2, highway classification, retained rideability tags, and rebuilt profile fields. Previously installed model-1 packs prompt for an update; save the new region after refreshing the app.
+
+Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
+
 ## Limits of this experiment
 
 - Synthetic and desktop browser checks cannot certify physical iPhone memory, battery or storage retention. Real-device acceptance remains a manual step.
 - The scalar field is a coarse prior, not an exact directional/topological model. Valid routes may cost more than the full-graph baseline; the UI reports the measured difference.
 - Bicycle pushing, stairs, ferries and conditional/time-dependent access are excluded. Ambiguous conditional restriction from-ways are excluded conservatively. `no-path` means no path in this model, not proof that cycling is impossible.
-- Terrain is sampled at Mapterhorn zoom 12, smoothed across approximately 80 m. Bridge/tunnel terrain is not treated as road elevation. Missing elevation remains unknown; GPX exports geometry without invented heights.
+- Terrain is sampled at Mapterhorn zoom 12 with bilinear height interpolation and 80 m windows along complete OSM ways before splitting topology edges. Bridge/tunnel terrain is not treated as road elevation. Missing elevation remains unknown and incurs a conservative slope surcharge; GPX exports geometry without invented heights.
 - Network utility is a bounded 1 km low-stress reach metric, not a learned preference. Surface, stress and uncertainty coefficients are experimental.
 
 OSM-derived regional databases are distributed under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain attribution is preserved from [Mapterhorn](https://mapterhorn.com/attribution/). See `CYCLATRACTOR_SPEC.md` for the broader product vision and the implementation baseline.

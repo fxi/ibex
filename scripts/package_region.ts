@@ -117,7 +117,7 @@ manifest.source = {
   osmSha256: createHash("sha256")
     .update(await fs.readFile("data/osm.json"))
     .digest("hex"),
-  preprocessorVersion: 1,
+  preprocessorVersion: 2,
 };
 await fs.writeFile(
   `${directory}/manifest.json`,

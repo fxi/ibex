@@ -10,6 +10,8 @@ export type Edge = {
   geometry: Point[];
   grades: [number, number][] | null;
   surface: string;
+  highway: string;
+  tags?: Record<string, string>;
   stress: number;
   uncertainty: number;
   utility: number;

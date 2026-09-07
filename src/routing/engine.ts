@@ -1,3 +1,4 @@
+import { eligible, isStreet } from "./eligibility";
 import type {
   Attraction,
   Components,
@@ -119,7 +120,7 @@ export function scoreEdge(
         rock: 2,
         cobblestone: 0.6,
       } as Record<string, number>
-    )[edge.surface] ?? 0.5;
+    )[edge.surface] ?? (isStreet(edge) ? 0.15 : 0.8);
   const slope =
     edge.grades?.reduce((sum, [meters, grade]) => {
       const excess =
@@ -128,7 +129,7 @@ export function scoreEdge(
       return (
         sum + meters * (excess / SLOPE_REFERENCE_GRADE) ** 4 * w.slope * factor
       );
-    }, 0) ?? 0;
+    }, 0) ?? l * w.slope * (isStreet(edge) ? 0.5 : 4);
   const c: Components = {
     distance: l,
     stress: l * edge.stress * w.stress,
@@ -316,6 +317,7 @@ export function buildField(graph: Graph, request: RouteRequest): Field {
     paths: [],
   };
   for (const edge of graph.edges) {
+    if (!eligible(edge, request.profile)) continue;
     const cost =
       total(scoreEdge(edge, request.profile, request.attraction)) / edge.length;
     for (let i = 1; i < edge.geometry.length; i++) {
@@ -512,6 +514,10 @@ export function route(
     result.status = "outside-coverage";
     return finish();
   }
+  graph = {
+    ...graph,
+    edges: graph.edges.filter((edge) => eligible(edge, request.profile)),
+  };
   const snap = snapAnchors(graph, request.anchors);
   if (!snap) {
     result.status = "snap-failed";

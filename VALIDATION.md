@@ -1,5 +1,26 @@
 # Prototype validation
 
+## Rideability correction — 2026-09-07
+
+- The app now uses rebuilt local pack `3ff3ea27b6de281a`, cost model 2,
+  preprocessor 2. All 150 file lengths and SHA-256 hashes were verified
+  (61,043,435 bytes). Older installed packs require an update.
+- The previous published pack had null grades on the 634.68 m Sentier du
+  Sauget (`107854950`, MTB scale 3), yielding zero slope cost. The newer local
+  baseline still selected an MTB-scale-5 segment in corridor mode and displayed
+  that candidate despite a cheaper full-graph route.
+- The real Sauget regression now chooses a 4.777 km track/Route des Voirons
+  detour, excluding the technical switchbacks. Waypoints snap to eligible
+  nearby connections; this is not a promise of access to the exact trail points.
+- The built-in Geneva–Voirons Gravel route is 26.695 km, with no MTB-rated
+  technical paths; reference and corridor agree. Road rejects its off-road
+  destination. A road-access endpoint on Route des Voirons produces a 33.637 km
+  Road route with no hiking paths and a maximum sampled uphill grade of 12.6%.
+- Thirty JavaScript tests (including the geographic regression), ten Python
+  tests, lint, typecheck, and the production build pass. Browser tests were not
+  rerun for this routing-focused change. These checks establish the reported
+  data/model regressions, not physical rideability of every route.
+
 ## Review-fix checkpoint
 
 The topology/restriction and single-style changes pass 24 TypeScript tests,

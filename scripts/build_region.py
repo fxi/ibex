@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 from PIL import Image
 from prepare_tracks import BBOX, distance
+from terrain_profile import bilinear_height, way_profile, slice_profile
 
 DENIED = {"no", "private", "use_sidepath"}
 PAVED = {"asphalt", "concrete", "concrete:plates", "paving_stones", "paved"}
@@ -111,8 +112,7 @@ def terrain_samples(points, cache, enabled):
         x, y, px, py = tile_coord(p)
         img = images.get((x, y))
         if img:
-            red, green, blue = img.getpixel((min(511, int(px)), min(511, int(py))))
-            elevations[id] = round(red * 256 + green + blue / 256 - 32768, 1)
+            elevations[id] = bilinear_height(img, px, py)
     return elevations
 
 
@@ -209,11 +209,16 @@ def build(source, output, terrain=True):
     for way in roads:
         tags = way["tags"]
         sequence = way["nodes"]
+        if any(node not in positions for node in sequence):
+            continue
+        offsets, profile = way_profile(sequence, positions, elevations, tags.get("incline"))
         start = 0
         for i in range(1, len(sequence)):
             if sequence[i] not in kept and i < len(sequence) - 1:
                 continue
             ids = sequence[start : i + 1]
+            profile_start = offsets[start]
+            profile_end = offsets[i]
             start = i
             if any(id not in positions for id in ids) or any(
                 id in blocked for id in ids
@@ -232,24 +237,7 @@ def build(source, output, terrain=True):
                 continue
             bridge = tags.get("bridge", "no") != "no"
             tunnel = tags.get("tunnel", "no") != "no"
-            grade_samples = None
-            if all(id in elevations for id in ids) and not (bridge or tunnel):
-                # Sample a smoothed 80m profile rather than treating DEM pixel steps as road grades.
-                sample_indices = [0]
-                acc = 0
-                for j, segment_length in enumerate(lengths, 1):
-                    acc += segment_length
-                    if acc >= 80 or j == len(ids) - 1:
-                        sample_indices.append(j)
-                        acc = 0
-                grade_samples = []
-                for a, b in zip(sample_indices, sample_indices[1:]):
-                    meters = sum(lengths[a:b])
-                    grade = (elevations[ids[b]] - elevations[ids[a]]) / max(meters, 1)
-                    # Clamp rather than discard: extreme DEM samples are still real
-                    # terrain and must keep incurring slope cost, not fall to zero.
-                    grade = max(-0.45, min(0.45, grade))
-                    grade_samples.append([round(meters, 2), round(grade, 5)])
+            grade_samples = None if bridge or tunnel else slice_profile(profile, profile_start, profile_end)
             highway = tags["highway"]
             stress = {
                 "primary": 0.95,
@@ -289,6 +277,8 @@ def build(source, output, terrain=True):
                 "way": str(way["id"]),
                 "length": round(length, 2),
                 "surface": surface,
+                "highway": highway,
+                "tags": {k: tags[k] for k in ("bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "incline", "width") if k in tags},
                 "stress": stress,
                 "uncertainty": uncertainty,
                 "utility": 0,
@@ -440,7 +430,7 @@ def build(source, output, terrain=True):
         "version": version,
         "bbox": BBOX,
         "osmTimestamp": raw.get("osm3s", {}).get("timestamp_osm_base", "unknown"),
-        "costModelVersion": 1,
+        "costModelVersion": 2,
         "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3

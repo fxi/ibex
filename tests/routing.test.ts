@@ -25,6 +25,7 @@ function fixture(points: Point[], links: [number, number, string?][]): Graph {
       geometry: [points[from], points[to]],
       grades: [[distance(points[from], points[to]), 0]],
       surface: "paved",
+      highway: "cycleway",
       stress: 0.1,
       uncertainty: 0.1,
       utility: 0.5,

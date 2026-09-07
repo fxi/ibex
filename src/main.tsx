@@ -1,3 +1,4 @@
+import { selectedRoute } from "./routing/selection";
 import { storageEstimate } from "./offline/capabilities";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -96,12 +97,21 @@ function App() {
       }
     };
     listPacks()
-      .then((packs) => setPack(packs[0]))
+      .then((packs) => {
+        const current = packs
+          .filter((p) => p.manifest.costModelVersion === 2)
+          .sort((a, b) => b.installedAt.localeCompare(a.installedAt))[0];
+        setPack(current);
+        if (packs.length && !current)
+          setError(
+            "Routing data needs updating. Save the updated region before planning a route.",
+          );
+      })
       .catch(() => setError("Browser storage unavailable"))
       .finally(() => setPacksReady(true));
     readManifest(manifestURL)
       .then(setCatalog)
-      .catch(() => {});
+      .catch(() => {}); // The catalog is optional when routing from an installed pack offline.
     preference<{ anchors: Point[]; profile: Profile; attraction?: Attraction }>(
       "plan",
     )
@@ -184,7 +194,7 @@ function App() {
       routeWorker.current?.terminate();
     };
   }, [anchors, profile, attraction, pack]);
-  const result = comparison?.corridor ?? partial;
+  const result = selectedRoute(comparison, partial);
   const addPoint = (point: Point) => {
     if (tool === "attraction") {
       setAttraction({ point, radiusM: 2500, strength: 0.35 });
@@ -402,7 +412,7 @@ function App() {
                 "outside-coverage":
                   "A waypoint is outside the downloaded region.",
                 "snap-failed":
-                  "No accessible cycling connection within 250 m of a waypoint.",
+                  "No connection suitable for this profile within 250 m of a waypoint. Move the waypoint onto a suitable road.",
                 "no-path": "No route found in the available graph.",
                 "budget-exceeded":
                   "Search budget reached. Try closer waypoints.",
@@ -509,19 +519,17 @@ function App() {
                 · {comparison.corridor.metrics.expansions} expansions
               </p>
               <div className="components">
-                {Object.entries(comparison.corridor.components).map(
-                  ([name, value]) => (
-                    <div key={name}>
-                      <span>{name}</span>
-                      <meter
-                        min={0}
-                        max={Math.max(1, comparison.corridor.cost)}
-                        value={Math.max(0, value)}
-                      />
-                      <span>{Math.round(value)}</span>
-                    </div>
-                  ),
-                )}
+                {Object.entries(result!.components).map(([name, value]) => (
+                  <div key={name}>
+                    <span>{name}</span>
+                    <meter
+                      min={0}
+                      max={Math.max(1, result!.cost)}
+                      value={Math.max(0, value)}
+                    />
+                    <span>{Math.round(value)}</span>
+                  </div>
+                ))}
               </div>
               <button
                 onClick={() =>

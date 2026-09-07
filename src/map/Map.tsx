@@ -1,3 +1,4 @@
+import { selectedRoute } from "../routing/selection";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
@@ -190,7 +191,7 @@ export function MapView({
     function update() {
       if (!m.getSource("route")) return;
       const s = snapshot.current;
-      const route = s.comparison?.corridor ?? s.partial;
+      const route = selectedRoute(s.comparison, s.partial);
       (m.getSource("field") as maplibregl.GeoJSONSource)?.setData(
         s.debug && s.comparison?.fieldView ? s.comparison.fieldView : empty,
       );

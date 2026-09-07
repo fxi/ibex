@@ -6,6 +6,9 @@ it("rejects traversal paths, incompatible versions and oversized allocations", (
   expect(
     manifestSchema.safeParse({ ...manifest, schemaVersion: 99 }).success,
   ).toBe(false);
+  expect(
+    manifestSchema.safeParse({ ...manifest, costModelVersion: 1 }).success,
+  ).toBe(false);
   for (const path of ["../private", "https://other/file", "a/b"])
     expect(
       manifestSchema.safeParse({

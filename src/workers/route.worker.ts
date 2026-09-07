@@ -92,6 +92,7 @@ async function loadGraph(
     }
     for (const edge of value.edges) {
       if (
+        typeof edge.highway !== "string" ||
         !Number.isFinite(edge.length) ||
         edge.length <= 0 ||
         ![edge.stress, edge.uncertainty, edge.utility].every(
@@ -122,6 +123,8 @@ self.onmessage = async (
 ) => {
   const { id, pack, request } = event.data;
   try {
+    if (pack.manifest.costModelVersion !== 2)
+      throw new Error("Routing data needs updating. Save the updated region.");
     const start = performance.now();
     const index = await readJSON<Index>(pack, "index.bin");
     if (index.schemaVersion !== 1) throw new Error("Unsupported graph index");

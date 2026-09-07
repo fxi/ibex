@@ -13,7 +13,7 @@ export const manifestSchema = z.object({
   version: z.string().regex(/^[a-zA-Z0-9-]+$/),
   bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
   osmTimestamp: z.string(),
-  costModelVersion: z.literal(1),
+  costModelVersion: z.literal(2),
   terrainCoverage: z.number().min(0).max(1),
   attribution: z.string(),
   files: z.array(fileSchema).min(2).max(1000),
@@ -40,7 +40,12 @@ export async function listPacks(): Promise<Installed[]> {
 export async function readManifest(url: string): Promise<Manifest> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Pack catalog unavailable (${r.status})`);
-  return manifestSchema.parse(await r.json());
+  const value = await r.json();
+  if (value.costModelVersion !== 2)
+    throw new Error(
+      "This region uses outdated routing data. Install the updated region.",
+    );
+  return manifestSchema.parse(value);
 }
 const root = async () =>
   (await navigator.storage.getDirectory()).getDirectoryHandle("cyclatractor", {
