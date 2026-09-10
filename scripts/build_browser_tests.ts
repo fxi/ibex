@@ -6,7 +6,13 @@ const root = resolve(".");
 await mkdir("test-results", { recursive: true });
 const temporary = await mkdtemp(resolve("test-results/build-"));
 try {
-  for (const file of ["src", "index.html", "vite.config.ts", "package.json"])
+  for (const file of [
+    "src",
+    "profiles",
+    "index.html",
+    "vite.config.ts",
+    "package.json",
+  ])
     await cp(join(root, file), join(temporary, file), { recursive: true });
   await mkdir(join(temporary, "scripts"));
   await cp("scripts/local-env.ts", join(temporary, "scripts/local-env.ts"));

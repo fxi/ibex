@@ -1,3 +1,5 @@
+import type { ProfileInput } from "./profiles";
+export const COST_MODEL_VERSION = 4;
 export type Point = [number, number];
 export type Profile = "gravel" | "road" | "touring" | "scenic";
 export type Node = { id: number; p: Point; elevation: number | null };
@@ -15,6 +17,10 @@ export type Edge = {
   stress: number;
   uncertainty: number;
   utility: number;
+  urban?: number;
+  cyclingNetwork?: number;
+  ferryService?: string;
+  ferrySeconds?: number;
   quality?: number;
   forest?: number;
   reward?: number;
@@ -40,7 +46,7 @@ export type Graph = {
 export type Attraction = { point: Point; radiusM: number; strength: number };
 export type RouteRequest = {
   anchors: Point[];
-  profile: Profile;
+  profile: ProfileInput;
   attraction?: Attraction;
   maxSettled?: number;
 };
@@ -54,17 +60,27 @@ export type Components = {
   attraction: number;
   reward: number;
   junction: number;
+  climbing: number;
+  offroad: number;
+  walking: number;
+  countryside: number;
+  cycling_network: number;
+  ferry: number;
 };
 export type RouteStatus =
   "ok" | "outside-coverage" | "snap-failed" | "no-path" | "budget-exceeded";
 export type RouteResult = {
   status: RouteStatus;
+  /** One-based index of an ordered waypoint leg known to be disconnected. */
+  failedLeg?: number;
   mode: "reference" | "corridor";
   geometry: Point[];
   anchors: Point[];
   cost: number;
   components: Components;
   distanceM: number;
+  hikeABikeM: number;
+  ferryM: number;
   ascentM: number | null;
   descentM: number | null;
   elevationProfile: [number, number | null][];

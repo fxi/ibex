@@ -627,3 +627,38 @@ footer {
   border-radius: 8px;
   font-size: 13px;
 }
+
+.profile-editor {
+  margin: 12px 0;
+  font-size: 0.85rem;
+}
+.profile-editor summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.profile-editor label {
+  display: block;
+  margin: 8px 0;
+}
+.profile-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  font: 12px/1.5 monospace;
+  padding: 8px;
+}
+.profile-editor select,
+.profile-editor input {
+  max-width: 100%;
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.profile-editor .profile-error {
+  color: #9e2929;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

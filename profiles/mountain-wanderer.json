@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Mountain wanderer",
+  "bike": "gravel",
+  "attraction": {
+    "quiet": 85,
+    "countryside": 90,
+    "scenic": 95,
+    "climbing": 80,
+    "cycling_network": 40,
+    "offroad_up": 20,
+    "offroad_down": 85
+  },
+  "capabilities": {
+    "max_grade_up": 15,
+    "max_grade_down": 20,
+    "max_mtb_scale_up": 0,
+    "max_mtb_scale_down": 2,
+    "max_hike_sac_up": 1,
+    "max_hike_sac_down": 2
+  },
+  "access": {
+    "hike_a_bike": true,
+    "steps": false,
+    "ferry": false
+  }
+}

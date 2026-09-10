@@ -24,7 +24,11 @@ class DataTests(unittest.TestCase):
 
     def test_bicycle_access(self):
         self.assertFalse(permitted({"highway": "motorway"}))
-        self.assertFalse(permitted({"highway": "steps"}))
+        self.assertTrue(permitted({"highway": "steps"}))
+        self.assertFalse(permitted({"highway": "steps", "bicycle": "no"}))
+        self.assertFalse(permitted({"route": "ferry", "bicycle": "no"}))
+        self.assertTrue(permitted({"route": "ferry", "bicycle": "yes"}))
+        self.assertTrue(permitted({"highway": "path", "bicycle": "dismount"}))
         self.assertTrue(
             permitted({"highway": "path", "access": "no", "bicycle": "yes"})
         )

@@ -1,3 +1,10 @@
+import { COST_MODEL_VERSION } from "./routing/types";
+import { ProfileEditor } from "./ProfileEditor";
+import {
+  profileSchema,
+  resolveProfile,
+  type ProfileInput,
+} from "./routing/profiles";
 import { selectedRoute } from "./routing/selection";
 import { storageEstimate } from "./offline/capabilities";
 import React, { useEffect, useRef, useState } from "react";
@@ -57,7 +64,7 @@ function App() {
   const [pack, setPack] = useState<Installed>(),
     [catalog, setCatalog] = useState<Manifest>(),
     [anchors, setAnchors] = useState<Point[]>([]),
-    [profile, setProfile] = useState<Profile>("gravel"),
+    [profile, setProfile] = useState<ProfileInput>("gravel"),
     [attraction, setAttraction] = useState<Attraction>();
   const [comparison, setComparison] = useState<Comparison>(),
     [partial, setPartial] = useState<RouteResult>(),
@@ -99,7 +106,7 @@ function App() {
     listPacks()
       .then((packs) => {
         const current = packs
-          .filter((p) => p.manifest.costModelVersion === 3)
+          .filter((p) => p.manifest.costModelVersion === COST_MODEL_VERSION)
           .sort((a, b) => b.installedAt.localeCompare(a.installedAt))[0];
         setPack(current);
         if (packs.length && !current)
@@ -112,13 +119,20 @@ function App() {
     readManifest(manifestURL)
       .then(setCatalog)
       .catch(() => {}); // The catalog is optional when routing from an installed pack offline.
-    preference<{ anchors: Point[]; profile: Profile; attraction?: Attraction }>(
-      "plan",
-    )
+    preference<{
+      anchors: Point[];
+      profile: ProfileInput;
+      attraction?: Attraction;
+    }>("plan")
       .then((plan) => {
         if (plan) {
           setAnchors(plan.anchors);
-          setProfile(plan.profile);
+          resolveProfile(plan.profile);
+          setProfile(
+            typeof plan.profile === "string"
+              ? plan.profile
+              : profileSchema.parse(plan.profile),
+          );
           setAttraction(plan.attraction);
         }
         setReady(true);
@@ -277,6 +291,7 @@ function App() {
             </button>
           ))}
         </div>
+        <ProfileEditor value={profile} onChange={setProfile} />
         <div className="waypoints">
           {anchors.length === 0 ? (
             <div className="empty-waypoints">
@@ -419,9 +434,11 @@ function App() {
                   "A waypoint is outside the downloaded region.",
                 "snap-failed":
                   "No connection suitable for this profile within 250 m of a waypoint. Move the waypoint onto a suitable road.",
-                "no-path": "No route found in the available graph.",
+                "no-path": result.failedLeg
+                  ? `No connection from waypoint ${String.fromCharCode(64 + result.failedLeg)} to ${String.fromCharCode(65 + result.failedLeg)} under this profile. Check terrain and access limits, or move the waypoint to a connected road.`
+                  : "No route connects these waypoints under this profile. Check terrain and access limits, or move a waypoint to a connected road.",
                 "budget-exceeded":
-                  "Search budget reached. Try closer waypoints.",
+                  "Search budget reached before a route could be confirmed. Review the profile’s terrain and access limits, or simplify the route.",
               }[result.status]
             }
           </p>
@@ -441,6 +458,15 @@ function App() {
                 <span>metres climbing</span>
               </div>
             </div>
+            {result.ferryM > 0 && (
+              <p>
+                {(result.ferryM / 1000).toFixed(2)} km by ferry · Check service
+                times before departure.
+              </p>
+            )}
+            {result.hikeABikeM > 0 && (
+              <p>{(result.hikeABikeM / 1000).toFixed(2)} km hike-a-bike</p>
+            )}
             {result.ascentM === null && (
               <p className="hint">Elevation is incomplete on this route.</p>
             )}

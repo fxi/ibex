@@ -4,7 +4,12 @@ import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { buildField, distance } from "../src/routing/engine";
-import type { Graph, Point, Profile } from "../src/routing/types";
+import {
+  COST_MODEL_VERSION,
+  type Graph,
+  type Point,
+  type Profile,
+} from "../src/routing/types";
 const directory = "public/packs/test";
 await fs.mkdir(directory, { recursive: true });
 const points: Point[] = [
@@ -39,6 +44,8 @@ for (let i = 1; i < points.length; i++)
       stress: 0.1,
       uncertainty: 0.1,
       utility: 0.7,
+      urban: 0.2,
+      cyclingNetwork: 1,
       bridge: false,
       tunnel: false,
       name: "Synthetic test connection",
@@ -119,7 +126,7 @@ await fs.writeFile(
         .slice(0, 16),
       bbox: graph.bbox,
       osmTimestamp: "synthetic",
-      costModelVersion: 3,
+      costModelVersion: COST_MODEL_VERSION,
       terrainCoverage: 1,
       attribution: "Synthetic test data — not a real cycling network",
       files,

@@ -17,9 +17,10 @@ from pathlib import Path
 import httpx
 from PIL import Image
 from prepare_tracks import BBOX, distance
-from shapely.geometry import LineString, Point, Polygon
-from shapely.ops import polygonize, unary_union
+from shapely.geometry import Point
+from shapely.ops import unary_union
 from shapely.prepared import prep
+from profile_features import tagged_polygons, urban_index, urban_fraction, cycling_memberships, on_cycling_network, ferry_ways
 from terrain_profile import bilinear_height, way_profile, slice_profile
 
 DENIED = {"no", "private", "use_sidepath"}
@@ -28,7 +29,7 @@ PAVED = {"asphalt", "concrete", "concrete:plates", "paving_stones", "paved"}
 
 def permitted(tags):
     access = tags.get("bicycle", tags.get("vehicle", tags.get("access", "yes")))
-    if access in DENIED or access == "dismount":
+    if access in DENIED:
         return False
     if any(
         key in tags
@@ -41,7 +42,6 @@ def permitted(tags):
         "proposed",
         "abandoned",
         "raceway",
-        "steps",
         "elevator",
     }:
         return False
@@ -59,7 +59,9 @@ def permitted(tags):
         "designated",
     }:
         return False
-    return bool(highway)
+    if (highway == "steps" or access == "dismount") and tags.get("foot", tags.get("access", "yes")) in {"no", "private"}:
+        return False
+    return bool(highway) or tags.get("route") == "ferry"
 
 
 def directions(tags):
@@ -113,34 +115,7 @@ def edge_quality(highway, surface, tags, stress):
 
 
 def forest_polygons(elements):
-    """Assemble forest/wood polygons from closed ways and multipolygon relations."""
-    polygons = []
-    for e in elements:
-        tags = e.get("tags", {})
-        if e["type"] != "way" or (tags.get("landuse") != "forest" and tags.get("natural") != "wood"):
-            continue
-        coords = [(p["lon"], p["lat"]) for p in e.get("geometry", []) if "lon" in p]
-        if len(coords) > 3 and coords[0] == coords[-1]:
-            polygons.append(Polygon(coords))
-    for r in elements:
-        tags = r.get("tags", {})
-        if r["type"] != "relation" or (tags.get("landuse") != "forest" and tags.get("natural") != "wood"):
-            continue
-        outer, inner = [], []
-        for member in r.get("members", []):
-            coords = [(p["lon"], p["lat"]) for p in member.get("geometry", []) if "lon" in p]
-            if len(coords) < 2:
-                continue
-            (inner if member.get("role") == "inner" else outer).append(LineString(coords))
-        rings = list(polygonize(outer))
-        holes = list(polygonize(inner))
-        if not rings:
-            continue
-        area = unary_union(rings)
-        if holes:
-            area = area.difference(unary_union(holes))
-        polygons.append(area)
-    return polygons
+    return tagged_polygons(elements, lambda t: t.get("landuse") == "forest" or t.get("natural") == "wood")
 
 
 def interpolate_polyline(coords, t, total_length):
@@ -230,7 +205,20 @@ def terrain_samples(points, cache, enabled):
 
 def build(source, output, terrain=True):
     raw = json.loads(source.read_bytes())
-    elements = raw["elements"]
+    # Overpass output sets may repeat elements; retain the richest geometry.
+    unique = {}
+    for element in raw["elements"]:
+        key = (element["type"], element["id"])
+        if key not in unique or len(json.dumps(element)) > len(json.dumps(unique[key])):
+            unique[key] = element
+    elements = list(unique.values())
+    print(f"Preparing profile features for {len(elements)} OSM elements", flush=True)
+    ferries = ferry_ways(elements, distance)
+    for element in elements:
+        if element["type"] == "way" and element["id"] in ferries:
+            element["tags"] = {**ferries[element["id"]][0], "highway": "ferry"}
+    networks = cycling_memberships(elements)
+    urban = urban_index(elements)
     counts = Counter()
     ways = [
         e
@@ -284,6 +272,7 @@ def build(source, output, terrain=True):
                 continue
             positions[id] = [p["lon"], p["lat"]]
             usage[id] += 1
+    print(f"Sampling terrain for {len(positions)} positions", flush=True)
     elevations = terrain_samples(positions, Path("data/terrain"), terrain)
     restrictions = []
     via_nodes = set()
@@ -361,7 +350,7 @@ def build(source, output, terrain=True):
                 continue
             bridge = tags.get("bridge", "no") != "no"
             tunnel = tags.get("tunnel", "no") != "no"
-            grade_samples = None if bridge or tunnel else slice_profile(profile, profile_start, profile_end)
+            grade_samples = None if bridge or tunnel or tags["highway"] == "ferry" else slice_profile(profile, profile_start, profile_end)
             highway = tags["highway"]
             stress = {
                 "primary": 0.95,
@@ -402,10 +391,11 @@ def build(source, output, terrain=True):
                 "length": round(length, 2),
                 "surface": surface,
                 "highway": highway,
-                "tags": {k: tags[k] for k in ("bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "mtb:scale:downhill", "incline", "width") if k in tags},
+                "tags": {k: tags[k] for k in ("bicycle", "vehicle", "access", "foot", "route", "duration", "interval", "opening_hours", "seasonal", "step_count", "ramp:bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "mtb:scale:downhill", "incline", "width") if k in tags},
                 "stress": stress,
                 "uncertainty": uncertainty,
                 "utility": 0,
+                "urban": urban_fraction(coords, tags, urban),
                 "quality": edge_quality(highway, surface, tags, stress),
                 "forest": edge_forest_fraction(coords, length, forest_geom),
                 "bridge": bridge,
@@ -413,12 +403,23 @@ def build(source, output, terrain=True):
                 "name": tags.get("name", ""),
                 "tile": f"{math.floor(coords[0][0] * 20)}_{math.floor(coords[0][1] * 20)}",
             }
+            if highway == "ferry":
+                _, service, seconds = ferries[way["id"]]
+                base["ferryService"] = service
+                if seconds is not None and offsets[-1] > 0:
+                    base["ferrySeconds"] = round(seconds * length / offsets[-1], 3)
+                base["stress"] = 0
+                base["uncertainty"] = 0.1 if seconds is not None else 0.4
+                counts["ferrySegments"] += 1
+            if highway == "steps":
+                counts["stepsSegments"] += 1
             forward, backward = directions(tags)
             if forward:
                 edges.append(
                     {
                         **base,
                         "id": len(edges),
+                        "cyclingNetwork": on_cycling_network(way, "forward", networks),
                         "from": ids[0],
                         "to": ids[-1],
                         "geometry": coords,
@@ -430,6 +431,7 @@ def build(source, output, terrain=True):
                     {
                         **base,
                         "id": len(edges),
+                        "cyclingNetwork": on_cycling_network(way, "backward", networks),
                         "from": ids[-1],
                         "to": ids[0],
                         "geometry": coords[::-1],
@@ -441,10 +443,11 @@ def build(source, output, terrain=True):
                     }
                 )
             node_ids.update([ids[0], ids[-1]])
+    print(f"Built {len(edges)} directed edges; calculating network utility", flush=True)
     # Reachable low-stress length within 1km, calculated before partitioning.
     adjacency = defaultdict(list)
     for edge in edges:
-        if edge["stress"] < 0.4:
+        if edge["stress"] < 0.4 and edge["highway"] not in {"steps", "ferry"}:
             adjacency[edge["from"]].append(edge)
     utility = {}
     for origin in sorted(node_ids):
@@ -600,6 +603,7 @@ def build(source, output, terrain=True):
             )
         if (
             element["type"] == "way"
+            and (tags.get("natural") in {"wood", "water"} or tags.get("landuse") == "forest" or "waterway" in tags)
             and "highway" not in tags
             and element.get("geometry")
         ):
@@ -654,7 +658,8 @@ def build(source, output, terrain=True):
         "version": version,
         "bbox": BBOX,
         "osmTimestamp": raw.get("osm3s", {}).get("timestamp_osm_base", "unknown"),
-        "costModelVersion": 3,
+        "costModelVersion": 4,
+        "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": 4, "layers": raw.get("sources", [])},
         "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3
@@ -665,6 +670,8 @@ def build(source, output, terrain=True):
             "nodes": len(nodes),
             "edges": len(edges),
             "restrictions": len(restrictions),
+            "cyclingNetworkEdges": sum(e["cyclingNetwork"] > 0 for e in edges),
+            "urbanEdges": sum(e["urban"] > 0 for e in edges),
             **counts,
         },
     }
@@ -674,8 +681,12 @@ def build(source, output, terrain=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default="data/osm.json")
+    parser.add_argument("--input", default="data/osm-profiles-v4.json")
     parser.add_argument("--output", default="data/build/geneva")
     parser.add_argument("--no-terrain", action="store_true")
     args = parser.parse_args()
-    build(Path(args.input), Path(args.output), not args.no_terrain)
+    source = Path(args.input)
+    metadata = source.with_suffix(".source.json")
+    if not metadata.exists() or json.loads(metadata.read_text()).get("extractVersion") != 4:
+        raise ValueError("Fetch a version-4 extract before building the region.")
+    build(source, Path(args.output), not args.no_terrain)

@@ -1,4 +1,15 @@
-import { eligible, isStreet } from "./eligibility";
+import {
+  resolveProfile,
+  type ProfileInput,
+  type ResolvedProfile,
+} from "./profiles";
+import {
+  eligible,
+  isStreet,
+  isPaved,
+  isFerry,
+  traversalSegments,
+} from "./eligibility";
 import type {
   Attraction,
   Components,
@@ -6,7 +17,6 @@ import type {
   Field,
   Graph,
   Point,
-  Profile,
   RouteRequest,
   RouteResult,
 } from "./types";
@@ -21,6 +31,12 @@ export const emptyComponents = (): Components => ({
   attraction: 0,
   reward: 0,
   junction: 0,
+  climbing: 0,
+  offroad: 0,
+  walking: 0,
+  countryside: 0,
+  cycling_network: 0,
+  ferry: 0,
 });
 export function distance(a: Point, b: Point): number {
   const r = Math.PI / 180;
@@ -69,67 +85,10 @@ export class Heap<T> {
   }
 }
 
-// slope is a cost surcharge ratio at an 8% grade (SLOPE_REFERENCE_GRADE):
-// e.g. touring: 1.0 means an 8% climb costs 2x the equivalent flat distance.
-const SLOPE_REFERENCE_GRADE = 0.08;
-const DOWNHILL_FREE_GRADE = 0.07;
-const DOWNHILL_FACTOR = 0.7;
-// Asymmetric MTB-scale cost: uphill-technical is hike-a-bike (near-infeasible, cubic in
-// scale); downhill-technical is a skill/braking game (moderate, sub-quadratic). Both are
-// proposed defaults, tuned only for the "scenic" profile via w.technical.
-const HIKE_A_BIKE_BASE = 3.0;
-const SKILL_BASE = 0.6;
-// Reward-potential discount cap and junction flat cost — proposed defaults, tune later.
-const REWARD_CAP = 0.6;
-const JUNCTION_FLAT_COST = 30;
-const profiles = {
-  gravel: {
-    stress: 2.4,
-    slope: 0.65,
-    surface: 0.35,
-    uncertainty: 0.5,
-    network: 0.7,
-    technical: 0,
-    reward: 0,
-    junction: 0,
-  },
-  road: {
-    stress: 1.8,
-    slope: 0.5,
-    surface: 3.0,
-    uncertainty: 0.8,
-    network: 0.5,
-    technical: 0,
-    reward: 0,
-    junction: 0,
-  },
-  touring: {
-    stress: 2.8,
-    slope: 1.0,
-    surface: 1.2,
-    uncertainty: 1.2,
-    network: 0.8,
-    technical: 0,
-    reward: 0,
-    junction: 0,
-  },
-  // Optimizes for "worth it", not shortest/safest: tolerates traffic and technical MTB
-  // terrain when a reward (viewpoint, forest, golden gravel) is reachable soon after.
-  scenic: {
-    stress: 1.6,
-    slope: 0.5,
-    surface: 0.5,
-    uncertainty: 0.6,
-    network: 0.5,
-    technical: 1.0,
-    reward: 1.0,
-    junction: 1.0,
-  },
-};
 function technicalFactor(
   edge: Edge,
   grade: number,
-  w: (typeof profiles)[Profile],
+  w: ResolvedProfile["costs"],
 ): number {
   const tags = edge.tags;
   if (!tags || !w.technical) return 0;
@@ -140,15 +99,16 @@ function technicalFactor(
   );
   if (!(scale > 0)) return 0;
   return grade > 0
-    ? w.technical * HIKE_A_BIKE_BASE * scale ** 3
-    : w.technical * SKILL_BASE * scale ** 1.5;
+    ? w.technical * w.technical_up * scale ** 3
+    : w.technical * w.technical_down * scale ** 1.5;
 }
 export function scoreEdge(
   edge: Edge,
-  profile: Profile,
+  profile: ProfileInput,
   attraction?: Attraction,
 ): Components {
-  const w = profiles[profile],
+  const p = resolveProfile(profile),
+    w = p.costs,
     l = edge.length;
   const rough =
     (
@@ -169,38 +129,105 @@ export function scoreEdge(
         cobblestone: 0.6,
       } as Record<string, number>
     )[edge.surface] ?? (isStreet(edge) ? 0.15 : 0.8);
-  const slope =
-    edge.grades?.reduce((sum, [meters, grade]) => {
-      const technical = technicalFactor(edge, grade, w);
-      // A technical descent isn't automatically "free" the way an easy fast
-      // descent is: skip the blanket downhill discount when technical, and add
-      // the surcharge on top instead of double-discounting it.
-      const factor = grade > 0 ? 1 : technical > 0 ? 1 : DOWNHILL_FACTOR;
-      const excess =
-        grade > 0 ? grade : Math.max(0, -grade - DOWNHILL_FREE_GRADE);
-      return (
-        sum +
-        meters * (excess / SLOPE_REFERENCE_GRADE) ** 4 * w.slope * factor +
-        meters * technical
-      );
-    }, 0) ?? l * w.slope * (isStreet(edge) ? 0.5 : 4);
+  if (isFerry(edge)) {
+    const c = emptyComponents();
+    c.distance = l;
+    c.ferry =
+      edge.ferrySeconds === undefined
+        ? l * w.ferry_factor
+        : edge.ferrySeconds * w.ferry_second_meters;
+    c.uncertainty = l * edge.uncertainty * w.uncertainty;
+    return c;
+  }
+  const segments = traversalSegments(edge, p);
+  const segmentSlopes = segments.map(({ length: meters, grade, mode }) => {
+    if (mode === "walk") return 0;
+    if (grade === null) return meters * w.slope * (isStreet(edge) ? 0.5 : 4);
+    const technical = technicalFactor(edge, grade, w);
+    const factor = grade > 0 || technical > 0 ? 1 : w.downhill_factor;
+    const excess =
+      grade > 0 ? grade : Math.max(0, -grade - w.downhill_free_grade);
+    return (
+      meters * (excess / w.slope_reference_grade) ** 4 * w.slope * factor +
+      meters * technical
+    );
+  });
+  const slope = segmentSlopes.reduce((sum, cost) => sum + cost, 0);
   const c: Components = {
     distance: l,
-    stress: l * edge.stress * w.stress,
+    stress: ((l * edge.stress * p.attraction.quiet) / 100) * w.quiet_factor,
     slope,
     surface: l * rough * w.surface,
     uncertainty: l * edge.uncertainty * w.uncertainty,
-    network: l * (1 - edge.utility) * w.network,
+    network: l * (1 - edge.utility) * w.graph_utility,
     attraction: 0,
     reward: 0,
-    junction: (edge.junction ?? 0) * w.junction * JUNCTION_FLAT_COST,
+    climbing: 0,
+    offroad: 0,
+    walking: 0,
+    countryside:
+      ((l * (edge.urban ?? 0) * p.attraction.countryside) / 100) *
+      w.countryside_factor,
+    cycling_network:
+      ((l * (1 - (edge.cyclingNetwork ?? 0)) * p.attraction.cycling_network) /
+        100) *
+      w.cycling_network_factor,
+    ferry: 0,
+    junction: (edge.junction ?? 0) * w.junction * w.junction_meters,
   };
   // Discounts only the hardship components, never distance/network/uncertainty: a
   // detour still costs distance, only its difficulty becomes cheap when something
   // rewarding (viewpoint, forest, golden gravel) is reachable soon after.
   c.reward =
-    -(c.stress + c.slope + c.surface) *
-    Math.min(REWARD_CAP, (edge.reward ?? 0) * w.reward);
+    (-(c.stress + c.slope + c.surface) *
+      Math.min(w.scenic_discount, Math.max(0, edge.reward ?? 0)) *
+      p.attraction.scenic) /
+    100;
+  // Price each grade segment independently so waypoint splitting preserves cost.
+  // Walking effort and junction events do not receive riding discounts.
+  const segmentLength = segments.reduce((sum, s) => sum + s.length, 0);
+  const scenicFactor =
+    (Math.min(w.scenic_discount, Math.max(0, edge.reward ?? 0)) *
+      p.attraction.scenic) /
+    100;
+  for (const [index, segment] of segments.entries()) {
+    if (segment.mode === "walk") {
+      c.walking +=
+        segment.length *
+        (edge.highway === "steps" ? w.steps_factor : w.walking_factor);
+      continue;
+    }
+    if (segment.mode !== "ride") continue;
+    const fraction = segment.length / segmentLength;
+    const hardship = fraction * (c.stress + c.surface) + segmentSlopes[index];
+    const base =
+      fraction *
+        (c.distance +
+          c.stress +
+          c.surface +
+          c.uncertainty +
+          c.network +
+          c.countryside +
+          c.cycling_network) +
+      segmentSlopes[index] -
+      hardship * scenicFactor;
+    const grade = segment.grade;
+    const climb =
+      grade !== null && grade > 0
+        ? ((-base * w.climbing_discount * p.attraction.climbing) / 100) *
+          Math.min(1, grade / w.slope_reference_grade)
+        : 0;
+    c.climbing += climb;
+    if (!isPaved(edge) && edge.surface !== "unknown") {
+      const preference =
+        grade === null || grade === 0
+          ? (p.attraction.offroad_up + p.attraction.offroad_down) / 2
+          : grade > 0
+            ? p.attraction.offroad_up
+            : p.attraction.offroad_down;
+      c.offroad -= ((base + climb) * w.offroad_discount * preference) / 100;
+    }
+  }
   if (attraction) {
     const mid = edge.geometry[Math.floor(edge.geometry.length / 2)];
     const influence = Math.max(
@@ -350,6 +377,9 @@ export function snapAnchors(
           length: edge.length * ratio,
           geometry: [...geom.slice(0, index), best.point],
           grades: splitGrades(0, edge.length * ratio),
+          ...(edge.ferrySeconds === undefined
+            ? {}
+            : { ferrySeconds: edge.ferrySeconds * ratio }),
         },
         {
           ...edge,
@@ -358,6 +388,9 @@ export function snapAnchors(
           length: edge.length * (1 - ratio),
           geometry: [best.point, ...geom.slice(index)],
           grades: splitGrades(edge.length * ratio, edge.length),
+          ...(edge.ferrySeconds === undefined
+            ? {}
+            : { ferrySeconds: edge.ferrySeconds * (1 - ratio) }),
         },
       );
     }
@@ -365,7 +398,38 @@ export function snapAnchors(
   return { graph: { ...graph, nodes, edges }, nodes: snapped, points };
 }
 
+function validateProfileData(graph: Graph, profile: ResolvedProfile) {
+  if (
+    (profile.attraction.countryside > 0 ||
+      profile.attraction.cycling_network > 0 ||
+      profile.access.steps ||
+      profile.access.ferry) &&
+    graph.edges.some(
+      (e) => e.urban === undefined || e.cyclingNetwork === undefined,
+    )
+  )
+    throw new Error(
+      "This profile needs updated region data. Save the updated region.",
+    );
+}
+export function ferryBoardingCost(
+  edge: Edge,
+  previous: Edge | undefined,
+  profile: ProfileInput,
+): number {
+  if (
+    !isFerry(edge) ||
+    (previous &&
+      isFerry(previous) &&
+      (edge.ferryService ?? edge.way) ===
+        (previous.ferryService ?? previous.way))
+  )
+    return 0;
+  return resolveProfile(profile).costs.ferry_boarding_meters;
+}
 export function buildField(graph: Graph, request: RouteRequest): Field {
+  request = { ...request, profile: resolveProfile(request.profile) };
+  validateProfileData(graph, resolveProfile(request.profile));
   const [w, s, e, n] = graph.bbox,
     cellM = 700,
     width = Math.ceil(distance([w, s], [e, s]) / cellM),
@@ -542,6 +606,8 @@ export function route(
   providedField?: Field,
   fixedRadius?: number,
 ): RouteResult {
+  request = { ...request, profile: resolveProfile(request.profile) };
+  validateProfileData(graph, resolveProfile(request.profile));
   const startTime = performance.now();
   const result: RouteResult = {
     status: "no-path",
@@ -551,6 +617,8 @@ export function route(
     cost: 0,
     components: emptyComponents(),
     distanceM: 0,
+    hikeABikeM: 0,
+    ferryM: 0,
     ascentM: null,
     descentM: null,
     elevationProfile: [],
@@ -593,16 +661,59 @@ export function route(
     list.push(edge);
     adjacency.set(edge.from, list);
   }
+  const reverse = new Map<number, number[]>();
+  for (const edge of graph.edges) {
+    const origins = reverse.get(edge.to) ?? [];
+    origins.push(edge.from);
+    reverse.set(edge.to, origins);
+  }
+  const reachability = new Map<number, Set<number>>();
+  const canReach = snap.nodes.map((target, leg) => {
+    if (leg === 0) return new Set<number>();
+    const cached = reachability.get(target);
+    if (cached) return cached;
+    const seen = new Set([target]),
+      queue = [target];
+    for (let i = 0; i < queue.length; i++) {
+      for (const origin of reverse.get(queue[i]) ?? []) {
+        if (seen.has(origin)) continue;
+        seen.add(origin);
+        queue.push(origin);
+      }
+    }
+    reachability.set(target, seen);
+    return seen;
+  });
+  for (let leg = 1; leg < snap.nodes.length; leg++) {
+    if (!canReach[leg].has(snap.nodes[leg - 1])) {
+      result.failedLeg = leg;
+      return finish();
+    }
+  }
   const f =
     mode === "corridor"
       ? (providedField ??
         buildField(graph, { ...request, anchors: snap.points }))
       : undefined;
   if (f) result.corridor = f.paths.map((p) => p.map((id) => center(f, id)));
-  const historyLength = Math.max(
-    1,
-    ...graph.restrictions.map((r) => r.ways.length - 1),
-  );
+  // Only restriction prefixes affect future legality. Remembering arbitrary
+  // previous roads multiplies equivalent search states across the entire region.
+  const restrictionPrefixes = new Set<string>();
+  let historyLength = 1;
+  for (const rule of graph.restrictions) {
+    for (let length = 1; length < rule.ways.length; length++)
+      restrictionPrefixes.add(JSON.stringify(rule.ways.slice(0, length)));
+    historyLength = Math.max(historyLength, rule.ways.length - 1);
+  }
+  const nextHistory = (previous: string[], way: string): string[] => {
+    if (previous.at(-1) === way) return previous;
+    const candidate = [...previous, way].slice(-historyLength);
+    for (let start = 0; start < candidate.length - 1; start++) {
+      const suffix = candidate.slice(start);
+      if (restrictionPrefixes.has(JSON.stringify(suffix))) return suffix;
+    }
+    return [way];
+  };
   const tiles = new Set<string>();
   const rulesByWay = new Map<string, Graph["restrictions"]>();
   for (const rule of graph.restrictions) {
@@ -651,6 +762,7 @@ export function route(
         break;
       }
       for (const edge of adjacency.get(state.node) || []) {
+        if (!canReach[leg].has(edge.to)) continue;
         if (
           allowed &&
           f &&
@@ -668,10 +780,7 @@ export function route(
         )
           continue;
         tiles.add(edge.tile);
-        const history =
-          state.history.at(-1) === edge.way
-            ? state.history
-            : [...state.history, edge.way].slice(-historyLength);
+        const history = nextHistory(state.history, edge.way);
         const next: SearchState = {
           node: edge.to,
           history,
@@ -682,7 +791,8 @@ export function route(
         const nextKey = keyOf(next),
           newCost =
             item.key +
-            total(scoreEdge(edge, request.profile, request.attraction));
+            total(scoreEdge(edge, request.profile, request.attraction)) +
+            ferryBoardingCost(edge, state.edge, request.profile);
         if (newCost < (cost.get(nextKey) ?? Infinity)) {
           cost.set(nextKey, newCost);
           states.set(nextKey, next);
@@ -702,6 +812,7 @@ export function route(
         descent = 0,
         completeElevation = true;
       const elevations = new Map(graph.nodes.map((n) => [n.id, n.elevation]));
+      let previousEdge: Edge | undefined;
       for (const edge of edges) {
         let height = elevations.get(edge.from) ?? null;
         let meters = result.distanceM;
@@ -718,12 +829,19 @@ export function route(
           ...(result.geometry.length ? edge.geometry.slice(1) : edge.geometry),
         );
         result.distanceM += edge.length;
+        if (isFerry(edge)) result.ferryM += edge.length;
+        result.hikeABikeM += traversalSegments(edge, request.profile)
+          .filter((s) => s.mode === "walk")
+          .reduce((sum, s) => sum + s.length, 0);
         const c = scoreEdge(edge, request.profile, request.attraction);
+        c.ferry += ferryBoardingCost(edge, previousEdge, request.profile);
+        previousEdge = edge;
         for (const k of Object.keys(c) as (keyof Components)[])
           result.components[k] += c[k];
         result.surfaceM[edge.surface] =
           (result.surfaceM[edge.surface] ?? 0) + edge.length;
         if (edge.uncertainty > 0.5) result.uncertainM += edge.length;
+        if (isFerry(edge)) continue;
         if (!edge.grades) completeElevation = false;
         else
           for (const [length, grade] of edge.grades) {

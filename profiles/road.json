@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Road",
+  "bike": "road",
+  "attraction": {
+    "quiet": 45
+  },
+  "capabilities": {
+    "paved_only": true,
+    "max_smoothness": 2
+  },
+  "costs": {
+    "slope": 0.5,
+    "surface": 3,
+    "uncertainty": 0.8,
+    "graph_utility": 0.5
+  }
+}

@@ -1,3 +1,4 @@
+import { COST_MODEL_VERSION } from "../routing/types";
 import { storageEstimate, sha256Hex } from "./capabilities";
 import { openDB } from "idb";
 import { z } from "zod";
@@ -13,7 +14,7 @@ export const manifestSchema = z.object({
   version: z.string().regex(/^[a-zA-Z0-9-]+$/),
   bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
   osmTimestamp: z.string(),
-  costModelVersion: z.literal(3),
+  costModelVersion: z.literal(COST_MODEL_VERSION),
   terrainCoverage: z.number().min(0).max(1),
   attribution: z.string(),
   files: z.array(fileSchema).min(2).max(1000),
@@ -41,7 +42,7 @@ export async function readManifest(url: string): Promise<Manifest> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Pack catalog unavailable (${r.status})`);
   const value = await r.json();
-  if (value.costModelVersion !== 3)
+  if (value.costModelVersion !== COST_MODEL_VERSION)
     throw new Error(
       "This region uses outdated routing data. Install the updated region.",
     );

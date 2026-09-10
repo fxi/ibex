@@ -4,7 +4,11 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { buildField } from "../src/routing/engine";
-import type { Graph, Profile } from "../src/routing/types";
+import {
+  COST_MODEL_VERSION,
+  type Graph,
+  type Profile,
+} from "../src/routing/types";
 const input = process.argv[2] ?? "data/build/geneva";
 const directory = process.argv[3] ?? "public/packs/geneva";
 await fs.mkdir(directory, { recursive: true });
@@ -14,6 +18,10 @@ const graph: Graph = JSON.parse(
 const manifest = JSON.parse(
   await fs.readFile(`${input}/manifest.json`, "utf8"),
 );
+if (manifest.costModelVersion !== COST_MODEL_VERSION)
+  throw new Error(
+    "Rebuild the region with the current cost model before packaging.",
+  );
 const previousFiles = await fs
   .readFile(`${directory}/manifest.json`, "utf8")
   .then((s) => JSON.parse(s).files as { path: string }[])
@@ -111,13 +119,11 @@ manifest.version = createHash("sha256")
   .digest("hex")
   .slice(0, 16);
 manifest.source = {
+  ...manifest.source,
   waterSha256: createHash("sha256")
     .update(await fs.readFile("data/osm-water.json"))
     .digest("hex"),
-  osmSha256: createHash("sha256")
-    .update(await fs.readFile("data/osm.json"))
-    .digest("hex"),
-  preprocessorVersion: 2,
+  preprocessorVersion: 4,
 };
 await fs.writeFile(
   `${directory}/manifest.json`,

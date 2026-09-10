@@ -56,3 +56,54 @@ The current utility ablation did not change the selected Salève path. Removing 
 The complete private audit prepared 793 portions. Of these, 76 passed spatial checks and 29 passed the stricter sequence checks. Grouped splitting left only one quantitatively eligible evaluation portion versus 28 calibration portions. This is insufficient for reliable personalized cost fitting, so personalization remains disabled. Original tracks and detailed reports stay under ignored `data/` and were not published with the OSM pack.
 
 The public data pack is published. The application itself has not been deployed to GitHub Pages; the repository has no remote configured.
+
+## Profile options and rebuilt region — 2026-09-08
+
+Model-4 pack `00382387d4db73d1` is active at
+`public/packs/geneva/manifest.json`: 67,641,669 bytes across 150 verified files,
+including 147 graph chunks. The graph has 189,083 nodes, 413,252 directed edges,
+27,145 directed cycling-network edges, 3,731 stair segments, and 36 ferry segments.
+Terrain coverage remains 98.6%.
+
+The feature server supplied a 2026-05-06 snapshot. The rebuild preserves the newer
+2026-07-15 base roads, adds only the missing profile layers, and records both hashes
+and dates in `source.layers`. The manifest reports the oldest contributing date.
+The previous raw graph and pack are retained under ignored `data/pack-backups/`.
+
+Validation: 53 TypeScript unit tests, 14 Python preprocessing tests, type checking,
+ESLint, and four Chromium/mobile-WebKit browser checks passed. The browser checks
+save/import/export profiles with all options enabled and route after an offline
+reload using a model-4 fixture. The real pack audit separately verifies every hash
+and exercises five routes:
+
+| Real route | Result |
+| --- | --- |
+| Along the Arve, default Gravel | 10.297 km |
+| Same endpoints, countryside 100 | 10.797 km, different connection |
+| Same endpoints, cycling network 100 | 10.190 km, different connection |
+| Mapped stairs, steps and hike-a-bike enabled | 15.28 m reported as hike-a-bike |
+| Nyon–Yvoire, ferry enabled | 6.231 km reported as ferry travel |
+
+Reproduce with `node --import tsx scripts/audit_profile_options.ts`. The detailed
+report is at ignored `data/derived/profile-options-audit.json`. Ferry timetables are
+not evaluated; explicitly bicycle-prohibited ferries remain excluded.
+
+## Nearby waypoint search-budget regression — 2026-09-08
+
+Reproduced the reported Thônex → Saint-Cergues → Signal des Voirons failure using
+approximate screenshot anchors `[6.2,46.192]`, `[6.313,46.237]`, and
+`[6.3549317,46.2298694]`. With Gravel, the final snap is disconnected in the
+profile-filtered directed graph. Before the fix it exhausted 1,500,001 states in
+20.1 seconds. Directed connectivity checks now report the disconnected B → C leg
+with zero cost-search states, in about 1.7 seconds.
+
+Search history now retains only suffixes needed by actual turn restrictions,
+preventing unrelated restrictions from multiplying equivalent path states. The
+same approximate three-waypoint route succeeds with Scenic: 27.255 km, 330,981
+states, about 6.2 seconds. Tests preserve restriction semantics and cover both
+an unreachable later waypoint and a reachable graph with many redundant loops.
+
+Validation: 55 unit tests, type checking, ESLint, and production build passed.
+Reproduce with `node --import tsx scripts/audit_search_budget.ts gravel` or
+`node --import tsx scripts/audit_search_budget.ts scenic`. No pack rebuild is
+needed for this routing-only fix.

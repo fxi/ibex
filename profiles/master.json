@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "name": "Master",
+  "bike": "gravel",
+  "attraction": {
+    "quiet": 60,
+    "countryside": 0,
+    "scenic": 0,
+    "climbing": 0,
+    "cycling_network": 0,
+    "offroad_up": 0,
+    "offroad_down": 0
+  },
+  "capabilities": {
+    "max_grade_up": null,
+    "max_grade_down": null,
+    "max_mtb_scale_up": 0,
+    "max_mtb_scale_down": 0,
+    "max_hike_sac_up": 1,
+    "max_hike_sac_down": 1,
+    "paved_only": false,
+    "allow_unknown_paths": false,
+    "allow_rough_surfaces": false,
+    "max_track_grade": 3,
+    "max_smoothness": 3
+  },
+  "access": {
+    "hike_a_bike": false,
+    "steps": false,
+    "ferry": false
+  },
+  "costs": {
+    "slope": 0.65,
+    "surface": 0.35,
+    "uncertainty": 0.5,
+    "graph_utility": 0.7,
+    "technical": 0,
+    "junction": 0,
+    "quiet_factor": 4,
+    "slope_reference_grade": 0.08,
+    "downhill_free_grade": 0.07,
+    "downhill_factor": 0.7,
+    "technical_up": 3,
+    "technical_down": 0.6,
+    "scenic_discount": 0.6,
+    "climbing_discount": 0.95,
+    "offroad_discount": 0.8,
+    "junction_meters": 30,
+    "walking_factor": 5,
+    "countryside_factor": 4,
+    "cycling_network_factor": 3,
+    "steps_factor": 8,
+    "ferry_factor": 1,
+    "ferry_second_meters": 4,
+    "ferry_boarding_meters": 1000
+  }
+}

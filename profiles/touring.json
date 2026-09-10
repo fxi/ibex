@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "Touring",
+  "bike": "touring",
+  "attraction": {
+    "quiet": 70
+  },
+  "costs": {
+    "slope": 1,
+    "surface": 1.2,
+    "uncertainty": 1.2,
+    "graph_utility": 0.8
+  }
+}

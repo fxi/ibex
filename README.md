@@ -4,7 +4,7 @@ A mobile-first cycling route laboratory for the Geneva basin. A semantic field s
 
 ## Run locally
 
-Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva/manifest.json`, the locally rebuilt Geneva pack. Generate it with the commands below, or set `VITE_REGION_MANIFEST` to a compatible cost-model-2 pack. The old published model-1 pack is intentionally rejected.
+Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva/manifest.json`, the locally rebuilt Geneva pack. Generate it with the commands below, or set `VITE_REGION_MANIFEST` to a compatible cost-model-4 pack. Older model-1/2/3 packs are intentionally rejected.
 
 ```sh
 npm ci
@@ -18,7 +18,7 @@ To rebuild the data locally, also install `uv` and `tippecanoe`:
 ```sh
 uv sync --locked
 uv run scripts/fetch_osm.py --endpoint https://overpass.kumi.systems/api/interpreter
-uv run scripts/build_region.py
+uv run scripts/build_region.py --input data/osm-profiles-v4.json
 uv run scripts/fetch_attribution.py
 uv run scripts/fetch_water.py
 node --import tsx scripts/package_region.ts
@@ -48,7 +48,7 @@ node --import tsx scripts/benchmark.ts
 
 Use `--limit 0` to audit every prepared portion. Matching reports distinguish spatial confidence from restriction-aware sequence validity. Repeated/overlapping portions and portions of the same activity share a calibration/evaluation group. `Ride` is unspecified cycling; it is not automatically a road-bike label. Personalization is disabled in this baseline.
 
-The cached OSM response, its hash and timestamp make the build reproducible. Delete the cached OSM file explicitly to request a new snapshot. Terrain tiles and upstream attribution are cached under `data/terrain`. Graph tiles retain stable OSM node IDs; nearby geometry is never treated as connectivity.
+The cached OSM response, its hash and timestamp make the build reproducible. Use a new output path to request another snapshot; the fetcher rejects caches created by older queries. If the upstream data is older than a cached base, run `uv run scripts/merge_osm_profiles.py` and build from `data/osm-profiles-v4-merged.json` to retain newer roads. Terrain tiles and upstream attribution are cached under `data/terrain`. Graph tiles retain stable OSM node IDs; nearby geometry is never treated as connectivity.
 
 ## Pack format and storage
 
@@ -56,7 +56,7 @@ The cached OSM response, its hash and timestamp make the build reproducible. Del
 
 Downloads are staged and verified before the installed record changes. Interrupted downloads resume at completed file boundaries. Cancel removes the current staging data. OPFS is preferred; IndexedDB is the capability fallback. Browser persistence is requested but can be denied. Removing browser site data removes installed packs. Storage is namespaced but shares the `fxi.io` origin quota with other applications.
 
-Graph chunks are decoded in a worker with a 32 MB per-chunk allocation cap. Corridor searches read intersecting chunks and progressively expand; the full-graph comparison intentionally reads the entire region. A new request terminates the old worker, and generation IDs prevent stale output. The reference can therefore use considerably more memory than the corridor search.
+Graph chunks are decoded in a worker with a 32 MB per-chunk allocation cap. The worker loads the graph once to build a field for the selected profile, then reuses it for corridor expansion and the full-graph comparison. A new request terminates the old worker, and generation IDs prevent stale output. Both searches use the loaded regional graph.
 
 ## Publish
 
@@ -93,7 +93,7 @@ Road accepts paved surfaces and ordinary streets/cycleways with unspecified surf
 
 Eligibility applies before waypoint snapping and search. A waypoint with no suitable connection within 250 m produces an explicit failure rather than routing over an unsuitable path. The original Geneva → Voirons example ends on an off-road path: it works for Gravel; Road requires a road-access endpoint, such as [6.3642228, 46.231931] on Route des Voirons.
 
-The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 2, highway classification, retained rideability tags, and rebuilt profile fields. Previously installed model-1 packs prompt for an update; save the new region after refreshing the app.
+The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs prompt for an update; save the new region after refreshing the app.
 
 Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
 
@@ -101,7 +101,7 @@ Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writ
 
 - Synthetic and desktop browser checks cannot certify physical iPhone memory, battery or storage retention. Real-device acceptance remains a manual step.
 - The scalar field is a coarse prior, not an exact directional/topological model. Valid routes may cost more than the full-graph baseline; the UI reports the measured difference.
-- Bicycle pushing, stairs, ferries and conditional/time-dependent access are excluded. Ambiguous conditional restriction from-ways are excluded conservatively. `no-path` means no path in this model, not proof that cycling is impossible.
+- Profiles can enable bicycle pushing, stairs, and ferries. Ferry timetables and conditional/time-dependent access are not evaluated. Ambiguous conditional restriction from-ways are excluded conservatively. `no-path` means no path in this model, not proof that cycling is impossible.
 - Terrain is sampled at Mapterhorn zoom 12 with bilinear height interpolation and 80 m windows along complete OSM ways before splitting topology edges. Bridge/tunnel terrain is not treated as road elevation. Missing elevation remains unknown and incurs a conservative slope surcharge; GPX exports geometry without invented heights.
 - Network utility is a bounded 1 km low-stress reach metric, not a learned preference. Surface, stress and uncertainty coefficients are experimental.
 
@@ -110,3 +110,8 @@ OSM-derived regional databases are distributed under [ODbL 1.0](https://opendata
 Public pack CORS can be refreshed with `uv run scripts/publish_region.py --configure-cors`. The dedicated public-data bucket allows GET/HEAD from any origin, including LAN development addresses; credentials remain server-side.
 
 Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
+
+Custom routing profiles use versioned JSON with master and bike defaults. Open
+**Custom profile** in the app to edit, save locally, or import/export a profile.
+See [the profile guide](profiles/README.md) and
+[Mountain wanderer](profiles/mountain-wanderer.json) for fields and current data limitations.

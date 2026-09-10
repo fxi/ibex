@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "synthetic",
   "name": "Synthetic CI fixture",
-  "version": "a1af8e2295cf703c",
+  "version": "acd3c2f1ced9b242",
   "bbox": [
     5.8,
     45.95,
@@ -10,14 +10,14 @@
     46.45
   ],
   "osmTimestamp": "synthetic",
-  "costModelVersion": 3,
+  "costModelVersion": 4,
   "terrainCoverage": 1,
   "attribution": "Synthetic test data — not a real cycling network",
   "files": [
     {
       "path": "graph-test.bin",
-      "bytes": 441,
-      "sha256": "b03aba3000c788c525bbed066847381ed0fd0047d054fad10c8c5528bcdb424f"
+      "bytes": 462,
+      "sha256": "e25384940ae4350b6191b93d494b6353ea2616cd0c925824e1e80d15ebbd8a1f"
     },
     {
       "path": "index.bin",

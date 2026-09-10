@@ -556,3 +556,61 @@ it("preserves directional grades when splitting a genuine reverse pair twice", (
     ).toBeCloseTo(sign * length * 0.15);
   }
 });
+
+it("reports a disconnected later waypoint before spending the search budget", () => {
+  const points: Point[] = [
+    [6.1, 46.1],
+    [6.11, 46.1],
+    [6.12, 46.1],
+    [6.13, 46.1],
+  ];
+  const g = fixture(points, [
+    [0, 1],
+    [1, 0],
+    [2, 3],
+  ]);
+  const r = route(
+    g,
+    { anchors: points.slice(0, 3), profile: "gravel", maxSettled: 1 },
+    "reference",
+  );
+  expect(r.status).toBe("no-path");
+  expect(r.failedLeg).toBe(2);
+  expect(r.metrics.explored).toBe(0);
+});
+
+it("does not multiply loop states because of an unrelated long restriction", () => {
+  const points: Point[] = Array.from({ length: 10 }, (_, i) => [
+    6.1 + i * 0.001,
+    46.1,
+  ]);
+  const links: [number, number, string?, Partial<Edge>?][] = [];
+  for (let i = 1; i <= 8; i++) {
+    links.push(
+      [0, i, `out${i}`, { length: 1 }],
+      [i, 0, `back${i}`, { length: 1 }],
+    );
+  }
+  links.push([0, 9, "destination", { length: 100 }]);
+  const g = fixture(points, links);
+  g.restrictions = [
+    {
+      ways: [
+        "elsewhere1",
+        "elsewhere2",
+        "elsewhere3",
+        "elsewhere4",
+        "elsewhere5",
+      ],
+      only: false,
+    },
+  ];
+  const r = route(
+    g,
+    { anchors: [points[0], points[9]], profile: "gravel", maxSettled: 40 },
+    "reference",
+  );
+  expect(r.status).toBe("ok");
+  expect(r.edgeIds).toEqual([16]);
+  expect(r.metrics.explored).toBeLessThan(40);
+});

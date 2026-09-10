@@ -35,13 +35,11 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
   const previousTimeOrigin = await page.evaluate(() => performance.timeOrigin);
   if (browserName === "webkit") {
-    test
-      .info()
-      .annotations.push({
-        type: "offline-method",
-        description:
-          "Real server outage plus HTTP interception; setOffline breaks standalone blob workers in this WebKit build.",
-      });
+    test.info().annotations.push({
+      type: "offline-method",
+      description:
+        "Real server outage plus HTTP interception; setOffline breaks standalone blob workers in this WebKit build.",
+    });
     await request.post("http://127.0.0.1:4173/__test/network", {
       data: { offline: true },
     });
@@ -59,6 +57,26 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(
     page.getByText("Region saved offline", { exact: true }),
   ).toBeVisible();
+  await page.locator(".profile-editor summary").click();
+  await page.getByLabel("Profile JSON", { exact: true }).fill(
+    JSON.stringify({
+      version: 1,
+      name: "Offline explorer",
+      bike: "gravel",
+      attraction: {
+        quiet: 80,
+        climbing: 50,
+        countryside: 90,
+        cycling_network: 80,
+      },
+      access: { hike_a_bike: true, steps: true, ferry: true },
+    }),
+  );
+  await page.getByRole("button", { name: "Save and use" }).click();
+  await expect(
+    page.getByText("Saved Offline explorer.", { exact: true }),
+  ).toBeVisible();
+  await page.locator(".profile-editor summary").click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await page.waitForFunction(
     () =>

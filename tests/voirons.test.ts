@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import { route, snapAnchors } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
 import type { Graph, Point } from "../src/routing/types";
+import type { UserProfile } from "../src/routing/profiles";
 const graph: Graph = JSON.parse(
   gunzipSync(
     readFileSync(new URL("./fixtures/voirons-graph.json.gz", import.meta.url)),
@@ -13,13 +14,24 @@ const anchors: Point[] = [
   [6.3512921, 46.2272083],
   [6.3530403, 46.2270601],
 ];
-it("takes the real Sauget track-and-road detour instead of the technical switchbacks", () => {
-  const result = route(graph, { profile: "gravel", anchors }, "reference");
+it("takes the real Sauget detour when the rider permits its mapped uphill difficulty", () => {
+  // The old eligibility check ignored mtb:scale:uphill=1 on this connector.
+  // Directional limits now require that capability explicitly.
+  expect(route(graph, { profile: "gravel", anchors }, "reference").status).toBe(
+    "no-path",
+  );
+  const profile: UserProfile = {
+    version: 1,
+    name: "Sauget gravel",
+    bike: "gravel",
+    capabilities: { max_mtb_scale_up: 1 },
+  };
+  const result = route(graph, { profile, anchors }, "reference");
   expect(result.status).toBe("ok");
   expect(result.distanceM).toBeGreaterThan(4000);
   expect(result.distanceM).toBeLessThan(6000);
   const snapped = snapAnchors(
-    { ...graph, edges: graph.edges.filter((e) => eligible(e, "gravel")) },
+    { ...graph, edges: graph.edges.filter((e) => eligible(e, profile)) },
     anchors,
   )!;
   const byId = new Map(snapped.graph.edges.map((e) => [e.id, e]));

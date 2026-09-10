@@ -1,14 +1,8 @@
 /// <reference lib="webworker" />
+import { COST_MODEL_VERSION } from "../routing/types";
+import { resolveProfile } from "../routing/profiles";
 import { readJSON, type Installed } from "../offline/store";
-import {
-  cell,
-  center,
-  corridorCells,
-  distance,
-  fieldPath,
-  pointInBounds,
-  route,
-} from "../routing/engine";
+import { buildField, pointInBounds, route } from "../routing/engine";
 import type {
   Field,
   FieldView,
@@ -25,35 +19,6 @@ type Index = {
   chunks: { path: string; bbox: Graph["bbox"] }[];
   fields: Record<Profile, Field>;
 };
-function fieldFor(index: Index, request: RouteRequest) {
-  const source = index.fields[request.profile],
-    field = { ...source, costs: [...source.costs], paths: [] as number[][] };
-  if (request.attraction) {
-    const a = request.attraction;
-    field.costs = field.costs.map(
-      (c, i) =>
-        c *
-        (1 -
-          Math.min(0.65, Math.max(0, a.strength)) *
-            Math.max(
-              0,
-              1 - distance(center(field, i), a.point) / Math.max(1, a.radiusM),
-            )),
-    );
-  }
-  for (let i = 1; i < request.anchors.length; i++)
-    field.paths.push(
-      fieldPath(
-        field,
-        cell(field, request.anchors[i - 1]),
-        cell(field, request.anchors[i]),
-      ),
-    );
-  return field;
-}
-function intersects(a: Graph["bbox"], b: Graph["bbox"]) {
-  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
-}
 async function loadGraph(
   pack: Installed,
   index: Index,
@@ -95,9 +60,21 @@ async function loadGraph(
         typeof edge.highway !== "string" ||
         !Number.isFinite(edge.length) ||
         edge.length <= 0 ||
-        ![edge.stress, edge.uncertainty, edge.utility].every(
-          (v) => Number.isFinite(v) && v >= 0 && v <= 1,
+        ![
+          edge.stress,
+          edge.uncertainty,
+          edge.utility,
+          edge.urban,
+          edge.cyclingNetwork,
+        ].every(
+          (v) =>
+            typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
         ) ||
+        (edge.ferrySeconds !== undefined &&
+          (!Number.isFinite(edge.ferrySeconds) || edge.ferrySeconds < 0)) ||
+        (edge.highway === "ferry" &&
+          (typeof edge.ferryService !== "string" ||
+            !edge.ferryService.length)) ||
         edge.geometry.length < 2 ||
         edge.geometry.length > 100000 ||
         edge.geometry.some(
@@ -121,9 +98,13 @@ async function loadGraph(
 self.onmessage = async (
   event: MessageEvent<{ id: number; pack: Installed; request: RouteRequest }>,
 ) => {
-  const { id, pack, request } = event.data;
+  const { id, pack } = event.data;
   try {
-    if (pack.manifest.costModelVersion !== 3)
+    const request = {
+      ...event.data.request,
+      profile: resolveProfile(event.data.request.profile),
+    };
+    if (pack.manifest.costModelVersion !== COST_MODEL_VERSION)
       throw new Error("Routing data needs updating. Save the updated region.");
     const start = performance.now();
     const index = await readJSON<Index>(pack, "index.bin");
@@ -156,7 +137,15 @@ self.onmessage = async (
       )
     )
       throw new Error("Invalid route anchors");
-    const field = fieldFor(index, request);
+    // Fields baked into packs cannot represent arbitrary user coefficients.
+    // Read once, then share the graph across corridor expansion and reference.
+    self.postMessage({
+      id,
+      type: "progress",
+      label: "Preparing your profile…",
+    });
+    const { graph, loadedBytes } = await loadGraph(pack, index, index.chunks);
+    const field = buildField(graph, request);
     const fieldView: FieldView = { type: "FeatureCollection", features: [] };
     for (let y = 0; y < field.height; y += 2)
       for (let x = 0; x < field.width; x += 2) {
@@ -183,30 +172,13 @@ self.onmessage = async (
         });
       }
     let corridor: RouteResult | undefined;
-    let explored = 0,
-      loaded = 0;
+    let explored = 0;
     for (const [expansion, radius] of [2, 5, 12, Infinity].entries()) {
       self.postMessage({
         id,
         type: "progress",
         label: `Following the semantic corridor${expansion ? " · expanding" : ""}…`,
       });
-      const cells = Number.isFinite(radius)
-        ? [...corridorCells(field, radius)]
-        : undefined;
-      const boxes = cells?.map((i) => {
-        const p = center(field, i),
-          dx = (field.bbox[2] - field.bbox[0]) / field.width / 2,
-          dy = (field.bbox[3] - field.bbox[1]) / field.height / 2;
-        return [p[0] - dx, p[1] - dy, p[0] + dx, p[1] + dy] as Graph["bbox"];
-      });
-      const selected = boxes
-        ? index.chunks.filter((chunk) =>
-            boxes.some((box) => intersects(box, chunk.bbox)),
-          )
-        : index.chunks;
-      const { graph, loadedBytes } = await loadGraph(pack, index, selected);
-      loaded += loadedBytes;
       corridor = route(
         graph,
         {
@@ -219,10 +191,11 @@ self.onmessage = async (
       );
       explored += corridor.metrics.explored;
       corridor.metrics.expansions = expansion;
-      corridor.metrics.loadedBytes = loaded;
+      corridor.metrics.loadedBytes = loadedBytes;
       corridor.metrics.durationMs = performance.now() - start;
       corridor.metrics.explored = explored;
       if (
+        corridor.failedLeg !== undefined ||
         !["no-path", "snap-failed"].includes(corridor.status) ||
         request.anchors.some((p: Point) => !pointInBounds(p, index.bbox))
       )
@@ -235,7 +208,6 @@ self.onmessage = async (
       label: "Comparing with the complete graph…",
     });
     const referenceStart = performance.now();
-    const { graph, loadedBytes } = await loadGraph(pack, index, index.chunks);
     const reference = route(graph, request, "reference");
     reference.metrics.loadedBytes = loadedBytes;
     reference.metrics.durationMs = performance.now() - referenceStart;
