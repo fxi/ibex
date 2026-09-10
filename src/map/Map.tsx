@@ -9,6 +9,8 @@ import type {
   RouteResult,
 } from "../routing/types";
 import { customMapStyle, mapResourceURL } from "./style";
+import type { Track } from "../tracks";
+export type MapCommand = { id: number; points: Point[] };
 const empty = { type: "FeatureCollection" as const, features: [] };
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -21,7 +23,15 @@ export function MapView({
   history,
   onPoint,
   onMove,
+  tracks,
+  activeId,
+  coverage,
+  command,
 }: {
+  tracks: Track[];
+  activeId?: string;
+  coverage?: [number, number, number, number];
+  command?: MapCommand;
   anchors: Point[];
   attraction?: Attraction;
   comparison?: Comparison;
@@ -44,6 +54,9 @@ export function MapView({
     partial,
     debug,
     history,
+    tracks,
+    activeId,
+    coverage,
   });
   snapshot.current = {
     anchors,
@@ -52,6 +65,9 @@ export function MapView({
     partial,
     debug,
     history,
+    tracks,
+    activeId,
+    coverage,
   };
   useEffect(() => {
     const key = import.meta.env.VITE_MAPTILER_API_KEY;
@@ -67,13 +83,9 @@ export function MapView({
       }),
       center: [6.205, 46.19],
       zoom: 10.7,
-      minZoom: 7,
-      maxZoom: 16,
+      minZoom: 0,
+      maxZoom: 18,
       attributionControl: { compact: true },
-      maxBounds: [
-        [5.6, 45.8],
-        [6.8, 46.6],
-      ],
     });
     map.current = m;
     m.addControl(
@@ -89,7 +101,8 @@ export function MapView({
         container.current!.dataset.ready = "true";
       }
     });
-    m.on("error", () => {
+    m.on("error", (event) => {
+      console.warn("Map rendering error:", event.error?.message);
       if (!disposed)
         setMapError(
           "Map resources unavailable. Check your connection and map access key. Routing and export remain available.",
@@ -110,6 +123,7 @@ export function MapView({
     window.addEventListener("offline", changeConnection);
     m.on("style.load", () => {
       for (const id of [
+        "coverage",
         "field",
         "corridor",
         "reference",
@@ -117,6 +131,22 @@ export function MapView({
         "attraction",
       ])
         m.addSource(id, { type: "geojson", data: empty });
+      m.addLayer({
+        id: "coverage-fill",
+        type: "fill",
+        source: "coverage",
+        paint: { "fill-color": "#2485ff", "fill-opacity": 0.1 },
+      });
+      m.addLayer({
+        id: "coverage-line",
+        type: "line",
+        source: "coverage",
+        paint: {
+          "line-color": "#72b4ff",
+          "line-width": 2,
+          "line-dasharray": [3, 2],
+        },
+      });
       m.addLayer({
         id: "field",
         type: "fill",
@@ -172,7 +202,11 @@ export function MapView({
         type: "line",
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#cb6241", "line-width": 4 },
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": ["case", ["get", "active"], 5, 3],
+          "line-opacity": ["case", ["get", "stale"], 0.5, 1],
+        },
       });
       m.addLayer({
         id: "attraction",
@@ -192,6 +226,27 @@ export function MapView({
       if (!m.getSource("route")) return;
       const s = snapshot.current;
       const route = selectedRoute(s.comparison, s.partial);
+      const b = s.coverage;
+      (m.getSource("coverage") as maplibregl.GeoJSONSource)?.setData(
+        b
+          ? {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "Polygon",
+                coordinates: [
+                  [
+                    [b[0], b[1]],
+                    [b[2], b[1]],
+                    [b[2], b[3]],
+                    [b[0], b[3]],
+                    [b[0], b[1]],
+                  ],
+                ],
+              },
+            }
+          : empty,
+      );
       (m.getSource("field") as maplibregl.GeoJSONSource)?.setData(
         s.debug && s.comparison?.fieldView ? s.comparison.fieldView : empty,
       );
@@ -200,9 +255,19 @@ export function MapView({
         properties: {},
         geometry: { type: "LineString" as const, coordinates: geometry },
       });
-      (m.getSource("route") as maplibregl.GeoJSONSource)?.setData(
-        route?.status === "ok" ? line(route.geometry) : empty,
-      );
+      (m.getSource("route") as maplibregl.GeoJSONSource)?.setData({
+        type: "FeatureCollection",
+        features: s.tracks
+          .filter((t) => t.visible && t.result?.status === "ok")
+          .map((t) => ({
+            ...line(t.result!.geometry),
+            properties: {
+              color: t.color,
+              active: t.id === s.activeId,
+              stale: t.resultRevision !== t.revision,
+            },
+          })),
+      });
       (m.getSource("reference") as maplibregl.GeoJSONSource)?.setData(
         s.debug && s.comparison?.reference.status === "ok"
           ? line(s.comparison.reference.geometry)
@@ -276,7 +341,7 @@ export function MapView({
     markers.current = anchors.map((p, i) => {
       const element = document.createElement("button");
       element.className = "anchor-marker";
-      element.textContent = String.fromCharCode(65 + i);
+      element.textContent = String(i + 1);
       element.setAttribute("aria-label", `Move waypoint ${i + 1}`);
       const marker = new maplibregl.Marker({ element, draggable: true })
         .setLngLat(p)
@@ -287,14 +352,51 @@ export function MapView({
       });
       return marker;
     });
-  }, [anchors, attraction, comparison, partial, debug, history]);
+  }, [
+    anchors,
+    attraction,
+    comparison,
+    partial,
+    debug,
+    history,
+    tracks,
+    activeId,
+    coverage,
+  ]);
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !command?.points.length) return;
+    if (command.points.length === 1)
+      m.flyTo({
+        center: command.points[0],
+        zoom: 13,
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? 0
+          : 700,
+      });
+    else {
+      const bounds = new maplibregl.LngLatBounds(
+        command.points[0],
+        command.points[0],
+      );
+      command.points.forEach((p) => bounds.extend(p));
+      m.fitBounds(bounds, {
+        padding: {
+          top: 110,
+          bottom: Math.min(innerHeight * 0.48, 430),
+          left: 45,
+          right: 90,
+        },
+        maxZoom: 15,
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? 0
+          : 700,
+      });
+    }
+  }, [command]);
   return (
     <>
-      <div
-        ref={container}
-        className="map"
-        aria-label="Geneva basin route map"
-      />
+      <div ref={container} className="map" aria-label="Route map" />
       {mapError && (
         <p className="map-error" role="status" data-testid="map-error">
           {mapError}

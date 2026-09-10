@@ -1,6 +1,15 @@
-# Cyclatractor
+# Ibex
 
-A mobile-first cycling route laboratory for the Geneva basin. A semantic field selects a search corridor; an OSM topology graph determines the actual route. The application compares that result with full-region Dijkstra using the same costs.
+The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, regional routing downloads, and editable routing models. The first release focuses on the Geneva basin; the map can be browsed worldwide.
+
+- **Tracks:** create or duplicate tracks, assign independent models, edit numbered waypoints, show/hide routes, and export GPX. Each draft is saved locally. Use the row’s menu for track actions and **Edit track** for waypoints, color, attractions, elevation, and diagnostics.
+- **Data:** install the configured regional pack, inspect coverage and download size, resume interrupted downloads, or remove installed data. Selectable grid downloads targeting 40–50 MB per tile are a subsequent milestone.
+- **Tools:** explicitly compute the active track. Edits mark its previous result stale; GPX export becomes available again after successful computation. The floating refresh button performs the same action.
+- **Configure:** choose a model for the active track, or edit a custom model using forms and advanced JSON. Other tracks retain their model snapshots. Empty form fields inherit defaults; advanced JSON preserves all cost parameters.
+
+The bottom panel can collapse or expand. Search and location controls move the map without adding waypoints. The previous Cyclatractor draft migrates once into the track collection; installed packs and custom profiles are retained. Importing the original Ibex app’s stored tracks is deferred. The deployment URL and IndexedDB namespace remain unchanged.
+
+A semantic field selects a search corridor; an OSM topology graph determines the actual route. The application compares that result with full-region Dijkstra using the same costs.
 
 ## Run locally
 
@@ -25,7 +34,7 @@ node --import tsx scripts/package_region.ts
 VITE_REGION_MANIFEST=/cyclatractor/packs/geneva/manifest.json npm run dev
 ```
 
-Open `http://localhost:5173/cyclatractor/`. Save the region, select an example or place at least two waypoints, and open **Inside the route** to compare results. Drag markers to move waypoints. **Draw me through here** adds a soft attraction with adjustable radius. The historical ride overlay is optional and online-only.
+Open `http://localhost:5173/cyclatractor/`. Download the region in **Data**, select an example or place at least two waypoints in **Tracks**, then use **Tools → Compute current track**. Open **Edit track → Inside the route** to compare results. Drag markers to move waypoints. **Draw me through here** adds a soft attraction with adjustable radius. The historical ride overlay is optional and online-only.
 
 For service-worker/offline testing:
 
@@ -112,6 +121,6 @@ Public pack CORS can be refreshed with `uv run scripts/publish_region.py --confi
 Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
 
 Custom routing profiles use versioned JSON with master and bike defaults. Open
-**Custom profile** in the app to edit, save locally, or import/export a profile.
+**Configure → Custom profile** in the app to edit, save locally, or import/export a profile.
 See [the profile guide](profiles/README.md) and
 [Mountain wanderer](profiles/mountain-wanderer.json) for fields and current data limitations.

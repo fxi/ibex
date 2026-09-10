@@ -4,6 +4,7 @@ test("saves, restores, imports, and exports custom profiles", async ({
   page,
 }) => {
   await page.goto("./");
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page.locator(".profile-editor summary").click();
   const editor = page.getByLabel("Profile JSON", { exact: true });
   const custom = {
@@ -15,11 +16,18 @@ test("saves, restores, imports, and exports custom profiles", async ({
     access: { hike_a_bike: true },
   };
   await editor.fill(JSON.stringify(custom));
+  await page.getByLabel("max grade up", { exact: true }).fill("18");
+  expect(JSON.parse(await editor.inputValue())).toEqual({
+    ...custom,
+    capabilities: { max_grade_up: 18 },
+  });
+  await page.getByLabel("max grade up", { exact: true }).fill("15");
   await page.getByRole("button", { name: "Save and use" }).click();
   await expect(
     page.getByText("Saved My mountain bike.", { exact: true }),
   ).toBeVisible();
   await page.reload();
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page.locator(".profile-editor summary").click();
   await expect(page.getByLabel("Saved profiles", { exact: true })).toHaveValue(
     custom.name,
@@ -66,4 +74,35 @@ test("saves, restores, imports, and exports custom profiles", async ({
   await editor.fill(JSON.stringify({ ...custom, attraction: { quet: 10 } }));
   await page.getByRole("button", { name: "Save and use" }).click();
   await expect(page.locator(".profile-error")).toContainText("quet");
+});
+
+test("a custom model named Road preserves overrides and inherited fields", async ({
+  page,
+}) => {
+  const custom = {
+    version: 1,
+    name: "Road",
+    bike: "road",
+    attraction: { quiet: 0 },
+    capabilities: { max_grade_up: null },
+    access: { ferry: false },
+    costs: { quiet_factor: 2 },
+  };
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
+  await page.locator(".profile-editor summary").click();
+  const editor = page.getByLabel("Profile JSON", { exact: true });
+  await editor.fill(JSON.stringify(custom));
+  await page.getByRole("button", { name: "Save and use" }).click();
+  await expect(page.getByText("Saved Road.", { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => JSON.parse(await editor.inputValue()))
+    .toEqual(custom);
+  await expect(page.locator(".save-status")).toHaveText("Saved");
+  await page.reload();
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
+  await page.locator(".profile-editor summary").click();
+  await expect
+    .poll(async () => JSON.parse(await editor.inputValue()))
+    .toEqual(custom);
 });

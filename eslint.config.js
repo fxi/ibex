@@ -3,6 +3,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "ibex/**",
       "node_modules/**",
       "public/**",
       "data/**",

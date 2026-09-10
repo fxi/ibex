@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { download } from "./gpx";
-import { preference, savePreference } from "./offline/store";
+import { loadModels, saveModels } from "./models";
 import {
   profileSchema,
   resolveProfile,
@@ -8,35 +8,10 @@ import {
   type UserProfile,
 } from "./routing/profiles";
 
-const profileFiles = import.meta.glob("../profiles/*.json", {
-  eager: true,
-  import: "default",
-});
-function shippedProfiles() {
-  return Object.entries(profileFiles)
-    .filter(
-      ([path]) => !/\/(master|gravel|road|touring|scenic)\.json$/.test(path),
-    )
-    .map(([, value]) => profileSchema.parse(value));
-}
-function editable(input: ProfileInput) {
-  if (typeof input !== "string") return input;
-  const p = resolveProfile(input);
-  return {
-    version: 1,
-    name: `My ${input}`,
-    bike: input,
-    attraction: p.attraction,
-    capabilities: {
-      max_grade_up: p.capabilities.max_grade_up,
-      max_grade_down: p.capabilities.max_grade_down,
-      max_mtb_scale_up: p.capabilities.max_mtb_scale_up,
-      max_mtb_scale_down: p.capabilities.max_mtb_scale_down,
-      max_hike_sac_up: p.capabilities.max_hike_sac_up,
-      max_hike_sac_down: p.capabilities.max_hike_sac_down,
-    },
-    access: p.access,
-  };
+function editable(input: ProfileInput): UserProfile {
+  return typeof input === "string"
+    ? { version: 1, name: `My ${input}`, bike: input }
+    : structuredClone(input);
 }
 export function ProfileEditor({
   value,
@@ -58,19 +33,9 @@ export function ProfileEditor({
     setError("");
   }, [value]);
   useEffect(() => {
-    preference<unknown>("routing-profiles")
-      .then((data) => {
-        if (data !== undefined && !Array.isArray(data))
-          throw new Error("Saved profile collection is invalid.");
-        const local = ((data ?? []) as unknown[]).map((p) =>
-          profileSchema.parse(p),
-        );
-        setSaved([
-          ...shippedProfiles().filter(
-            (p) => !local.some((q) => q.name === p.name),
-          ),
-          ...local,
-        ]);
+    loadModels()
+      .then((models) => {
+        setSaved(models);
         setReady(true);
       })
       .catch((e) => setError(String(e)));
@@ -86,7 +51,7 @@ export function ProfileEditor({
       const p = parse();
       resolveProfile(p);
       const next = [...saved.filter((old) => old.name !== p.name), p];
-      await savePreference("routing-profiles", next);
+      await saveModels(next);
       setSaved(next);
       onChange(p);
       setNotice(`Saved ${p.name}.`);
@@ -95,6 +60,39 @@ export function ProfileEditor({
     } finally {
       setBusy(false);
     }
+  }
+  let parsed: UserProfile | undefined;
+  try {
+    parsed = JSON.parse(draft);
+  } catch {
+    /* Keep incomplete JSON editable. */
+  }
+  let resolved: ReturnType<typeof resolveProfile> | undefined;
+  try {
+    resolved = resolveProfile({ ...parsed!, name: parsed?.name || "Draft" });
+  } catch {
+    /* Validation is shown on save. */
+  }
+  function change(
+    group: "attraction" | "capabilities" | "access",
+    key: string,
+    raw: string,
+  ) {
+    if (!parsed) return;
+    const next = structuredClone(parsed);
+    const fields = { ...next[group] } as Record<string, unknown>;
+    if (raw === "") delete fields[key];
+    else
+      fields[key] =
+        raw === "true"
+          ? true
+          : raw === "false"
+            ? false
+            : raw === "null"
+              ? null
+              : Number(raw);
+    Object.assign(next, { [group]: fields });
+    setDraft(JSON.stringify(next, null, 2));
   }
   return (
     <details className="profile-editor">
@@ -124,6 +122,79 @@ export function ProfileEditor({
         means no limit. Omitted fields inherit bike defaults. Saving an existing
         name replaces it.
       </p>
+      {parsed && resolved && (
+        <div className="model-form">
+          <label>
+            Model name
+            <input
+              value={parsed.name}
+              onChange={(e) =>
+                setDraft(
+                  JSON.stringify({ ...parsed, name: e.target.value }, null, 2),
+                )
+              }
+            />
+          </label>
+          <label>
+            Bike type
+            <select
+              value={parsed.bike}
+              onChange={(e) =>
+                setDraft(
+                  JSON.stringify({ ...parsed, bike: e.target.value }, null, 2),
+                )
+              }
+            >
+              {["gravel", "road", "touring", "scenic"].map((b) => (
+                <option key={b}>{b}</option>
+              ))}
+            </select>
+          </label>
+          {(["attraction", "capabilities", "access"] as const).map((group) => (
+            <fieldset key={group}>
+              <legend>{group}</legend>
+              {Object.entries(resolved![group]).map(([key, fallback]) => {
+                const own = (
+                  parsed![group] as Record<string, unknown> | undefined
+                )?.[key];
+                const val = own === undefined ? "" : String(own);
+                const label = key.replaceAll("_", " ");
+                return (
+                  <label key={key}>
+                    {label}
+                    {typeof fallback === "boolean" ? (
+                      <select
+                        aria-label={label}
+                        value={val}
+                        onChange={(e) => change(group, key, e.target.value)}
+                      >
+                        <option value="">Default ({String(fallback)})</option>
+                        <option value="true">Allow</option>
+                        <option value="false">Exclude</option>
+                      </select>
+                    ) : (
+                      <input
+                        aria-label={label}
+                        value={val}
+                        placeholder={`Default: ${fallback === null ? "no limit" : fallback}`}
+                        onChange={(e) => change(group, key, e.target.value)}
+                      />
+                    )}
+                    {key.startsWith("max_grade_") && (
+                      <button
+                        type="button"
+                        onClick={() => change(group, key, "null")}
+                      >
+                        No limit
+                      </button>
+                    )}
+                  </label>
+                );
+              })}
+            </fieldset>
+          ))}
+        </div>
+      )}
       <label htmlFor="profile-json">Profile JSON</label>
       <textarea
         id="profile-json"

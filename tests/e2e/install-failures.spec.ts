@@ -9,10 +9,11 @@ for (const fault of ["checksum", "disconnect"]) {
   }) => {
     await request.post("/__test/fault", { data: { fault } });
     await page.goto("./");
+    await page.getByRole("tab", { name: "Data", exact: true }).click();
     await page.getByRole("button", { name: /Save offline/ }).click();
     await expect(page.getByRole("alert")).toBeVisible({ timeout: 30000 });
     if (fault === "checksum")
-      await expect(page.getByRole("alert")).toHaveText(
+      await expect(page.getByRole("alert")).toContainText(
         "Pack checksum mismatch",
       );
     await expect(
@@ -21,6 +22,7 @@ for (const fault of ["checksum", "disconnect"]) {
     await request.post("/__test/fault", {
       data: { fault: null, preserveReads: true },
     });
+    await page.getByRole("tab", { name: "Data", exact: true }).click();
     await page.getByRole("button", { name: /Save offline/ }).click();
     await expect(
       page.getByText("Region saved offline", { exact: true }),
