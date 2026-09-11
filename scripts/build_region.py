@@ -16,7 +16,9 @@ from pathlib import Path
 
 import httpx
 from PIL import Image
+from grid import cell_bbox, cell_id, mercator_x, mercator_y, tile_of
 from prepare_tracks import BBOX, distance
+from region_config import HALO_KM, TERRAIN_ZOOM, halo_degrees
 from shapely.geometry import Point
 from shapely.ops import unary_union
 from shapely.prepared import prep
@@ -164,46 +166,103 @@ def near_viewpoint(coords, index, cell=0.001, radius_m=60):
     return False
 
 
-def tile_coord(p, z=12):
+# Deterministic edge identity. The same physical segment must get the same id in every cell
+# that contains it, which is what lets two adjacent packs deduplicate a boundary edge instead
+# of routing over it twice. OSM way ids are below 2^31 and the API caps a way at 2,000 nodes,
+# so 12 bits of segment index is provably enough and the whole id stays inside 2^53 — exactly
+# representable as a JavaScript number, which Edge.id has to be.
+SEGMENT_SLOTS = 4096
+
+
+def edge_uid(way_id, segment_index, direction):
+    """(way, segment, direction) -> a stable 44-bit id. Replaces a per-build counter."""
+    if not 0 <= segment_index < SEGMENT_SLOTS:
+        raise ValueError(
+            f"Way {way_id} segment index {segment_index} exceeds {SEGMENT_SLOTS} slots"
+        )
+    return (way_id * SEGMENT_SLOTS + segment_index) * 2 + direction
+
+
+def tile_coord(p, z=TERRAIN_ZOOM):
+    """Tile x/y plus the pixel offset inside a 512 px tile, sharing grid.py's projection."""
     n = 2**z
-    x = (p[0] + 180) / 360 * n
-    y = (1 - math.asinh(math.tan(math.radians(p[1]))) / math.pi) / 2 * n
+    x = mercator_x(p[0]) * n
+    y = mercator_y(p[1]) * n
     return int(x), int(y), (x % 1) * 512, (y % 1) * 512
 
 
-def terrain_samples(points, cache, enabled):
+def terrain_samples(points, cache, enabled, zoom=TERRAIN_ZOOM):
+    """Sample Terrarium elevations tile by tile.
+
+    Grouping points by tile keeps exactly one decoded image resident. Holding every tile at
+    once was fine for the ~30 tiles a single region needed and is several GB for the
+    thousands a full release needs. bilinear_height clamps to the tile's own pixels rather
+    than reading across a boundary, so this is numerically identical to the old behaviour.
+    """
     if not enabled:
         return {}
     cache.mkdir(parents=True, exist_ok=True)
-    tiles = {tile_coord(p)[:2] for p in points.values()}
+    by_tile = defaultdict(list)
+    for id, p in points.items():
+        x, y, px, py = tile_coord(p, zoom)
+        by_tile[(x, y)].append((id, px, py))
 
-    def fetch(key):
+    def download(key):
         x, y = key
-        path = cache / f"12-{x}-{y}.webp"
+        path = cache / f"{zoom}-{x}-{y}.webp"
+        if path.exists():
+            return key, path
         try:
-            if not path.exists():
-                response = httpx.get(
-                    f"https://tiles.mapterhorn.com/12/{x}/{y}.webp", timeout=40
-                )
-                response.raise_for_status()
-                Image.open(io.BytesIO(response.content)).verify()
-                path.write_bytes(response.content)
-            return key, Image.open(path).convert("RGB")
+            response = httpx.get(
+                f"https://tiles.mapterhorn.com/{zoom}/{x}/{y}.webp", timeout=40
+            )
+            response.raise_for_status()
+            Image.open(io.BytesIO(response.content)).verify()
+            temporary = path.with_suffix(".partial")
+            temporary.write_bytes(response.content)
+            temporary.replace(path)
+            return key, path
         except (httpx.HTTPError, OSError):
             return key, None
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        images = dict(pool.map(fetch, sorted(tiles)))
+    missing = sum(1 for key in by_tile if not (cache / f"{zoom}-{key[0]}-{key[1]}.webp").exists())
+    if missing:
+        print(f"Fetching {missing} of {len(by_tile)} terrain tiles at zoom {zoom}", flush=True)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        paths = dict(pool.map(download, sorted(by_tile)))
+
     elevations = {}
-    for id, p in points.items():
-        x, y, px, py = tile_coord(p)
-        img = images.get((x, y))
-        if img:
-            elevations[id] = bilinear_height(img, px, py)
+    absent = 0
+    for key in sorted(by_tile):
+        path = paths.get(key)
+        if path is None:
+            absent += 1
+            continue
+        try:
+            with Image.open(path) as image:
+                rgb = image.convert("RGB")
+                for id, px, py in by_tile[key]:
+                    elevations[id] = bilinear_height(rgb, px, py)
+        except OSError:
+            absent += 1
+    if absent:
+        print(f"  {absent} terrain tiles unavailable", flush=True)
     return elevations
 
 
-def build(source, output, terrain=True):
+def read_source(source):
+    """Elements plus provenance, from either a pbf extract or the Overpass JSON snapshot."""
+    if str(source).endswith(".pbf"):
+        from osm_source import load_elements
+
+        # Same naming clip_region.py writes: foo.osm.pbf -> foo.osm.source.json
+        stamp = Path(source).with_suffix(".source.json")
+        meta = json.loads(stamp.read_text()) if stamp.exists() else {}
+        return (
+            load_elements(source),
+            meta.get("osmTimestamp") or "unknown",
+            meta.get("inputs", {}).get("sources", {}),
+        )
     raw = json.loads(source.read_bytes())
     # Overpass output sets may repeat elements; retain the richest geometry.
     unique = {}
@@ -211,7 +270,15 @@ def build(source, output, terrain=True):
         key = (element["type"], element["id"])
         if key not in unique or len(json.dumps(element)) > len(json.dumps(unique[key])):
             unique[key] = element
-    elements = list(unique.values())
+    return (
+        list(unique.values()),
+        raw.get("osm3s", {}).get("timestamp_osm_base", "unknown"),
+        raw.get("sources", []),
+    )
+
+
+def build(source, output, terrain=True, cell=None, split_nodes=None):
+    elements, osm_timestamp, source_layers = read_source(source)
     print(f"Preparing profile features for {len(elements)} OSM elements", flush=True)
     ferries = ferry_ways(elements, distance)
     for element in elements:
@@ -312,11 +379,16 @@ def build(source, output, terrain=True):
                     rule["via"] = node_via[0]
                     via_nodes.add(node_via[0])
                 restrictions.append(rule)
-    kept = set(via_nodes) | set(barriers)
-    for way in roads:
-        kept.add(way["nodes"][0])
-        kept.add(way["nodes"][-1])
-    kept.update(id for id, count in usage.items() if count > 1)
+    if split_nodes is not None:
+        # Release-wide split points: every cell cuts ways at exactly the same nodes, so a
+        # boundary segment gets one identity no matter which cell encodes it.
+        kept = split_nodes
+    else:
+        kept = set(via_nodes) | set(barriers)
+        for way in roads:
+            kept.add(way["nodes"][0])
+            kept.add(way["nodes"][-1])
+        kept.update(id for id, count in usage.items() if count > 1)
     edges = []
     node_ids = set()
     for way in roads:
@@ -332,14 +404,18 @@ def build(source, output, terrain=True):
             ids = sequence[start : i + 1]
             profile_start = offsets[start]
             profile_end = offsets[i]
+            # Index of the segment's first node within the way, not the running counter.
+            segment_index = start
             start = i
             if any(id not in positions for id in ids) or any(
                 id in blocked for id in ids
             ):
                 continue
             coords = [positions[id] for id in ids]
-            # Keep the graph inside declared coverage; boundary connectors are retained only when fully covered.
-            if any(
+            # Keep the graph inside declared coverage; boundary connectors are retained
+            # only when fully covered. In cell mode the pbf is already the cell plus its
+            # halo and the halo is trimmed after the bounded passes instead.
+            if cell is None and any(
                 not (BBOX[0] <= p[0] <= BBOX[2] and BBOX[1] <= p[1] <= BBOX[3])
                 for p in coords
             ):
@@ -392,8 +468,8 @@ def build(source, output, terrain=True):
                 "surface": surface,
                 "highway": highway,
                 "tags": {k: tags[k] for k in ("bicycle", "vehicle", "access", "foot", "route", "duration", "interval", "opening_hours", "seasonal", "step_count", "ramp:bicycle", "tracktype", "smoothness", "sac_scale", "mtb:scale", "mtb:scale:uphill", "mtb:scale:downhill", "incline", "width") if k in tags},
-                "stress": stress,
-                "uncertainty": uncertainty,
+                "stress": round(stress, 3),
+                "uncertainty": round(uncertainty, 3),
                 "utility": 0,
                 "urban": urban_fraction(coords, tags, urban),
                 "quality": edge_quality(highway, surface, tags, stress),
@@ -418,7 +494,7 @@ def build(source, output, terrain=True):
                 edges.append(
                     {
                         **base,
-                        "id": len(edges),
+                        "id": edge_uid(way["id"], segment_index, 0),
                         "cyclingNetwork": on_cycling_network(way, "forward", networks),
                         "from": ids[0],
                         "to": ids[-1],
@@ -430,7 +506,7 @@ def build(source, output, terrain=True):
                 edges.append(
                     {
                         **base,
-                        "id": len(edges),
+                        "id": edge_uid(way["id"], segment_index, 1),
                         "cyclingNetwork": on_cycling_network(way, "backward", networks),
                         "from": ids[-1],
                         "to": ids[0],
@@ -550,13 +626,80 @@ def build(source, output, terrain=True):
     for edge in edges:
         d = node_reward_dist.get(edge["to"], math.inf)
         edge["reward"] = round(math.exp(-d / REWARD_TAU), 3) if d <= REWARD_HORIZON else 0.0
+    # Halo trim. Everything above ran over the cell plus its halo, so the bounded passes
+    # (utility 1 km, junction node-local, reward 2,347 m) saw every neighbour that can
+    # influence an edge this cell owns, making their results identical to a whole-region
+    # run. Only now is the graph reduced to what the cell publishes: an edge belongs to the
+    # cell containing its FIRST geometry point, a property of the road itself, so adjacent
+    # cells agree on the owner without consulting each other.
+    if cell is not None:
+        cell_zoom, cell_x, cell_y = cell
+        owned = [
+            edge
+            for edge in edges
+            if tile_of(edge["geometry"][0], cell_zoom) == (cell_x, cell_y)
+        ]
+        bounds = cell_bbox(cell_zoom, cell_x, cell_y)
+        halo_lon, halo_lat = halo_degrees(bounds, HALO_KM)
+        overshoot = 0.0
+        for edge in owned:
+            for p in edge["geometry"]:
+                overshoot = max(
+                    overshoot,
+                    bounds[0] - p[0],
+                    p[0] - bounds[2],
+                    bounds[1] - p[1],
+                    p[1] - bounds[3],
+                )
+        counts["haloOvershootKm"] = round(max(0.0, overshoot) * 111.32, 3)
+        counts["haloEdgesDropped"] = len(edges) - len(owned)
+        # With a global split-node set the edge ids are identical in every cell regardless
+        # of halo size, so an edge reaching past the halo no longer threatens deduplication.
+        # It does mean the bounded passes saw partial context at that edge's far end, so the
+        # count is reported. The cap only catches a genuinely broken extract.
+        far = 0
+        for edge in owned:
+            for p in edge["geometry"]:
+                if not (
+                    bounds[0] - halo_lon <= p[0] <= bounds[2] + halo_lon
+                    and bounds[1] - halo_lat <= p[1] <= bounds[3] + halo_lat
+                ):
+                    far += 1
+                    break
+        counts["edgesBeyondHalo"] = far
+        if split_nodes is None and counts["haloOvershootKm"] > HALO_KM:
+            raise ValueError(
+                f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns an edge reaching "
+                f"{counts['haloOvershootKm']:.2f} km past its bounds with no global "
+                f"split-node set; run global_splits.py first"
+            )
+        if counts["haloOvershootKm"] > 200:
+            raise ValueError(
+                f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns an edge reaching "
+                f"{counts['haloOvershootKm']:.2f} km past its bounds; the extract is wrong"
+            )
+        edges = owned
+        node_ids = {id for edge in edges for id in (edge["from"], edge["to"])}
+        present_ways = {edge["way"] for edge in edges}
+        restrictions = [
+            r for r in restrictions if all(w in present_ways for w in r["ways"])
+        ]
+        graph_bbox = list(bounds)
+    else:
+        graph_bbox = BBOX
     nodes = [
-        {"id": id, "p": positions[id], "elevation": elevations.get(id)}
+        {
+            "id": id,
+            "p": positions[id],
+            "elevation": None
+            if elevations.get(id) is None
+            else round(elevations[id], 2),
+        }
         for id in sorted(node_ids)
     ]
     graph = {
         "schemaVersion": 1,
-        "bbox": BBOX,
+        "bbox": graph_bbox,
         "nodes": nodes,
         "edges": edges,
         "restrictions": restrictions,
@@ -657,9 +800,9 @@ def build(source, output, terrain=True):
         "name": "Geneva basin",
         "version": version,
         "bbox": BBOX,
-        "osmTimestamp": raw.get("osm3s", {}).get("timestamp_osm_base", "unknown"),
+        "osmTimestamp": osm_timestamp,
         "costModelVersion": 4,
-        "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": 4, "layers": raw.get("sources", [])},
+        "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": 4, "layers": source_layers},
         "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3
@@ -684,9 +827,36 @@ if __name__ == "__main__":
     parser.add_argument("--input", default="data/osm-profiles-v4.json")
     parser.add_argument("--output", default="data/build/geneva")
     parser.add_argument("--no-terrain", action="store_true")
+    parser.add_argument(
+        "--split-nodes",
+        default=None,
+        help="Release-wide split-node set from global_splits.py. Required for cell builds "
+        "so every cell cuts ways at the same nodes.",
+    )
+    parser.add_argument(
+        "--cell",
+        default=None,
+        help="Build one download cell (e.g. 9-264-181) from a cell extract, trimming the "
+        "halo after the bounded passes run.",
+    )
     args = parser.parse_args()
     source = Path(args.input)
-    metadata = source.with_suffix(".source.json")
-    if not metadata.exists() or json.loads(metadata.read_text()).get("extractVersion") != 4:
-        raise ValueError("Fetch a version-4 extract before building the region.")
-    build(source, Path(args.output), not args.no_terrain)
+    if not str(source).endswith(".pbf"):
+        metadata = source.with_suffix(".source.json")
+        if (
+            not metadata.exists()
+            or json.loads(metadata.read_text()).get("extractVersion") != 4
+        ):
+            raise ValueError("Fetch a version-4 extract before building the region.")
+    cell = None
+    if args.cell:
+        from grid import parse_cell_id
+
+        cell = parse_cell_id(args.cell)
+    split_nodes = None
+    if args.split_nodes:
+        from global_splits import load
+
+        split_nodes = load(args.split_nodes)
+        print(f"Loaded {len(split_nodes):,} release-wide split nodes", flush=True)
+    build(source, Path(args.output), not args.no_terrain, cell, split_nodes)

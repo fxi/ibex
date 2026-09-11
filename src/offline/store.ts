@@ -7,9 +7,7 @@ const fileSchema = z.object({
   bytes: z.number().int().positive().max(300_000_000),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
 });
-export const manifestSchema = z.object({
-  schemaVersion: z.literal(1),
-  id: z.string().regex(/^[a-z0-9-]+$/),
+const common = {
   name: z.string().max(100),
   version: z.string().regex(/^[a-zA-Z0-9-]+$/),
   bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
@@ -19,8 +17,37 @@ export const manifestSchema = z.object({
   attribution: z.string(),
   files: z.array(fileSchema).min(2).max(1000),
   build: z.record(z.string(), z.unknown()).optional(),
+};
+/** The pre-grid single-region pack. Still installable and routable, never mixed with cells. */
+export const legacyManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  id: z.string().regex(/^[a-z0-9-]+$/),
+  ...common,
 });
+/** One downloadable grid cell in the binary format. */
+export const cellManifestSchema = z.object({
+  schemaVersion: z.literal(2),
+  format: z.literal("ibex-1"),
+  // Hyphenated cell id, which is also the `packs` object-store key.
+  id: z.string().regex(/^\d{1,2}-\d{1,8}-\d{1,8}$/),
+  release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
+  cell: z.object({
+    zoom: z.number().int().min(0).max(14),
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+  }),
+  blockZoom: z.number().int().min(0).max(20),
+  blocks: z.number().int().nonnegative(),
+  ...common,
+});
+export const manifestSchema = z.discriminatedUnion("schemaVersion", [
+  legacyManifestSchema,
+  cellManifestSchema,
+]);
 export type Manifest = z.infer<typeof manifestSchema>;
+export type CellManifest = z.infer<typeof cellManifestSchema>;
+export const isCellManifest = (m: Manifest): m is CellManifest =>
+  m.schemaVersion === 2;
 export type Installed = {
   manifest: Manifest;
   installedAt: string;
@@ -129,10 +156,12 @@ export async function installPack(
 ): Promise<Installed> {
   const manifest = await readManifest(url);
   const paths = manifest.files.map((f) => f.path);
+  const required = isCellManifest(manifest)
+    ? ["index.ibx", "graph.ibx"]
+    : ["index.bin", "basemap.pmtiles"];
   if (
     new Set(paths).size !== paths.length ||
-    !paths.includes("index.bin") ||
-    !paths.includes("basemap.pmtiles")
+    !required.every((name) => paths.includes(name))
   )
     throw new Error("Invalid pack file list");
   const total = manifest.files.reduce((s, f) => s + f.bytes, 0);

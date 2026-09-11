@@ -10,8 +10,16 @@ import type {
 } from "../routing/types";
 import { customMapStyle, mapResourceURL } from "./style";
 import type { Track } from "../tracks";
+import { CELL_COLORS, type MapCell } from "../offline/cells";
 export type MapCommand = { id: number; points: Point[] };
 const empty = { type: "FeatureCollection" as const, features: [] };
+const ring = (b: [number, number, number, number]): Point[] => [
+  [b[0], b[1]],
+  [b[2], b[1]],
+  [b[2], b[3]],
+  [b[0], b[3]],
+  [b[0], b[1]],
+];
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 export function MapView({
@@ -26,11 +34,13 @@ export function MapView({
   tracks,
   activeId,
   coverage,
+  cells,
   command,
 }: {
   tracks: Track[];
   activeId?: string;
   coverage?: [number, number, number, number];
+  cells?: MapCell[];
   command?: MapCommand;
   anchors: Point[];
   attraction?: Attraction;
@@ -57,6 +67,7 @@ export function MapView({
     tracks,
     activeId,
     coverage,
+    cells,
   });
   snapshot.current = {
     anchors,
@@ -68,6 +79,7 @@ export function MapView({
     tracks,
     activeId,
     coverage,
+    cells,
   };
   useEffect(() => {
     const key = import.meta.env.VITE_MAPTILER_API_KEY;
@@ -124,6 +136,7 @@ export function MapView({
     m.on("style.load", () => {
       for (const id of [
         "coverage",
+        "cells",
         "field",
         "corridor",
         "reference",
@@ -145,6 +158,40 @@ export function MapView({
           "line-color": "#72b4ff",
           "line-width": 2,
           "line-dasharray": [3, 2],
+        },
+      });
+      // Grid cells come from one source with data-driven paint, so a state change is a
+      // setData call rather than a layer rebuild. No symbol layer: labelling needs
+      // MapTiler glyphs, which stay online-only, so sizes live in the panel instead.
+      m.addLayer({
+        id: "cells-fill",
+        type: "fill",
+        source: "cells",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": [
+            "case",
+            ["==", ["get", "state"], "unavailable"],
+            0.06,
+            ["get", "active"],
+            0.32,
+            0.14,
+          ],
+        },
+      });
+      m.addLayer({
+        id: "cells-line",
+        type: "line",
+        source: "cells",
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": ["case", ["get", "active"], 2.5, 1],
+          "line-opacity": [
+            "case",
+            ["==", ["get", "state"], "unavailable"],
+            0.35,
+            0.9,
+          ],
         },
       });
       m.addLayer({
@@ -244,6 +291,27 @@ export function MapView({
                   ],
                 ],
               },
+            }
+          : empty,
+      );
+      (m.getSource("cells") as maplibregl.GeoJSONSource)?.setData(
+        s.cells?.length
+          ? {
+              type: "FeatureCollection",
+              features: s.cells.map((cell) => ({
+                type: "Feature" as const,
+                properties: {
+                  id: cell.id,
+                  state: cell.state,
+                  color: CELL_COLORS[cell.state],
+                  active:
+                    cell.state !== "available" && cell.state !== "unavailable",
+                },
+                geometry: {
+                  type: "Polygon" as const,
+                  coordinates: [ring(cell.bbox)],
+                },
+              })),
             }
           : empty,
       );
@@ -362,6 +430,7 @@ export function MapView({
     tracks,
     activeId,
     coverage,
+    cells,
   ]);
   useEffect(() => {
     const m = map.current;

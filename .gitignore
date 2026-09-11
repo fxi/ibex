@@ -12,5 +12,6 @@ test-results/
 .venv/
 __pycache__/
 public/packs/geneva/
+public/packs/geneva-grid/
 *.swp
 *.tsbuildinfo

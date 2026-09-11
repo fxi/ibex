@@ -14,6 +14,9 @@ export default defineConfig(() => {
       "import.meta.env.VITE_REGION_MANIFEST": JSON.stringify(
         process.env.VITE_REGION_MANIFEST ?? env.VITE_REGION_MANIFEST ?? "",
       ),
+      "import.meta.env.VITE_CATALOGUE_URL": JSON.stringify(
+        process.env.VITE_CATALOGUE_URL ?? env.VITE_CATALOGUE_URL ?? "",
+      ),
     },
     base: "/cyclatractor/",
     plugins: [

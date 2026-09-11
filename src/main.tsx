@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Menu from "@radix-ui/react-dropdown-menu";
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   LocateFixed,
   Search,
+  Trash2,
   Plus,
   MoreHorizontal,
   Download,
@@ -50,14 +51,32 @@ import {
   type Manifest,
 } from "./offline/store";
 import { storageEstimate } from "./offline/capabilities";
-import { DEFAULT_REGION_MANIFEST } from "./config";
+import {
+  DEFAULT_CATALOGUE_URL,
+  DEFAULT_REGION_MANIFEST,
+  absoluteURL,
+} from "./config";
+import {
+  cachedCatalogue,
+  coverageBBox,
+  readCatalogue,
+  resolveCellManifest,
+  selectedBytes,
+  type Catalogue,
+} from "./offline/catalogue";
+import { formatBytes, installedCells, mapCells } from "./offline/cells";
+import { cellLabel, cellSizeM, parseCellId } from "./geo/grid";
 import { download, exportGPX } from "./gpx";
 import RoutingWorker from "./workers/route.worker.ts?worker&inline";
 import DataWorker from "./workers/data.worker.ts?worker&inline";
-const manifestURL = new URL(
-  import.meta.env.VITE_REGION_MANIFEST || DEFAULT_REGION_MANIFEST,
-  new URL(import.meta.env.BASE_URL, location.origin),
-).href;
+const manifestURL = absoluteURL(
+  import.meta.env.VITE_REGION_MANIFEST,
+  DEFAULT_REGION_MANIFEST,
+);
+const catalogueURL = absoluteURL(
+  import.meta.env.VITE_CATALOGUE_URL,
+  DEFAULT_CATALOGUE_URL,
+);
 const examples: { name: string; anchors: Point[] }[] = [
   {
     name: "Along the Arve",
@@ -92,6 +111,20 @@ function App() {
     [collapsed, setCollapsed] = useState(false);
   const [pack, setPack] = useState<Installed>(),
     [catalog, setCatalog] = useState<Manifest>();
+  const [catalogue, setCatalogue] = useState<Catalogue>(),
+    [installed, setInstalled] = useState<Installed[]>([]),
+    [catalogueError, setCatalogueError] = useState(""),
+    [selectedCells, setSelectedCells] = useState<ReadonlySet<string>>(
+      () => new Set(),
+    ),
+    [queuedCells, setQueuedCells] = useState<ReadonlySet<string>>(
+      () => new Set(),
+    ),
+    [downloadingCell, setDownloadingCell] = useState<string>(),
+    [failedCells, setFailedCells] = useState<ReadonlyMap<string, string>>(
+      () => new Map(),
+    ),
+    [missingCells, setMissingCells] = useState<string[]>([]);
   const [error, setError] = useState(""),
     [status, setStatus] = useState(""),
     [busy, setBusy] = useState(false);
@@ -183,18 +216,67 @@ function App() {
       if (data.type === "progress") setProgress(data.fraction);
       if (data.type === "installed") {
         cancel();
-        setPack(data.pack);
         setProgress(undefined);
         setError("");
+        const cell = data.pack?.manifest?.id as string | undefined;
+        if (data.pack?.manifest?.schemaVersion === 2) {
+          // A cell: keep the whole installed set, drop it from the queue, take the next.
+          setInstalled((previous) => [
+            ...previous.filter((p) => p.manifest.id !== cell),
+            data.pack,
+          ]);
+          setStatus(`Saved ${data.pack.manifest.name}`);
+          if (cell) {
+            setQueuedCells((previous) => {
+              const next = new Set(previous);
+              next.delete(cell);
+              return next;
+            });
+            setSelectedCells((previous) => {
+              const next = new Set(previous);
+              next.delete(cell);
+              return next;
+            });
+            setMissingCells((previous) => previous.filter((id) => id !== cell));
+          }
+          nextInstall();
+        } else {
+          setPack(data.pack);
+          setInstalled((previous) => [
+            ...previous.filter((p) => p.manifest.id !== cell),
+            data.pack,
+          ]);
+        }
       }
       if (data.type === "error") {
-        setError(data.error);
-        setProgress(undefined);
+        const cell = installing.current;
+        if (cell) {
+          setFailedCells((previous) => new Map(previous).set(cell, data.error));
+          setQueuedCells((previous) => {
+            const next = new Set(previous);
+            next.delete(cell);
+            return next;
+          });
+          setProgress(undefined);
+          nextInstall();
+        } else {
+          setError(data.error);
+          setProgress(undefined);
+        }
       }
       if (data.type === "removed") {
         cancel();
-        setPack(undefined);
-        setStatus("Region removed");
+        const removed = removing.current;
+        if (removed) {
+          setInstalled((previous) =>
+            previous.filter((p) => p.manifest.id !== removed),
+          );
+          setStatus(`Removed ${removed}`);
+          removing.current = undefined;
+        } else {
+          setPack(undefined);
+          setStatus("Region removed");
+        }
       }
     };
     loadTracks()
@@ -207,6 +289,11 @@ function App() {
     listPacks()
       .then((packs) => {
         if (!disposed) {
+          setInstalled(
+            packs.filter(
+              (p) => p.manifest.costModelVersion === COST_MODEL_VERSION,
+            ),
+          );
           setPack(
             packs
               .filter((p) => p.manifest.costModelVersion === COST_MODEL_VERSION)
@@ -220,6 +307,25 @@ function App() {
         if (!disposed) setCatalog(v);
       })
       .catch(() => {});
+    readCatalogue(catalogueURL)
+      .then((v) => {
+        if (!disposed) setCatalogue(v);
+      })
+      .catch(async () => {
+        // A catalogue failure must never block using or removing installed packs.
+        const cached = await cachedCatalogue(catalogueURL).catch(
+          () => undefined,
+        );
+        if (disposed) return;
+        // No catalogue at all simply means the grid release is not published yet, so
+        // stay silent as the legacy manifest fetch does. Only say something when we are
+        // deliberately showing stale data.
+        if (!cached) return;
+        setCatalogue(cached);
+        setCatalogueError(
+          "Showing the last saved catalogue. Reconnect for updates.",
+        );
+      });
     loadModels()
       .then((v) => {
         if (!disposed) setModels(v);
@@ -266,8 +372,78 @@ function App() {
     window.addEventListener("beforeunload", preventLoss);
     return () => window.removeEventListener("beforeunload", preventLoss);
   }, [saving]);
+  const installing = useRef<string>(undefined);
+  const catalogueRef = useRef<Catalogue | undefined>(undefined);
+  catalogueRef.current = catalogue;
+  const removing = useRef<string>(undefined);
+  const pending = useRef<string[]>([]);
+
+  /**
+   * Downloads run one at a time: sequential queueing keeps the storage headroom check
+   * meaningful and lets a single cancel stop the run without orphaning staged files.
+   */
+  function nextInstall() {
+    const queue = pending.current;
+    const next = queue.shift();
+    installing.current = next;
+    if (!next) {
+      setDownloadingCell(undefined);
+      setProgress(undefined);
+      return;
+    }
+    const cell = catalogueRef.current?.cells.find((c) => c.id === next);
+    if (!cell) return nextInstall();
+    setDownloadingCell(next);
+    setProgress(0);
+    dataWorker.current?.postMessage({
+      id: 1,
+      type: "install",
+      url: resolveCellManifest(catalogueURL, cell),
+    });
+  }
+
+  function downloadSelected(ids?: string[]) {
+    const wanted = (ids ?? [...selectedCells]).filter(
+      (id) => !routableCells.some((p) => p.manifest.id === id),
+    );
+    if (!wanted.length) return;
+    setFailedCells(new Map());
+    setError("");
+    setQueuedCells(new Set(wanted));
+    pending.current = [...wanted];
+    if (!installing.current) nextInstall();
+  }
+
+  function cancelDownloads() {
+    pending.current = [];
+    dataWorker.current?.postMessage({ id: 1, type: "cancel" });
+    setQueuedCells(new Set());
+    setDownloadingCell(undefined);
+    installing.current = undefined;
+    setProgress(undefined);
+  }
+
+  function removeCell(installedPack: Installed) {
+    removing.current = installedPack.manifest.id;
+    dataWorker.current?.postMessage({
+      id: 2,
+      type: "remove",
+      pack: installedPack,
+    });
+  }
+
+  function toggleCell(id: string) {
+    setSelectedCells((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   function compute() {
-    if (!active || !pack || active.anchors.length < 2) return;
+    if (!active || active.anchors.length < 2) return;
+    const cellPacks = routableCells;
+    if (!cellPacks.length && !pack) return;
     cancel();
     const id = ++generation.current,
       trackId = active.id,
@@ -290,10 +466,26 @@ function App() {
         const result = selectedRoute(data.comparison);
         setComparison({ trackId, revision, value: data.comparison });
         if (result?.status === "ok") {
+          const version = cellPacks.length
+            ? `${catalogue?.release ?? "cells"}:${cellPacks.length}`
+            : pack!.manifest.version;
           updateTrack(trackId, (t) =>
-            acceptResult(t, revision, result, pack.manifest.version),
+            acceptResult(t, revision, result, version),
           );
           setStatus("Route ready");
+        } else if (result?.status === "missing-cells") {
+          const needed = result.missingCells ?? [];
+          setMissingCells(needed);
+          setSelectedCells(new Set(needed));
+          setError(
+            needed.length
+              ? `This route needs ${needed.length} more map ${
+                  needed.length === 1 ? "area" : "areas"
+                }. Open the Data tab to add ${
+                  needed.length === 1 ? "it" : "them"
+                }.`
+              : "This route needs map areas that are not downloaded.",
+          );
         } else
           setError(
             result?.status === "outside-coverage"
@@ -320,15 +512,25 @@ function App() {
         worker.terminate();
       }
     };
-    worker.postMessage({
-      id,
-      pack,
-      request: {
-        anchors: active.anchors,
-        profile: active.profile,
-        attraction: active.attraction,
-      },
-    });
+    const request = {
+      anchors: active.anchors,
+      profile: active.profile,
+      attraction: active.attraction,
+    };
+    worker.postMessage(
+      cellPacks.length
+        ? {
+            id,
+            release: catalogue!.release,
+            packs: cellPacks,
+            published: catalogue!.cells.map((c) => ({
+              id: c.id,
+              bbox: c.bbox,
+            })),
+            request,
+          }
+        : { id, pack, request },
+    );
   }
   function useModel(p: ProfileInput) {
     edit({ profile: modelSnapshot(p) });
@@ -395,8 +597,46 @@ function App() {
       : (models.find((p) => sameModel(p)) ?? active.profile)
     : "gravel";
   const region = catalog ?? pack?.manifest;
+  const cells = useMemo(
+    () =>
+      catalogue
+        ? mapCells(catalogue, installed, {
+            selected: selectedCells,
+            queued: queuedCells,
+            downloading: downloadingCell,
+            failed: failedCells,
+          })
+        : undefined,
+    [
+      catalogue,
+      installed,
+      selectedCells,
+      queuedCells,
+      downloadingCell,
+      failedCells,
+    ],
+  );
+  const savedCells = useMemo(
+    () => installedCells(installed, catalogue),
+    [installed, catalogue],
+  );
+  const routableCells = useMemo(
+    () =>
+      catalogue
+        ? installed.filter(
+            (p) =>
+              p.manifest.schemaVersion === 2 &&
+              p.manifest.release === catalogue.release,
+          )
+        : [],
+    [installed, catalogue],
+  );
   const stale = active?.result && active.resultRevision !== active.revision;
-  const canCompute = !!pack && !!active && active.anchors.length >= 2 && !busy;
+  const canCompute =
+    (!!pack || routableCells.length > 0) &&
+    !!active &&
+    active.anchors.length >= 2 &&
+    !busy;
   return (
     <main>
       <MapView
@@ -407,7 +647,8 @@ function App() {
         history={history}
         tracks={collection?.tracks ?? []}
         activeId={active?.id}
-        coverage={tab === "data" ? region?.bbox : undefined}
+        coverage={tab === "data" && !catalogue ? region?.bbox : undefined}
+        cells={tab === "data" ? cells : undefined}
         command={command}
         onPoint={(point) => {
           if (tab !== "tracks" || !active) return;
@@ -1004,16 +1245,155 @@ function App() {
                 Downloaded data supports local routing. The background map and
                 place search need an internet connection.
               </p>
-              <div className="coming-next">
-                <Layers size={18} />
-                <div>
-                  <strong>Smaller downloads, coming next</strong>
-                  <p>
-                    Selectable grid tiles, targeting 40–50 MB each. Regional
-                    downloads are available today.
+              {catalogueError && <p className="hint">{catalogueError}</p>}
+              {catalogue ? (
+                <section className="cell-grid">
+                  <header>
+                    <div>
+                      <strong>Map areas</strong>
+                      <small>
+                        {catalogue.cells.length} areas ·{" "}
+                        {Math.round(
+                          cellSizeM(parseCellId(catalogue.cells[0].id)) / 1000,
+                        )}{" "}
+                        km each
+                        {savedCells.length > 0 &&
+                          ` · ${savedCells.length} saved`}
+                      </small>
+                    </div>
+                    <button
+                      className="icon-button"
+                      aria-label="Show all published areas"
+                      onClick={() => {
+                        const b = coverageBBox(catalogue);
+                        fit([
+                          [b[0], b[1]],
+                          [b[2], b[3]],
+                        ]);
+                      }}
+                    >
+                      <Search size={20} />
+                    </button>
+                  </header>
+                  <ul>
+                    {catalogue.cells.map((cell) => {
+                      const state =
+                        cells?.find((c) => c.id === cell.id)?.state ??
+                        "available";
+                      const label = cellLabel(parseCellId(cell.id));
+                      const held =
+                        state === "installed" || state === "update-available";
+                      const needed = missingCells.includes(cell.id);
+                      return (
+                        <li
+                          key={cell.id}
+                          className={
+                            "cell cell-" +
+                            state +
+                            (needed ? " cell-needed" : "")
+                          }
+                        >
+                          <button
+                            className="cell-toggle"
+                            aria-pressed={selectedCells.has(cell.id)}
+                            disabled={!cell.available || held}
+                            onClick={() => toggleCell(cell.id)}
+                          >
+                            <span className="cell-name">{label}</span>
+                            <span className="cell-size">
+                              {formatBytes(cell.bytes)}
+                            </span>
+                            <span className="cell-state">
+                              {state === "downloading" && progress !== undefined
+                                ? Math.round(progress * 100) + "%"
+                                : state}
+                            </span>
+                          </button>
+                          {held ? (
+                            <button
+                              className="icon-button"
+                              aria-label={"Remove area " + label}
+                              disabled={downloadingCell !== undefined}
+                              onClick={() => {
+                                const held = installed.find(
+                                  (p) => p.manifest.id === cell.id,
+                                );
+                                if (held) removeCell(held);
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          ) : (
+                            <button
+                              className="icon-button"
+                              aria-label={"Show area " + label}
+                              onClick={() =>
+                                fit([
+                                  [cell.bbox[0], cell.bbox[1]],
+                                  [cell.bbox[2], cell.bbox[3]],
+                                ])
+                              }
+                            >
+                              <Search size={16} />
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {selectedCells.size > 0 && (
+                    <button
+                      className="primary wide"
+                      disabled={downloadingCell !== undefined || !online}
+                      onClick={() => downloadSelected()}
+                    >
+                      <Download size={20} />
+                      {`Save ${selectedCells.size} ${
+                        selectedCells.size === 1 ? "area" : "areas"
+                      } offline · ${formatBytes(
+                        selectedBytes(catalogue, selectedCells),
+                      )}`}
+                    </button>
+                  )}
+                  {downloadingCell !== undefined && (
+                    <>
+                      <progress value={progress ?? 0} max="1" />
+                      <button onClick={cancelDownloads}>
+                        {`Cancel · ${queuedCells.size} remaining`}
+                      </button>
+                    </>
+                  )}
+                  {failedCells.size > 0 && (
+                    <button
+                      onClick={() => downloadSelected([...failedCells.keys()])}
+                    >
+                      {`Retry ${failedCells.size} failed`}
+                    </button>
+                  )}
+                  {routableCells.length > 0 && (
+                    <p className="hint">
+                      {`${routableCells.length} ${
+                        routableCells.length === 1 ? "area" : "areas"
+                      } ready for offline routing`}
+                    </p>
+                  )}
+                  <p className="note">
+                    Selecting and downloading individual areas arrives with the
+                    next data release. The regional pack above works today.
                   </p>
+                </section>
+              ) : (
+                <div className="coming-next">
+                  <Layers size={18} />
+                  <div>
+                    <strong>Smaller downloads, coming next</strong>
+                    <p>
+                      Selectable grid tiles, targeting 40–50 MB each. Regional
+                      downloads are available today.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </Tabs.Content>
             <Tabs.Content value="tools">
               <div className="section-heading">

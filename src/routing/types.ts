@@ -68,11 +68,20 @@ export type Components = {
   ferry: number;
 };
 export type RouteStatus =
-  "ok" | "outside-coverage" | "snap-failed" | "no-path" | "budget-exceeded";
+  | "ok"
+  /** Outside the published grid entirely. */
+  | "outside-coverage"
+  /** Published, but the areas the route needs are not installed. */
+  | "missing-cells"
+  | "snap-failed"
+  | "no-path"
+  | "budget-exceeded";
 export type RouteResult = {
   status: RouteStatus;
   /** One-based index of an ordered waypoint leg known to be disconnected. */
   failedLeg?: number;
+  /** Cell ids the search needed but could not read, for "missing-cells". */
+  missingCells?: string[];
   mode: "reference" | "corridor";
   geometry: Point[];
   anchors: Point[];
@@ -93,6 +102,9 @@ export type RouteResult = {
     expansions: number;
     tiles: number;
     loadedBytes: number;
+    /** Graph blocks decoded, and the cells they came from. */
+    blocks?: number;
+    cells?: string[];
   };
   corridor?: Point[][];
 };

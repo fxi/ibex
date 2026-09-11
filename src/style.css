@@ -845,3 +845,99 @@ progress {
 .brand img {
   filter: invert(1);
 }
+.cell-grid {
+  margin-top: 19px;
+}
+.cell-grid > header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cell-grid > header strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.cell-grid > header small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.cell-grid ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cell {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #aec4dc30;
+  border-left: 3px solid var(--cell-color, #8fa3b8);
+  border-radius: 12px;
+  font-size: 11px;
+}
+.cell-name {
+  font-variant-numeric: tabular-nums;
+}
+.cell-size {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Mirrors CELL_COLORS in src/offline/cells.ts, which the map reads for its paint. */
+.cell-state {
+  color: var(--cell-color, #8fa3b8);
+  text-transform: lowercase;
+}
+.cell-unavailable {
+  --cell-color: #41525f;
+  opacity: 0.55;
+}
+.cell-available {
+  --cell-color: #8fa3b8;
+}
+.cell-selected,
+.cell-queued,
+.cell-downloading {
+  --cell-color: #2485ff;
+}
+.cell-installed {
+  --cell-color: #54d5ba;
+}
+.cell-update-available {
+  --cell-color: #ffb34d;
+}
+.cell-foreign-release {
+  --cell-color: #b29aff;
+}
+.cell-failed {
+  --cell-color: #ed4242;
+}
+.cell-toggle {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cell-toggle:disabled {
+  cursor: default;
+}
+.cell-toggle[aria-pressed="true"] .cell-name {
+  font-weight: 600;
+}
+/* A cell the last route asked for, so the fix is obvious on arrival. */
+.cell-needed {
+  box-shadow: 0 0 0 1px var(--blue);
+}
