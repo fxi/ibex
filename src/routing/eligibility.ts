@@ -62,6 +62,29 @@ function scale(value: string | undefined): number | undefined {
 }
 
 /** Segment classification is shared by eligibility, scoring, and reporting. */
+/**
+ * How a stretch of road will feel under the wheels, for the map.
+ *
+ * This is presentation, not cost: the router already decided to come this way, and the
+ * point of the classification is to make that decision inspectable. A kilometre of
+ * `walk` or `rough` in the middle of a route is the signal that the chosen line is not
+ * what the rider had in mind.
+ */
+export type RideClass = "paved" | "gravel" | "rough" | "walk" | "ferry";
+
+export function rideClass(
+  edge: Edge,
+  mode: "ride" | "walk" | "ferry" | "blocked",
+): RideClass {
+  if (mode === "ferry" || isFerry(edge)) return "ferry";
+  // Blocked segments cannot appear in a finished route, but if one ever did it would be
+  // pushed rather than ridden, so it reads the same way.
+  if (mode === "walk" || mode === "blocked") return "walk";
+  if (isPaved(edge)) return "paved";
+  if (gravel.has(edge.surface)) return "gravel";
+  return "rough";
+}
+
 export function traversalSegments(edge: Edge, input: ProfileInput) {
   const p = resolveProfile(input);
   return (edge.grades ?? [[edge.length, null]]).map(([length, grade]) => ({

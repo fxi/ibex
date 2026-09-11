@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { installPack, listPacks, readFile, removePack } from "../offline/store";
+import { installPack, listPacks, removePack } from "../offline/store";
 const controllers = new Map<number, AbortController>();
 self.onmessage = async (event) => {
   const { id, type, url, pack } = event.data;
@@ -23,10 +23,6 @@ self.onmessage = async (event) => {
     if (type === "remove") {
       await removePack(pack);
       self.postMessage({ id, type: "removed" });
-    }
-    if (type === "map") {
-      const bytes = await readFile(pack, "basemap.json");
-      self.postMessage({ id, type: "map", bytes }, [bytes]);
     }
   } catch (e) {
     self.postMessage({

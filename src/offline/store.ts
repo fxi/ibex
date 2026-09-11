@@ -18,13 +18,7 @@ const common = {
   files: z.array(fileSchema).min(2).max(1000),
   build: z.record(z.string(), z.unknown()).optional(),
 };
-/** The pre-grid single-region pack. Still installable and routable, never mixed with cells. */
-export const legacyManifestSchema = z.object({
-  schemaVersion: z.literal(1),
-  id: z.string().regex(/^[a-z0-9-]+$/),
-  ...common,
-});
-/** One downloadable grid cell in the binary format. */
+/** One downloadable grid cell in the binary format — the only pack shape there is. */
 export const cellManifestSchema = z.object({
   schemaVersion: z.literal(2),
   format: z.literal("ibex-1"),
@@ -40,14 +34,12 @@ export const cellManifestSchema = z.object({
   blocks: z.number().int().nonnegative(),
   ...common,
 });
-export const manifestSchema = z.discriminatedUnion("schemaVersion", [
-  legacyManifestSchema,
-  cellManifestSchema,
-]);
+export const manifestSchema = cellManifestSchema;
 export type Manifest = z.infer<typeof manifestSchema>;
-export type CellManifest = z.infer<typeof cellManifestSchema>;
-export const isCellManifest = (m: Manifest): m is CellManifest =>
-  m.schemaVersion === 2;
+export type CellManifest = Manifest;
+/** True for any pack this build can read. Pre-grid region packs fail `manifestSchema`. */
+export const isCellManifest = (m: unknown): m is CellManifest =>
+  cellManifestSchema.safeParse(m).success;
 export type Installed = {
   manifest: Manifest;
   installedAt: string;
@@ -156,12 +148,9 @@ export async function installPack(
 ): Promise<Installed> {
   const manifest = await readManifest(url);
   const paths = manifest.files.map((f) => f.path);
-  const required = isCellManifest(manifest)
-    ? ["index.ibx", "graph.ibx"]
-    : ["index.bin", "basemap.pmtiles"];
   if (
     new Set(paths).size !== paths.length ||
-    !required.every((name) => paths.includes(name))
+    !["index.ibx", "graph.ibx"].every((name) => paths.includes(name))
   )
     throw new Error("Invalid pack file list");
   const total = manifest.files.reduce((s, f) => s + f.bytes, 0);

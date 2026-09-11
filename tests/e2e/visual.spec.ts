@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
 test("map and planner render without application errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -38,17 +38,13 @@ test("missing local key makes no MapTiler requests and keeps routing usable", as
   await expect(page.getByTestId("map-error")).toContainText(
     "no map access key",
   );
-  await page.getByRole("tab", { name: "Data", exact: true }).click();
-  await page.getByRole("button", { name: /Save offline/ }).click();
-  await expect(
-    page.getByText("Region saved offline", { exact: true }),
-  ).toBeVisible();
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.locator(".track-details > summary").click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible();
@@ -67,17 +63,13 @@ test("resource failures report map status without switching style or blocking ro
   await expect(page.getByTestId("map-error")).toContainText(
     "Map resources unavailable",
   );
-  await page.getByRole("tab", { name: "Data", exact: true }).click();
-  await page.getByRole("button", { name: /Save offline/ }).click();
-  await expect(
-    page.getByText("Region saved offline", { exact: true }),
-  ).toBeVisible();
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.locator(".track-details > summary").click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible();

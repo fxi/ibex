@@ -17,9 +17,11 @@ try {
   await mkdir(join(temporary, "scripts"));
   await cp("scripts/local-env.ts", join(temporary, "scripts/local-env.ts"));
   await mkdir(join(temporary, "public/packs"), { recursive: true });
-  await cp("public/packs/test", join(temporary, "public/packs/test"), {
-    recursive: true,
-  });
+  await cp(
+    "public/packs/cell-fixture",
+    join(temporary, "public/packs/cell-fixture"),
+    { recursive: true },
+  );
   await cp("public/icon.svg", join(temporary, "public/icon.svg"));
   await symlink(
     join(root, "node_modules"),
@@ -28,7 +30,7 @@ try {
   );
   await writeFile(
     join(temporary, ".env"),
-    "VITE_MAPTILER_API_KEY=cyclatractor-browser-test-key\nVITE_REGION_MANIFEST=/cyclatractor/packs/test/manifest.json\n",
+    "VITE_MAPTILER_API_KEY=cyclatractor-browser-test-key\nVITE_CATALOGUE_URL=/cyclatractor/packs/cell-fixture/catalogue.json\n",
   );
   await build({
     root: temporary,

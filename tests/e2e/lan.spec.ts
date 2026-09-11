@@ -1,5 +1,5 @@
 import { networkInterfaces } from "node:os";
-import { expect, test } from "./fixtures";
+import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
 const address = Object.values(networkInterfaces())
   .flat()
   .find((n) => n?.family === "IPv4" && !n.internal)?.address;
@@ -12,17 +12,15 @@ test("installs and routes on insecure LAN HTTP without StorageManager or Web Cry
   await page.goto(`http://${address}:4173/cyclatractor/`);
   expect(await page.evaluate(() => isSecureContext)).toBe(false);
   expect(await page.evaluate(() => typeof navigator.storage)).toBe("undefined");
-  await page.getByRole("tab", { name: "Data", exact: true }).click();
-  await page.getByRole("button", { name: /Save locally/ }).click();
-  await expect(
-    page.getByText("Region saved locally", { exact: true }),
-  ).toBeVisible({ timeout: 30000 });
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible({
+    timeout: 30000,
+  });
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.locator(".track-details > summary").click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible({ timeout: 30000 });

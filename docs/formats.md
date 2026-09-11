@@ -1,6 +1,12 @@
-# Current data contracts (pre-grid baseline)
+# Data contracts (pre-grid baseline — superseded)
 
-Frozen record of the formats and message protocols as they stand **before** the move to
+> **Superseded.** The move to selectable grid cells has landed and the pre-grid region
+> pack has been removed from the application entirely: `manifestSchema` now accepts only
+> `schemaVersion: 2` cells, and any older pack found in storage is deleted on start-up.
+> Everything below documents the format this replaced. For the live contracts see
+> `docs/release-pipeline.md`, `src/offline/store.ts` and `src/offline/ibex/spec.ts`.
+
+Frozen record of the formats and message protocols as they stood **before** the move to
 selectable grid cells, so the migration can be diffed against something. Every claim here
 was read out of the code at the commit that introduced this file; line references are
 indicative, names are authoritative.
@@ -230,16 +236,20 @@ decoded RGB image in one dict, which is fine for 30 tiles and not for thousands.
 | Baked field                   | 83 × 80 = 6,640 cells; uint8+gzip = 3.4 KB per preset                                                                                           |
 | `public/packs/test`           | 4 files / 16 KB synthetic CI fixture, id `synthetic`                                                                                            |
 
-## Test surfaces that constrain changes
+## Test surfaces that constrain changes (as they are now)
 
-- `tests/offline.test.ts` imports `public/packs/test/manifest.json` directly and asserts the
-  schema rejects bad `schemaVersion`, stale `costModelVersion`, and the paths `../private`,
-  `https://other/file`, `a/b`.
-- `tests/e2e/offline.spec.ts` and `tests/e2e/install-failures.spec.ts` select by accessible
-  name: the `Data` tab, a button matching `/Save offline/`, and the exact text
-  `Region saved offline`. `install-failures.spec.ts` additionally asserts `graphReads === 1`
-  after a resumed install, which is the proof that staged files are reused.
+- `tests/offline.test.ts` imports `public/packs/cell-fixture/9-264-181/manifest.json` and
+  asserts the schema rejects the pre-grid `schemaVersion: 1` shape, a stale
+  `costModelVersion`, and the paths `../private`, `https://other/file`, `a/b`.
+- Browser specs share `saveMapData()` in `tests/e2e/fixtures.ts`, which selects the fixture
+  cell on the map grid — falling back to the `All areas` list when no basemap can render —
+  and runs the pending change. `install-failures.spec.ts` asserts `graphReads === 1` after a
+  resumed install, which is the proof that staged files are reused.
 - `scripts/test-server.mjs` injects `checksum` and `disconnect` faults against
-  `public/packs/test`, keyed on the filenames `graph-test.bin` and `index.bin`.
-- `scripts/verify_public_pack.py` probes `bytes=0-126` of `basemap.pmtiles` for the PMTiles
-  magic, so dropping that file changes the publication check.
+  `public/packs/cell-fixture`, keyed on the filenames `graph.ibx` and `index.ibx`.
+- `scripts/verify_public_release.py` probes `bytes=0-63` of a `graph.ibx` to prove the CDN
+  honours range requests, which is the router's hot path.
+- The fixture deliberately mixes paved and gravel surfaces so `tests/e2e/styling.spec.ts`
+  can assert a route renders as more than one rideability class. A `paved_only` profile
+  such as Road cannot ride it, which is why the browser specs use Touring as their second
+  profile.

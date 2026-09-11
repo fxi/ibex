@@ -8,6 +8,7 @@ import {
   isStreet,
   isPaved,
   isFerry,
+  rideClass,
   traversalSegments,
 } from "./eligibility";
 import type {
@@ -599,6 +600,77 @@ type SearchState = {
   edge?: Edge;
   previous?: string;
 };
+/**
+ * Describe one edge as one or more uniform stretches, appended to the running result.
+ *
+ * `traversalSegments` splits an edge by grade run, which need not line up with its
+ * geometry vertices, so each geometry span is classified by the run covering its
+ * midpoint and consecutive spans of the same class are merged. Segments therefore always
+ * start and end on real vertices, which is what the map needs to draw them.
+ */
+function appendSegments(
+  result: RouteResult,
+  edge: Edge,
+  profile: ProfileInput,
+  base: number,
+) {
+  const points = edge.geometry;
+  if (points.length < 2) return;
+  const runs = traversalSegments(edge, profile);
+  const spans: number[] = [];
+  let geometryLength = 0;
+  for (let i = 1; i < points.length; i++) {
+    const d = distance(points[i - 1], points[i]);
+    spans.push(d);
+    geometryLength += d;
+  }
+  // Runs measure the edge's own length, which can differ slightly from the sum of its
+  // straight-line spans; rescale so a midpoint lands in the run the builder intended.
+  const runLength = runs.reduce((sum, r) => sum + r.length, 0);
+  const scale = geometryLength > 0 && runLength > 0 ? runLength / geometryLength : 1;
+  const runAt = (meters: number) => {
+    let acc = 0;
+    for (const run of runs) {
+      acc += run.length;
+      if (meters <= acc) return run;
+    }
+    return runs[runs.length - 1];
+  };
+
+  const sac = edge.tags?.sac_scale;
+  let cursor = 0;
+  let startIndex = 0;
+  let startRun = runAt(spans[0] / 2) ;
+  let ride = rideClass(edge, startRun.mode);
+  let lengthM = 0;
+  const flush = (endIndex: number) => {
+    result.segments.push({
+      start: base + startIndex,
+      end: base + endIndex,
+      ride,
+      surface: edge.surface,
+      highway: edge.highway,
+      ...(sac === undefined ? {} : { sac }),
+      grade: startRun.grade,
+      lengthM,
+    });
+  };
+  for (let i = 0; i < spans.length; i++) {
+    const run = runAt(cursor + spans[i] / 2);
+    const next = rideClass(edge, run.mode);
+    if (i > 0 && next !== ride) {
+      flush(i);
+      startIndex = i;
+      startRun = run;
+      ride = next;
+      lengthM = 0;
+    }
+    lengthM += spans[i];
+    cursor += spans[i] * scale;
+  }
+  flush(spans.length);
+}
+
 export function route(
   graph: Graph,
   request: RouteRequest,
@@ -623,6 +695,7 @@ export function route(
     descentM: null,
     elevationProfile: [],
     edgeIds: [],
+    segments: [],
     surfaceM: {},
     uncertainM: 0,
     metrics: {
@@ -825,9 +898,13 @@ export function route(
           }
         } else result.elevationProfile.push([meters + edge.length, null]);
         result.edgeIds.push(edge.id);
+        // The first vertex of every edge after the first repeats the previous edge's
+        // last vertex, so segment indices are taken before the geometry grows.
+        const base = result.geometry.length ? result.geometry.length - 1 : 0;
         result.geometry.push(
           ...(result.geometry.length ? edge.geometry.slice(1) : edge.geometry),
         );
+        appendSegments(result, edge, request.profile, base);
         result.distanceM += edge.length;
         if (isFerry(edge)) result.ferryM += edge.length;
         result.hikeABikeM += traversalSegments(edge, request.profile)

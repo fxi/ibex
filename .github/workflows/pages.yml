@@ -24,7 +24,7 @@ jobs:
       - run: npm run lint && npm run typecheck && npm test
       - run: npm run build
         env:
-          VITE_REGION_MANIFEST: ${{ vars.VITE_REGION_MANIFEST }}
+          VITE_CATALOGUE_URL: ${{ vars.VITE_CATALOGUE_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

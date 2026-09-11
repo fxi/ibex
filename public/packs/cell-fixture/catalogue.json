@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "release": "fixture-g4-0000",
+  "grid": {
+    "scheme": "xyz",
+    "zoom": 9,
+    "blockZoom": 13,
+    "fieldZoom": 15
+  },
+  "costModelVersion": 4,
+  "formatVersion": 1,
+  "osmTimestamp": "synthetic",
+  "generated": "1970-01-01T00:00:00.000Z",
+  "attribution": "Synthetic test data — not a real cycling network",
+  "cells": [
+    {
+      "id": "9-264-181",
+      "x": 264,
+      "y": 181,
+      "bbox": [
+        5.625,
+        46.0732306,
+        6.328125,
+        46.5588603
+      ],
+      "manifest": "9-264-181/manifest.json",
+      "version": "9915e52c",
+      "bytes": 974,
+      "available": true,
+      "nodes": 4,
+      "edges": 6
+    }
+  ]
+}

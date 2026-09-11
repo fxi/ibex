@@ -185,16 +185,29 @@ main,
 }
 .map-actions {
   position: absolute;
-  right: 25px;
+  right: 20px;
   top: max(24px, env(safe-area-inset-top));
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  justify-items: center;
+}
+.map-actions button svg {
+  width: 19px;
+  height: 19px;
+}
+.map-actions .glow {
+  width: 50px;
+  height: 50px;
+}
+.map-actions .glow svg {
+  width: 23px;
+  height: 23px;
 }
 .map-actions button {
   display: grid;
   place-items: center;
-  width: 53px;
-  height: 53px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   background: #12202cce;
   border-color: #b8d0e15c;
@@ -226,18 +239,12 @@ main,
 .panel-handle {
   height: 25px;
   position: relative;
-  display: flex;
-  justify-content: center;
-}
-.panel-handle > button:not(.expand-button) {
-  border: 0;
-  background: none;
-  width: 65%;
-  padding: 8px;
   display: grid;
   place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
 }
-.panel-handle span {
+.panel-handle .grab {
   display: block;
   background: #92a0af85;
   width: 40px;
@@ -285,16 +292,23 @@ main,
 }
 .panel-content {
   padding: 18px 16px 20px;
-  max-height: 41dvh;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #5b718550 transparent;
+  transition: height 0.18s ease;
 }
-.panel.expanded .panel-content {
-  max-height: 72dvh;
+/* A live drag must track the pointer exactly; only the collapse toggle animates. */
+.panel.resizing .panel-content {
+  transition: none;
 }
+/* Collapsed is height 0, not display:none, so the change is a transition not a jump. */
 .panel.collapsed .panel-content {
-  display: none;
+  padding-block: 0;
+  overflow: hidden;
+}
+.panel.collapsed .tabs {
+  border-bottom-color: transparent;
 }
 .section-heading {
   display: flex;
@@ -319,13 +333,17 @@ main,
 }
 .track-card {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
   padding: 9px;
   border-radius: 20px;
   border: 1px solid #aec4dc30;
   background: linear-gradient(140deg, #ffffff06, #0002);
-  min-height: 72px;
+}
+.track-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 54px;
 }
 .track-card.active {
   border-color: #70a1d865;
@@ -401,7 +419,6 @@ main,
   height: 30px;
   opacity: 0.6;
 }
-.track-details,
 details {
   margin-top: 14px;
   border-top: 1px solid #9db1c320;
@@ -679,10 +696,6 @@ details p {
   pointer-events: none;
   text-shadow: 0 1px 6px #000;
 }
-.maplibregl-ctrl-top-right {
-  top: 220px;
-  right: 28px;
-}
 .maplibregl-ctrl-group {
   background: #1b2c3ce0 !important;
   border: 1px solid #9cafc440;
@@ -701,17 +714,71 @@ details p {
   right: 0;
   font-size: 9px;
 }
+.anchor-marker-wrap {
+  cursor: pointer;
+  /* The pin tip, not the artwork centre, marks the waypoint. */
+  translate: 0 -9px;
+  -webkit-tap-highlight-color: transparent;
+}
 .anchor-marker {
-  width: 29px;
-  height: 29px;
-  border-radius: 50%;
-  background: #f4f7fa !important;
-  color: #102332;
-  font-weight: 700;
-  font-size: 13px;
-  padding: 0;
-  border: 3px solid #172c3e;
-  box-shadow: 0 2px 8px #0007;
+  display: block;
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 2px 5px #0008);
+  transition: transform 0.15s ease;
+}
+.anchor-marker-wrap:hover .anchor-marker,
+.anchor-marker-wrap:focus-visible .anchor-marker {
+  transform: scale(1.15);
+}
+.anchor-marker-wrap:focus-visible {
+  outline: none;
+}
+.anchor-marker-wrap:focus-visible .marker_circle {
+  fill: #7fc0ff;
+}
+.waypoint-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 178px;
+  padding: 6px;
+}
+.waypoint-menu strong {
+  display: block;
+  padding: 5px 9px 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.waypoint-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 9px;
+  border-radius: 9px;
+  color: inherit;
+}
+.waypoint-menu button:hover:not(:disabled) {
+  background: #ffffff14;
+}
+.mode-hint {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  top: max(24px, env(safe-area-inset-top));
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 22px;
+  font-size: 12px;
+}
+.mode-hint button {
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 11px;
 }
 .spin {
   animation: spin 1.4s linear infinite;
@@ -732,14 +799,8 @@ progress {
     bottom: 28px;
     width: 460px;
   }
-  .panel-content {
-    max-height: 46dvh;
-  }
   .map-caption {
     bottom: 40px;
-  }
-  .panel.expanded .panel-content {
-    max-height: 70dvh;
   }
 }
 @media (max-width: 600px) {
@@ -751,11 +812,7 @@ progress {
     border-radius: 28px;
   }
   .panel-content {
-    max-height: 35dvh;
     padding: 14px 12px 17px;
-  }
-  .panel.expanded .panel-content {
-    max-height: 68dvh;
   }
   .brand {
     left: 20px;
@@ -813,10 +870,6 @@ progress {
   .sparkline {
     width: 51px;
   }
-  .maplibregl-ctrl-top-right {
-    right: 23px;
-    top: 202px;
-  }
   .empty-state {
     padding-top: 17px;
   }
@@ -872,7 +925,7 @@ progress {
 }
 .cell {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 8px 10px;
@@ -888,56 +941,285 @@ progress {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-/* Mirrors CELL_COLORS in src/offline/cells.ts, which the map reads for its paint. */
 .cell-state {
   color: var(--cell-color, #8fa3b8);
   text-transform: lowercase;
 }
 .cell-unavailable {
-  --cell-color: #41525f;
   opacity: 0.55;
 }
-.cell-available {
-  --cell-color: #8fa3b8;
+/* A cell the last route asked for, so the fix is obvious on arrival. */
+.cell-needed {
+  box-shadow: 0 0 0 1px var(--blue);
 }
-.cell-selected,
-.cell-queued,
-.cell-downloading {
-  --cell-color: #2485ff;
+
+.all-areas {
+  margin-top: 14px;
 }
-.cell-installed {
-  --cell-color: #54d5ba;
+.all-areas ul {
+  margin-top: 8px;
+  max-height: 210px;
+  overflow: auto;
 }
-.cell-update-available {
-  --cell-color: #ffb34d;
-}
-.cell-foreign-release {
-  --cell-color: #b29aff;
-}
-.cell-failed {
-  --cell-color: #ed4242;
+.all-areas .cell {
+  grid-template-columns: 1fr;
+  padding: 0;
+  border-left-width: 3px;
 }
 .cell-toggle {
   display: grid;
   grid-template-columns: 1fr auto auto;
   gap: 10px;
   align-items: center;
-  flex: 1;
-  padding: 0;
+  width: 100%;
+  padding: 8px 10px;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
+  font-size: 11px;
   text-align: left;
   cursor: pointer;
 }
 .cell-toggle:disabled {
   cursor: default;
+  opacity: 0.6;
 }
-.cell-toggle[aria-pressed="true"] .cell-name {
-  font-weight: 600;
+
+/* Cell colours come from CELL_COLORS, set inline, so the panel and the map can never
+   disagree about what a state looks like. */
+.connection-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  margin-bottom: 13px;
+  border-radius: 14px;
+  background: #ffffff0a;
+  border: 1px solid #aec4dc26;
+  font-size: 11px;
 }
-/* A cell the last route asked for, so the fix is obvious on arrival. */
-.cell-needed {
-  box-shadow: 0 0 0 1px var(--blue);
+.connection-row i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5b669;
+  flex-shrink: 0;
+}
+.connection-row i.saved {
+  background: #73d5b3;
+}
+.connection-row.offline i {
+  background: #92a0af;
+}
+.connection-row span {
+  flex: 1;
+}
+.connection-row em {
+  font-style: normal;
+  color: var(--muted);
+}
+.data-body {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.data-body:disabled {
+  opacity: 0.5;
+}
+.row.bulk {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.row.bulk button {
+  font-size: 11px;
+}
+
+.track-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #9db1c320;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.track-body > label,
+.track-meta label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.track-meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.track-meta input[type="color"] {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+}
+.waypoints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 13px;
+  background: #ed424214;
+  border: 1px solid #ed424255;
+  font-size: 11px;
+}
+.confirm span {
+  flex: 1;
+}
+.confirm button {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 11px;
+}
+.toggles {
+  margin-top: 16px;
+  border: 1px solid #aec4dc26;
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.toggles legend {
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.toggles label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.model-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.model-row-wrap .model-row {
+  flex: 1;
+}
+.profile-editor-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #9db1c320;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profile-form > details {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+  border: 1px solid #aec4dc26;
+  border-radius: 13px;
+  padding: 8px 11px;
+}
+.field {
+  padding: 9px 0;
+  border-bottom: 1px solid #9db1c318;
+}
+.field:last-child {
+  border-bottom: 0;
+}
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.field-head label {
+  font-size: 12px;
+  color: #cfdbe7;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.slider-row output {
+  min-width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--muted);
+}
+.field-hint,
+.field-inherited {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.field.inherited .field-head label {
+  color: var(--muted);
+}
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 10px;
+  color: #7fb4ff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.import-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ride-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 0 4px;
+  font-size: 11px;
+}
+.ride-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ride-legend i {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.ride-legend b {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }

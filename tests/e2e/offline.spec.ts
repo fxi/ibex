@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
 test.afterEach(async ({ request }) => {
   await request.post("http://127.0.0.1:4173/__test/network", {
     data: { offline: false },
@@ -14,21 +14,20 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Data", exact: true }).click();
-  await page.getByRole("button", { name: /Save offline/ }).click();
+  await saveMapData(page);
   await page.waitForFunction(
     () =>
       document
-        .querySelector(".connection")
-        ?.textContent?.includes("Region saved") ||
+        .querySelector(".connection-row")
+        ?.textContent?.includes("ready for offline routing") ||
       document.querySelector('[role="alert"]'),
     {},
     { timeout: 120000 },
   );
   expect(await page.getByRole("alert").allTextContents()).toEqual([]);
-  await expect(
-    page.getByText("Region saved offline", { exact: true }),
-  ).toBeVisible({ timeout: 120000 });
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible({
+    timeout: 120000,
+  });
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
@@ -57,36 +56,28 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
     (previous) => performance.timeOrigin !== previous,
     previousTimeOrigin,
   );
-  await expect(
-    page.getByText("Region saved offline", { exact: true }),
-  ).toBeVisible();
+  // Readiness now lives in the Data tab, so the restart has to look there for it.
+  await page.getByRole("tab", { name: "Data", exact: true }).click();
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.locator(".profile-editor summary").click();
-  await page.getByLabel("Profile JSON", { exact: true }).fill(
-    JSON.stringify({
-      version: 1,
-      name: "Offline explorer",
-      bike: "gravel",
-      attraction: {
-        quiet: 80,
-        climbing: 50,
-        countryside: 90,
-        cycling_network: 80,
-      },
-      access: { hike_a_bike: true, steps: true, ferry: true },
-    }),
-  );
+  // Building a profile while offline exercises the IndexedDB write path with no network.
+  await page.getByRole("button", { name: "Duplicate gravel" }).click();
+  await page.getByLabel("Model name").fill("Offline explorer");
+  await page.getByLabel("Quiet roads", { exact: true }).fill("80");
+  await page.getByLabel("Climbing", { exact: true }).fill("50");
+  await page.getByLabel("Countryside", { exact: true }).fill("90");
+  await page.getByLabel("Hike-a-bike", { exact: true }).check();
+  await page.getByLabel("Steps", { exact: true }).check();
+  await page.getByLabel("Ferry", { exact: true }).check();
   await page.getByRole("button", { name: "Save and use" }).click();
   await expect(
     page.getByText("Saved Offline explorer.", { exact: true }),
   ).toBeVisible();
-  await page.locator(".profile-editor summary").click();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.locator(".track-details > summary").click();
   await page.waitForFunction(
     () =>
       document.querySelector(".result") ||
@@ -98,23 +89,26 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible({ timeout: 90000 });
-  await page.getByText("Inside the route", { exact: false }).click();
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "Show routing diagnostics on the map" })
+    .check();
   await expect(page.getByText(/Cost difference:/)).toBeVisible({
     timeout: 90000,
   });
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page
-    .getByRole("button", { name: "Road", exact: false })
+    .getByRole("button", { name: "Touring", exact: true })
     .first()
     .click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.locator(".track-details > summary").click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible({ timeout: 90000 });

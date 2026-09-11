@@ -1,13 +1,9 @@
 /// <reference lib="webworker" />
-import { COST_MODEL_VERSION } from "../routing/types";
 import { resolveProfile } from "../routing/profiles";
-import { readJSON, type Installed } from "../offline/store";
+import type { Installed } from "../offline/store";
 import {
   validateAnchors,
-  validateChunk,
   validateEdge,
-  validateField,
-  validateIndexSize,
   validateNode,
 } from "../offline/validate";
 import { buildField, pointInBounds, route } from "../routing/engine";
@@ -19,49 +15,9 @@ import type {
   FieldView,
   Graph,
   Point,
-  Profile,
   RouteRequest,
   RouteResult,
 } from "../routing/types";
-
-/** The legacy single-region pack index; unchanged so installed packs keep working. */
-type Index = {
-  schemaVersion: 1;
-  bbox: Graph["bbox"];
-  restrictions: Graph["restrictions"];
-  chunks: { path: string; bbox: Graph["bbox"] }[];
-  fields: Record<Profile, Field>;
-};
-
-async function loadGraph(
-  pack: Installed,
-  index: Index,
-  selected: Index["chunks"],
-) {
-  const graph: Graph = {
-    schemaVersion: 1,
-    bbox: index.bbox,
-    restrictions: index.restrictions,
-    nodes: [],
-    edges: [],
-  };
-  const nodes = new Map<number, Graph["nodes"][number]>();
-  let loadedBytes = 0;
-  for (const chunk of selected) {
-    const value = await readJSON<Pick<Graph, "nodes" | "edges">>(
-      pack,
-      chunk.path,
-    );
-    validateChunk(value);
-    for (const n of value.nodes) nodes.set(validateNode(n).id, n);
-    for (const edge of value.edges) graph.edges.push(validateEdge(edge));
-    loadedBytes += pack.manifest.files.find(
-      (f) => f.path === chunk.path,
-    )!.bytes;
-  }
-  graph.nodes = [...nodes.values()];
-  return { graph, loadedBytes };
-}
 
 /** Coarse debug overlay: every second cell of the corridor field. */
 function fieldViewOf(field: Field): FieldView {
@@ -112,6 +68,7 @@ function emptyResult(
     descentM: null,
     elevationProfile: [],
     edgeIds: [],
+    segments: [],
     surfaceM: {},
     uncertainM: 0,
     metrics: {
@@ -216,7 +173,6 @@ type CellInput = {
   published?: { id: string; bbox: BBox }[];
   request: RouteRequest;
 };
-type LegacyInput = { id: number; pack: Installed; request: RouteRequest };
 
 async function routeCells(data: CellInput) {
   const { id, packs, release } = data;
@@ -286,35 +242,10 @@ async function routeCells(data: CellInput) {
   postComparison(id, value);
 }
 
-async function routeLegacy(data: LegacyInput) {
-  const { id, pack } = data;
-  const request = {
-    ...data.request,
-    profile: resolveProfile(data.request.profile),
-  };
-  if (pack.manifest.costModelVersion !== COST_MODEL_VERSION)
-    throw new Error("Routing data needs updating. Save the updated region.");
-  const start = performance.now();
-  const index = await readJSON<Index>(pack, "index.bin");
-  if (index.schemaVersion !== 1) throw new Error("Unsupported graph index");
-  validateIndexSize(index);
-  for (const field of Object.values(index.fields)) validateField(field);
-  validateAnchors(request.anchors);
-  // Fields baked into packs cannot represent arbitrary user coefficients.
-  // Read once, then share the graph across corridor expansion and reference.
-  self.postMessage({ id, type: "progress", label: "Preparing your profile…" });
-  const { graph, loadedBytes } = await loadGraph(pack, index, index.chunks);
-  postComparison(
-    id,
-    await compare(id, graph, request, index.bbox, loadedBytes, start),
-  );
-}
-
-self.onmessage = async (event: MessageEvent<CellInput | LegacyInput>) => {
+self.onmessage = async (event: MessageEvent<CellInput>) => {
   const data = event.data;
   try {
-    if ("packs" in data) await routeCells(data);
-    else await routeLegacy(data);
+    await routeCells(data);
   } catch (e) {
     self.postMessage({
       id: data.id,

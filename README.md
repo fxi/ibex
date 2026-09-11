@@ -1,9 +1,9 @@
 # Ibex
 
-The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, regional routing downloads, and editable routing models. The first release focuses on the Geneva basin; the map can be browsed worldwide.
+The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, selectable offline map areas, and editable routing models. The first release focuses on the Geneva basin; the map can be browsed worldwide.
 
 - **Tracks:** create or duplicate tracks, assign independent models, edit numbered waypoints, show/hide routes, and export GPX. Each draft is saved locally. Use the row’s menu for track actions and **Edit track** for waypoints, color, attractions, elevation, and diagnostics.
-- **Data:** install the configured regional pack, inspect coverage and download size, resume interrupted downloads, or remove installed data. Selectable grid downloads targeting 40–50 MB per tile are a subsequent milestone.
+- **Data:** select the zoom-9 map areas you need, inspect coverage and download size, resume interrupted downloads, or remove installed data. Each area is an independently downloadable cell; routes cross freely between installed neighbours.
 - **Tools:** explicitly compute the active track. Edits mark its previous result stale; GPX export becomes available again after successful computation. The floating refresh button performs the same action.
 - **Configure:** choose a model for the active track, or edit a custom model using forms and advanced JSON. Other tracks retain their model snapshots. Empty form fields inherit defaults; advanced JSON preserves all cost parameters.
 
@@ -13,7 +13,7 @@ A semantic field selects a search corridor; an OSM topology graph determines the
 
 ## Run locally
 
-Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva/manifest.json`, the locally rebuilt Geneva pack. Generate it with the commands below, or set `VITE_REGION_MANIFEST` to a compatible cost-model-4 pack. Older model-1/2/3 packs are intentionally rejected.
+Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva-grid/catalogue.json`, the locally rebuilt Geneva cell release. Generate it with the commands below, or set `VITE_CATALOGUE_URL` to a compatible cost-model-4 catalogue. Older model-1/2/3 packs and pre-grid region packs are intentionally rejected and removed on start-up.
 
 ```sh
 npm ci
@@ -26,15 +26,18 @@ To rebuild the data locally, also install `uv` and `tippecanoe`:
 
 ```sh
 uv sync --locked
-uv run scripts/fetch_osm.py --endpoint https://overpass.kumi.systems/api/interpreter
-uv run scripts/build_region.py --input data/osm-profiles-v4.json
+uv run scripts/fetch_extracts.py
+uv run scripts/clip_region.py
+uv run scripts/global_splits.py
+uv run scripts/extract_cells.py
+uv run scripts/build_cells.py --jobs 3
 uv run scripts/fetch_attribution.py
 uv run scripts/fetch_water.py
-node --import tsx scripts/package_region.ts
-VITE_REGION_MANIFEST=/cyclatractor/packs/geneva/manifest.json npm run dev
+node --max-old-space-size=8000 --import tsx scripts/package_cells.ts
+npm run dev
 ```
 
-Open `http://localhost:5173/cyclatractor/`. Download the region in **Data**, select an example or place at least two waypoints in **Tracks**, then use **Tools → Compute current track**. Open **Edit track → Inside the route** to compare results. Drag markers to move waypoints. **Draw me through here** adds a soft attraction with adjustable radius. The historical ride overlay is optional and online-only.
+Open `http://localhost:5173/cyclatractor/`. Save the map areas you need in **Data**, select an example or place at least two waypoints in **Tracks**, then use **Tools → Compute current track**. Open **Edit track → Inside the route** to compare results. Drag markers to move waypoints. The historical ride overlay is optional and online-only.
 
 For service-worker/offline testing:
 
@@ -43,7 +46,7 @@ npm run build
 npm run preview -- --port 4173
 ```
 
-Open `http://localhost:4173/cyclatractor/`, save the region, then reload offline. The development server intentionally does not install the production service worker. LAN HTTP supports the map, installation in IndexedDB, checksum verification through a JavaScript SHA-256 fallback, and local routing while the application is open. HTTPS is required for service-worker registration and reopening the application offline on an iPhone.
+Open `http://localhost:4173/cyclatractor/`, save a map area, then reload offline. The development server intentionally does not install the production service worker. LAN HTTP supports the map, installation in IndexedDB, checksum verification through a JavaScript SHA-256 fallback, and local routing while the application is open. HTTPS is required for service-worker registration and reopening the application offline on an iPhone.
 
 ## Data and privacy
 
@@ -61,11 +64,11 @@ The cached OSM response, its hash and timestamp make the build reproducible. Use
 
 ## Pack format and storage
 
-`manifest.json` declares schema/model versions, coverage, source date, byte lengths and SHA-256 checksums. `index.bin` and `graph-*.bin` contain gzip-compressed JSON; `.bin` prevents servers from transparently applying HTTP content decoding. `basemap.pmtiles` is a local vector basemap. `attribution.json` preserves source notices. This basemap artifact remains in existing packs for compatibility but is no longer displayed. Routing and GPX export work offline after installation; the bundled custom style needs online MapTiler resources to render its map.
+Each cell directory holds `manifest.json`, `index.ibx` and `graph.ibx`. The manifest declares schema/model versions, the cell coordinates, coverage, source date, byte lengths and SHA-256 checksums. `index.ibx` is a 64-byte binary header plus a JSON directory of independently readable z13 blocks; `graph.ibx` holds those blocks, deflate-compressed, which the router reads by byte range rather than in full. Routing and GPX export work offline after installation; the bundled custom style needs online MapTiler resources to render its map.
 
 Downloads are staged and verified before the installed record changes. Interrupted downloads resume at completed file boundaries. Cancel removes the current staging data. OPFS is preferred; IndexedDB is the capability fallback. Browser persistence is requested but can be denied. Removing browser site data removes installed packs. Storage is namespaced but shares the `fxi.io` origin quota with other applications.
 
-Graph chunks are decoded in a worker with a 32 MB per-chunk allocation cap. The worker loads the graph once to build a field for the selected profile, then reuses it for corridor expansion and the full-graph comparison. A new request terminates the old worker, and generation IDs prevent stale output. Both searches use the loaded regional graph.
+Graph chunks are decoded in a worker with a 32 MB per-chunk allocation cap. The worker loads the graph once to build a field for the selected profile, then reuses it for corridor expansion and the full-graph comparison. A new request terminates the old worker, and generation IDs prevent stale output. Both searches use the graph merged from the installed cells.
 
 ## Publish
 
@@ -74,13 +77,13 @@ Copy `.env.example` settings into the ignored `.env`. Only `VITE_*` settings ent
 Run `uv run scripts/download_map_style.py` to save a credential-free copy as `src/map/custom-style.json`. Vite embeds that downloaded style when present and injects the configured key into its resource URLs; otherwise it loads the custom style directly from MapTiler. Downloading the style JSON does not download its tiles, sprites or fonts, so the custom basemap still requires connectivity.
 
 ```sh
-uv run scripts/publish_region.py
-uv run scripts/publish_region.py --publish
+uv run scripts/publish_release.py
+uv run scripts/publish_release.py --publish
 ```
 
-The first command verifies and previews the publication. The second uploads only manifest-listed public regional artifacts, never personal traces, to `cyclatractor/packs/geneva/<version>/`. Configure `VITE_REGION_MANIFEST` with the public immutable manifest URL. S3 needs public GET/HEAD, byte ranges, and CORS for the app origin. Credentials are used only by the publisher.
+The first command verifies and previews the publication: it walks `catalogue.json`, checks every cell manifest against the catalogue release and version, and verifies the size and SHA-256 of every `.ibx` file. The second uploads only catalogue-listed public artifacts, never personal traces, to `cyclatractor/packs/<release>/`. Configure `VITE_CATALOGUE_URL` with the public immutable catalogue URL. S3 needs public GET/HEAD, byte ranges, and CORS for the app origin. Credentials are used only by the publisher. Verify a live release with `uv run scripts/verify_public_release.py <catalogue-url>`.
 
-GitHub Pages deployment is a manual workflow and requires a configured repository and Pages environment. The repository currently has no Git remote configured. Set repository variable `VITE_REGION_MANIFEST` before publishing. The app base and service-worker scope are `/cyclatractor/`.
+GitHub Pages deployment is a manual workflow and requires a configured repository and Pages environment. The repository currently has no Git remote configured. Set repository variable `VITE_CATALOGUE_URL` before publishing. The app base and service-worker scope are `/cyclatractor/`.
 
 ## Checks
 
@@ -94,7 +97,7 @@ npx playwright install chromium webkit
 npm run test:e2e
 ```
 
-Browser regression tests require the synthetic pack build shown above. It builds an isolated test checkout with a dummy key in its own `.env`, without reading or modifying your credentials. Browser fixtures intercept MapTiler resources while retaining the production style. CI uses the same checked-in pack without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_fixture.ts` when its schema changes. Run `npm run build` afterwards to restore the real region configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
+Browser regression tests require `npm run build:test`. It builds an isolated test checkout with a dummy key in its own `.env`, without reading or modifying your credentials. Browser fixtures intercept MapTiler resources while retaining the production style. CI uses the checked-in single-cell release `public/packs/cell-fixture` without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_cell_fixture.ts` when the format changes. Run `npm run build` afterwards to restore the real configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
 
 ## Routing profiles and data updates
 
@@ -102,7 +105,7 @@ Road accepts paved surfaces and ordinary streets/cycleways with unspecified surf
 
 Eligibility applies before waypoint snapping and search. A waypoint with no suitable connection within 250 m produces an explicit failure rather than routing over an unsuitable path. The original Geneva → Voirons example ends on an off-road path: it works for Gravel; Road requires a road-access endpoint, such as [6.3642228, 46.231931] on Route des Voirons.
 
-The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs prompt for an update; save the new region after refreshing the app.
+The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs and pre-grid region packs are removed on start-up; save the areas you need after refreshing the app.
 
 Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
 
@@ -116,7 +119,7 @@ Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writ
 
 OSM-derived regional databases are distributed under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain attribution is preserved from [Mapterhorn](https://mapterhorn.com/attribution/). See `CYCLATRACTOR_SPEC.md` for the broader product vision and the implementation baseline.
 
-Public pack CORS can be refreshed with `uv run scripts/publish_region.py --configure-cors`. The dedicated public-data bucket allows GET/HEAD from any origin, including LAN development addresses; credentials remain server-side.
+Public data CORS can be refreshed with `uv run scripts/publish_release.py --configure-cors`. The dedicated public-data bucket allows GET/HEAD from any origin, including LAN development addresses; credentials remain server-side.
 
 Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
 

@@ -98,6 +98,31 @@ npx playwright test   # UI shell only: install flow, offline restart, tab wiring
   comparison; the stricter edge-level key for halo checks, where both sides read identical
   data.
 
+## Route segments
+
+Every `RouteResult` carries `segments`: the finished route cut into stretches that are
+uniform in how they ride. This is presentation, not cost — the router has already chosen
+the line, and the segments are what make that choice inspectable.
+
+- `rideClass` in `src/routing/eligibility.ts` maps an edge plus its traversal mode to one
+  of `paved | gravel | rough | walk | ferry`. Mode wins over surface, so a paved way that
+  must be pushed reads as `walk`.
+- `appendSegments` in `src/routing/engine.ts` runs inside the result loop, which already
+  walks the chosen edges and already calls `traversalSegments`. Grade runs need not line up
+  with geometry vertices, so each geometry span is classified by the run covering its
+  midpoint and consecutive spans of one class are merged. Segments therefore start and end
+  on real vertices: `start` and `end` are inclusive indices into `geometry`, consecutive
+  segments share a vertex, and their lengths sum to the route distance.
+- Nothing in the `.ibex` format changed. `surface`, `highway`, `tags` and `grades` were
+  already encoded and decoded; they were simply discarded at the end of the search.
+- `src/map/rideStyle.ts` is the single table behind the line colour, the dash overlays and
+  the legend, so the map and the key cannot drift apart. Consecutive same-class segments
+  merge into one feature before drawing, which avoids a round cap at every join.
+- Covered by `tests/segments.test.ts` (classification and the contiguity, coverage and
+  length-conservation invariants), `tests/rideStyle.test.ts` (feature merging and the
+  generated colour expression) and an assertion in `tests/release.test.ts` that segments
+  survive the real codec rather than only synthetic graphs.
+
 ## Known gaps
 
 - **Baked preset cost fields are not emitted.** The worker builds the corridor field at
@@ -111,3 +136,8 @@ npx playwright test   # UI shell only: install flow, offline restart, tab wiring
   survive. Making it persistent is what would make the LRU worth having.
 - **`readRange` on the IndexedDB backend reads the whole file** before slicing. OPFS is used
   when available; the idb fallback would benefit from caching the buffer.
+- **Steepness is carried but not drawn.** `RouteSegment.grade` is populated, and the map
+  encodes rideability only. Gradient chevrons would need an SDF sprite build, which is why
+  they are not here yet.
+- **FIT import is not implemented.** GPX import lands imported rides as display-only
+  reference tracks; FIT needs a binary decoder and is deliberately deferred.

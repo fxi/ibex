@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "format": "ibex-1",
+  "id": "9-264-181",
+  "name": "9/264/181",
+  "version": "9915e52c",
+  "release": "fixture-g4-0000",
+  "cell": {
+    "zoom": 9,
+    "x": 264,
+    "y": 181
+  },
+  "blockZoom": 13,
+  "blocks": 3,
+  "bbox": [
+    5.625,
+    46.0732306,
+    6.328125,
+    46.5588603
+  ],
+  "osmTimestamp": "synthetic",
+  "costModelVersion": 4,
+  "terrainCoverage": 1,
+  "attribution": "Synthetic test data — not a real cycling network",
+  "files": [
+    {
+      "path": "index.ibx",
+      "bytes": 661,
+      "sha256": "08db37f100ec6faa0fcc10bccf98538aa5f6fb34fedf4559949ef0ecca81882a"
+    },
+    {
+      "path": "graph.ibx",
+      "bytes": 313,
+      "sha256": "23e479c706b7183f6be93b7d46bc15cfe23a9501fb99197c86568bbb4eb6a2bf"
+    }
+  ]
+}

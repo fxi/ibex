@@ -1,4 +1,6 @@
 import type { ProfileInput } from "./profiles";
+import type { RideClass } from "./eligibility";
+export type { RideClass };
 export const COST_MODEL_VERSION = 4;
 export type Point = [number, number];
 export type Profile = "gravel" | "road" | "touring" | "scenic";
@@ -67,6 +69,27 @@ export type Components = {
   cycling_network: number;
   ferry: number;
 };
+/**
+ * One stretch of the finished route that is uniform in how it rides. Indices address
+ * `RouteResult.geometry`, so a segment can be drawn without re-deriving anything.
+ */
+export type RouteSegment = {
+  /** First vertex, indexing `RouteResult.geometry`. */
+  start: number;
+  /**
+   * Last vertex, inclusive — so the polyline is `geometry.slice(start, end + 1)` and
+   * `end - start` is the number of spans. Consecutive segments share a vertex.
+   */
+  end: number;
+  ride: RideClass;
+  surface: string;
+  highway: string;
+  /** OSM `sac_scale`, when the way carries one. */
+  sac?: string;
+  /** Fractional grade, positive uphill, or null where elevation is unknown. */
+  grade: number | null;
+  lengthM: number;
+};
 export type RouteStatus =
   | "ok"
   /** Outside the published grid entirely. */
@@ -94,6 +117,7 @@ export type RouteResult = {
   descentM: number | null;
   elevationProfile: [number, number | null][];
   edgeIds: number[];
+  segments: RouteSegment[];
   surfaceM: Record<string, number>;
   uncertainM: number;
   metrics: {

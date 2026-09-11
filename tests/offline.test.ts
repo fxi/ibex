@@ -1,10 +1,14 @@
 import { expect, it } from "vitest";
 import { manifestSchema } from "../src/offline/store";
-import manifest from "../public/packs/test/manifest.json";
+import manifest from "../public/packs/cell-fixture/9-264-181/manifest.json";
 it("rejects traversal paths, incompatible versions and oversized allocations", () => {
   expect(manifestSchema.safeParse(manifest).success).toBe(true);
   expect(
     manifestSchema.safeParse({ ...manifest, schemaVersion: 99 }).success,
+  ).toBe(false);
+  // The pre-grid region pack shape must no longer parse: there is one data path.
+  expect(
+    manifestSchema.safeParse({ ...manifest, schemaVersion: 1 }).success,
   ).toBe(false);
   expect(
     manifestSchema.safeParse({ ...manifest, costModelVersion: 1 }).success,

@@ -6,16 +6,23 @@ import {
   type ProfileInput,
   type UserProfile,
 } from "./routing/profiles";
-import type { Attraction, Point, RouteResult } from "./routing/types";
+import type { Point, RouteResult } from "./routing/types";
+import { emptyComponents } from "./routing/engine";
 
+/**
+ * A planned track is anchors the router turns into a route. An imported one is a
+ * recorded polyline: it renders and exports, but it has no anchors and is never routed,
+ * so what you see stays exactly the file you brought.
+ */
+export type TrackKind = "planned" | "imported";
 export type Track = {
   id: string;
+  kind: TrackKind;
   name: string;
   color: string;
   visible: boolean;
   anchors: Point[];
   profile: UserProfile;
-  attraction?: Attraction;
   revision: number;
   resultRevision?: number;
   result?: RouteResult;
@@ -34,6 +41,7 @@ export function trackId(): string {
 export function newTrack(index = 0, profile: ProfileInput = "gravel"): Track {
   return {
     id: trackId(),
+    kind: "planned",
     name: `Track ${index + 1}`,
     color: colors[index % colors.length],
     visible: true,
@@ -44,10 +52,57 @@ export function newTrack(index = 0, profile: ProfileInput = "gravel"): Track {
 }
 export function editTrack(
   track: Track,
-  edit: Partial<Pick<Track, "anchors" | "profile" | "attraction">>,
+  edit: Partial<Pick<Track, "anchors" | "profile">>,
 ): Track {
   return { ...track, ...structuredClone(edit), revision: track.revision + 1 };
 }
+/**
+ * Wrap an imported polyline so the rest of the app can treat it like any other track.
+ * The synthetic result carries no edges and no cost, only what the file actually said.
+ */
+export function importedTrack(
+  index: number,
+  imported: {
+    name: string;
+    geometry: Point[];
+    elevationProfile: [number, number | null][];
+    distanceM: number;
+    ascentM: number | null;
+    descentM: number | null;
+  },
+): Track {
+  const result = {
+    status: "ok",
+    mode: "reference",
+    geometry: imported.geometry,
+    anchors: [],
+    cost: 0,
+    components: emptyComponents(),
+    distanceM: imported.distanceM,
+    hikeABikeM: 0,
+    ferryM: 0,
+    ascentM: imported.ascentM,
+    descentM: imported.descentM,
+    elevationProfile: imported.elevationProfile,
+    edgeIds: [],
+    surfaceM: {},
+    uncertainM: 0,
+    metrics: { durationMs: 0, explored: 0, expansions: 0, tiles: 0, loadedBytes: 0 },
+  } as unknown as RouteResult;
+  return {
+    id: trackId(),
+    kind: "imported",
+    name: imported.name,
+    color: colors[index % colors.length],
+    visible: true,
+    anchors: [],
+    profile: modelSnapshot("gravel"),
+    revision: 0,
+    resultRevision: 0,
+    result,
+  };
+}
+
 export function acceptResult(
   track: Track,
   revision: number,
@@ -61,19 +116,14 @@ export function acceptResult(
 const point = z.tuple([z.number().finite(), z.number().finite()]);
 const storedTrack = z.object({
   id: z.string(),
+  // Collections written before imports existed hold planned tracks only.
+  kind: z.enum(["planned", "imported"]).default("planned"),
   name: z.string(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   visible: z.boolean(),
   anchors: z.array(point).max(12),
   profile: profileSchema,
   revision: z.number().int().nonnegative(),
-  attraction: z
-    .object({
-      point,
-      radiusM: z.number().positive(),
-      strength: z.number().finite(),
-    })
-    .optional(),
   resultRevision: z.number().int().optional(),
   packVersion: z.string().optional(),
   result: z
@@ -102,17 +152,14 @@ export function restoreCollection(value: unknown): TrackCollection {
 export async function loadTracks(): Promise<TrackCollection> {
   const saved = await preference<unknown>("ibex-tracks");
   if (saved !== undefined) return restoreCollection(saved);
-  const old = await preference<{
-    anchors: Point[];
-    profile: ProfileInput;
-    attraction?: Attraction;
-  }>("plan");
+  const old = await preference<{ anchors: Point[]; profile: ProfileInput }>(
+    "plan",
+  );
   const track = newTrack();
   if (old)
     Object.assign(track, {
       anchors: z.array(point).max(12).parse(old.anchors),
       profile: modelSnapshot(old.profile),
-      attraction: old.attraction,
     });
   const collection: TrackCollection = {
     version: 1,

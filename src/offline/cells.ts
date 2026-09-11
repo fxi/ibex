@@ -19,7 +19,17 @@ export type CellState =
   | "update-available"
   /** Installed from a different graph generation, so it cannot join a route. */
   | "foreign-release"
+  /** Installed and marked to be downloaded again on the next run. */
+  | "marked-refresh"
+  /** Installed and marked for deletion on the next run. */
+  | "marked-remove"
   | "failed";
+
+/**
+ * What the user has asked to happen to a cell on the next run. Intent is transient and
+ * deliberately unpersisted: nothing should still be pending after a reload.
+ */
+export type CellIntent = "add" | "refresh" | "remove";
 
 export type MapCell = { id: CellId; bbox: BBox; state: CellState };
 
@@ -33,15 +43,32 @@ export const CELL_COLORS: Record<CellState, string> = {
   installed: "#54d5ba",
   "update-available": "#ffb34d",
   "foreign-release": "#b29aff",
+  "marked-refresh": "#ffb34d",
+  "marked-remove": "#ed4242",
   failed: "#ed4242",
 };
 
 export type CellActivity = {
-  selected?: ReadonlySet<CellId>;
+  intents?: ReadonlyMap<CellId, CellIntent>;
   queued?: ReadonlySet<CellId>;
   downloading?: CellId;
   failed?: ReadonlyMap<CellId, string>;
 };
+
+/**
+ * One click advances a cell through the actions available to it, and back to doing
+ * nothing. A cell the user does not have can only be added; a cell they do have can be
+ * refreshed or removed — so the two cases cycle through different lengths.
+ */
+export function nextIntent(
+  held: boolean,
+  current: CellIntent | undefined,
+): CellIntent | undefined {
+  if (!held) return current === "add" ? undefined : "add";
+  if (current === "refresh") return "remove";
+  if (current === "remove") return undefined;
+  return "refresh";
+}
 
 /**
  * In-flight activity outranks stored state so progress stays visible, then installed state
@@ -56,7 +83,12 @@ export function cellState(
   if (activity.downloading === cell.id) return "downloading";
   if (activity.failed?.has(cell.id)) return "failed";
   if (activity.queued?.has(cell.id)) return "queued";
+  const intent = activity.intents?.get(cell.id);
   if (installed) {
+    // Intent outranks the stored state: a cell marked for removal must read as marked
+    // even while it is still installed and routable.
+    if (intent === "refresh") return "marked-refresh";
+    if (intent === "remove") return "marked-remove";
     const manifest = installed.manifest as { release?: string };
     if (manifest.release && manifest.release !== release)
       return "foreign-release";
@@ -65,7 +97,7 @@ export function cellState(
       : "update-available";
   }
   if (!cell.available) return "unavailable";
-  if (activity.selected?.has(cell.id)) return "selected";
+  if (intent === "add") return "selected";
   return "available";
 }
 

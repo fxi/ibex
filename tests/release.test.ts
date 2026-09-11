@@ -205,6 +205,23 @@ describe.skipIf(!present)("generated release", () => {
         expect(result.geometry[0][0]).toBeLessThan(6.328125);
         expect(result.geometry.at(-1)![0]).toBeGreaterThan(6.328125);
         expect(provider.stats.seamConflicts).toBe(0);
+
+        // Segments must survive the real codec, not only synthetic graphs: surface,
+        // highway, tags and grades all have to decode for the classification to mean
+        // anything on the map.
+        expect(result.segments.length).toBeGreaterThan(0);
+        expect(result.segments[0].start).toBe(0);
+        expect(result.segments.at(-1)!.end).toBe(result.geometry.length - 1);
+        for (let i = 1; i < result.segments.length; i++)
+          expect(result.segments[i].start).toBe(result.segments[i - 1].end);
+        const covered = result.segments.reduce((sum, s) => sum + s.lengthM, 0);
+        expect(covered).toBeGreaterThan(result.distanceM * 0.98);
+        expect(covered).toBeLessThan(result.distanceM * 1.02);
+        // Real terrain is not uniform, and every segment names a real surface.
+        expect(new Set(result.segments.map((s) => s.ride)).size).toBeGreaterThan(
+          1,
+        );
+        expect(result.segments.every((s) => s.surface.length > 0)).toBe(true);
       },
       120_000,
     );

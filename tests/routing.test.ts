@@ -315,12 +315,29 @@ describe("routing invariants", () => {
     ).toBe("budget-exceeded");
   });
   it("exports valid track coordinates with no fabricated altitude", () => {
-    const g = fixture(p, [[0, 1]]);
-    const xml = exportGPX(
-      route(g, { anchors: [p[0], p[1]], profile: "road" }, "reference"),
+    const known = exportGPX(
+      route(
+        fixture(p, [[0, 1]]),
+        { anchors: [p[0], p[1]], profile: "road" },
+        "reference",
+      ),
+      "Named route",
     );
-    expect(xml).toContain('lat="46.1" lon="6.1"');
-    expect(xml).not.toContain("<ele>");
+    expect(known).toContain('lat="46.1" lon="6.1"');
+    expect(known).toContain("<name>Named route</name>");
+    // The fixture's nodes sit at a real elevation of 0, so exporting it is not invention.
+    expect(known).toContain("<ele>0.0</ele>");
+
+    // Without grades the engine reports null heights, and none may be written.
+    const unknown = exportGPX(
+      route(
+        fixture(p, [[0, 1, undefined, { grades: null }]]),
+        { anchors: [p[0], p[1]], profile: "road" },
+        "reference",
+      ),
+    );
+    expect(unknown).toContain('lat="46.1" lon="6.1"');
+    expect(unknown).not.toContain("<ele>");
   });
   it("orders a priority queue correctly", () => {
     const heap = new Heap<number>();

@@ -1,17 +1,27 @@
 import { selectedRoute } from "../routing/selection";
+import { MarkerLayer } from "./markers";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
-import type {
-  Attraction,
-  Comparison,
-  Point,
-  RouteResult,
-} from "../routing/types";
+import type { Comparison, Point, RouteResult } from "../routing/types";
 import { customMapStyle, mapResourceURL } from "./style";
 import type { Track } from "../tracks";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
-export type MapCommand = { id: number; points: Point[] };
+import {
+  RIDE_STYLE,
+  rideColorExpression,
+  rideFeatures,
+  rideWidthExpression,
+} from "./rideStyle";
+/** Below this zoom the grid is context only: one stray click must not queue an area. */
+const MIN_SELECT_ZOOM = 6;
+
+/** One-shot imperative camera instruction. `id` makes repeats of the same action distinct. */
+export type MapCommand = {
+  id: number;
+  kind: "fit" | "zoomIn" | "zoomOut" | "resetNorth";
+  points?: Point[];
+};
 const empty = { type: "FeatureCollection" as const, features: [] };
 const ring = (b: [number, number, number, number]): Point[] => [
   [b[0], b[1]],
@@ -24,61 +34,65 @@ const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 export function MapView({
   anchors,
-  attraction,
   comparison,
   partial,
   debug,
   history,
   onPoint,
   onMove,
+  onMenu,
+  onCamera,
+  onCell,
   tracks,
   activeId,
-  coverage,
   cells,
   command,
+  bottomInset,
 }: {
   tracks: Track[];
   activeId?: string;
-  coverage?: [number, number, number, number];
   cells?: MapCell[];
   command?: MapCommand;
+  /** Pixels of the map occluded by the planner panel, so fits stay visible. */
+  bottomInset: number;
   anchors: Point[];
-  attraction?: Attraction;
   comparison?: Comparison;
   partial?: RouteResult;
   debug: boolean;
   history: boolean;
   onPoint: (p: Point) => void;
   onMove: (i: number, p: Point) => void;
+  /** Right-click or long-press on waypoint `i`, in viewport coordinates. */
+  onMenu: (i: number, x: number, y: number) => void;
+  /** Camera orientation, so the compass control can point north. */
+  onCamera: (camera: { bearing: number; pitch: number }) => void;
+  /** A grid cell was clicked while the Data tab is showing the grid. */
+  onCell: (id: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<maplibregl.Map | undefined>(undefined),
-    markers = useRef<maplibregl.Marker[]>([]);
+    markers = useRef<MarkerLayer | undefined>(undefined);
   const [mapError, setMapError] = useState("");
-  const handlers = useRef({ onPoint, onMove });
-  handlers.current = { onPoint, onMove };
+  const handlers = useRef({ onPoint, onMove, onMenu, onCamera, onCell });
+  handlers.current = { onPoint, onMove, onMenu, onCamera, onCell };
   const snapshot = useRef({
     anchors,
-    attraction,
     comparison,
     partial,
     debug,
     history,
     tracks,
     activeId,
-    coverage,
     cells,
   });
   snapshot.current = {
     anchors,
-    attraction,
     comparison,
     partial,
     debug,
     history,
     tracks,
     activeId,
-    coverage,
     cells,
   };
   useEffect(() => {
@@ -100,13 +114,32 @@ export function MapView({
       attributionControl: { compact: true },
     });
     map.current = m;
-    m.addControl(
-      new maplibregl.NavigationControl({ showCompass: false }),
-      "top-right",
-    );
-    m.on("click", (e) =>
-      handlers.current.onPoint([e.lngLat.lng, e.lngLat.lat]),
-    );
+    // Browser tests inspect sources and layers through the container, the same way they
+    // already read `data-ready` off it. Scoped to the element rather than a global.
+    (container.current as HTMLDivElement & { _map?: maplibregl.Map })._map = m;
+    // Zoom, locate and compass are rendered as app buttons instead, so every map
+    // control shares one size and shape.
+    const reportCamera = () =>
+      handlers.current.onCamera({ bearing: m.getBearing(), pitch: m.getPitch() });
+    m.on("rotate", reportCamera);
+    m.on("pitch", reportCamera);
+    // A click on the grid selects an area; the layer handler runs first and marks the
+    // event so the generic map click does not also drop a waypoint.
+    m.on("click", "cells-fill", (e) => {
+      if (m.getZoom() < MIN_SELECT_ZOOM) return;
+      const id = e.features?.[0]?.properties?.id;
+      if (typeof id !== "string") return;
+      (e.originalEvent as Event & { _cellHandled?: boolean })._cellHandled =
+        true;
+      handlers.current.onCell(id);
+    });
+    m.on("click", (e) => {
+      if ((e.originalEvent as Event & { _cellHandled?: boolean })._cellHandled)
+        return;
+      handlers.current.onPoint([e.lngLat.lng, e.lngLat.lat]);
+    });
+    // Culling depends on the viewport, so the grid is rebuilt when the camera settles.
+    m.on("moveend", () => update());
     let disposed = false;
     m.on("idle", () => {
       if (!disposed && m.isStyleLoaded() && m.areTilesLoaded()) {
@@ -135,31 +168,13 @@ export function MapView({
     window.addEventListener("offline", changeConnection);
     m.on("style.load", () => {
       for (const id of [
-        "coverage",
         "cells",
         "field",
         "corridor",
         "reference",
         "route",
-        "attraction",
       ])
         m.addSource(id, { type: "geojson", data: empty });
-      m.addLayer({
-        id: "coverage-fill",
-        type: "fill",
-        source: "coverage",
-        paint: { "fill-color": "#2485ff", "fill-opacity": 0.1 },
-      });
-      m.addLayer({
-        id: "coverage-line",
-        type: "line",
-        source: "coverage",
-        paint: {
-          "line-color": "#72b4ff",
-          "line-width": 2,
-          "line-dasharray": [3, 2],
-        },
-      });
       // Grid cells come from one source with data-driven paint, so a state change is a
       // setData call rather than a layer rebuild. No symbol layer: labelling needs
       // MapTiler glyphs, which stay online-only, so sizes live in the panel instead.
@@ -171,6 +186,8 @@ export function MapView({
           "fill-color": ["get", "color"],
           "fill-opacity": [
             "case",
+            ["!", ["get", "selectable"]],
+            0.05,
             ["==", ["get", "state"], "unavailable"],
             0.06,
             ["get", "active"],
@@ -188,6 +205,8 @@ export function MapView({
           "line-width": ["case", ["get", "active"], 2.5, 1],
           "line-opacity": [
             "case",
+            ["!", ["get", "selectable"]],
+            0.3,
             ["==", ["get", "state"], "unavailable"],
             0.35,
             0.9,
@@ -242,7 +261,19 @@ export function MapView({
         type: "line",
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#fffdf5", "line-width": 8 },
+        paint: {
+          "line-color": "#fffdf5",
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            5,
+            8,
+            14,
+            14,
+          ],
+          "line-opacity": ["case", ["get", "stale"], 0.4, 0.9],
+        },
       });
       m.addLayer({
         id: "route",
@@ -250,55 +281,68 @@ export function MapView({
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": ["get", "color"],
-          "line-width": ["case", ["get", "active"], 5, 3],
+          // The active track shows what it is made of; the others stay their own colour
+          // so several routes on screen remain tellable apart.
+          "line-color": [
+            "case",
+            ["get", "active"],
+            rideColorExpression(),
+            ["get", "trackColor"],
+          ],
+          "line-width": rideWidthExpression(),
           "line-opacity": ["case", ["get", "stale"], 0.5, 1],
         },
       });
-      m.addLayer({
-        id: "attraction",
-        type: "circle",
-        source: "attraction",
-        paint: {
-          "circle-radius": 35,
-          "circle-color": "#dba748",
-          "circle-opacity": 0.25,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#b58731",
-        },
-      });
+      // Dash density encodes roughness on top of the colour, so a stretch of hiking
+      // path is unmistakable even at a glance or in greyscale.
+      for (const { ride, dash } of RIDE_STYLE) {
+        if (!dash) continue;
+        m.addLayer({
+          id: `route-${ride}`,
+          type: "line",
+          source: "route",
+          layout: { "line-cap": "butt", "line-join": "round" },
+          filter: [
+            "all",
+            ["==", ["get", "ride"], ride],
+            ["get", "active"],
+          ],
+          paint: {
+            "line-color": "#fffdf5",
+            "line-dasharray": dash,
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              1.5,
+              14,
+              3.5,
+            ],
+            "line-opacity": ["case", ["get", "stale"], 0.5, 0.95],
+          },
+        });
+      }
       update();
     });
     function update() {
       if (!m.getSource("route")) return;
       const s = snapshot.current;
       const route = selectedRoute(s.comparison, s.partial);
-      const b = s.coverage;
-      (m.getSource("coverage") as maplibregl.GeoJSONSource)?.setData(
-        b
-          ? {
-              type: "Feature",
-              properties: {},
-              geometry: {
-                type: "Polygon",
-                coordinates: [
-                  [
-                    [b[0], b[1]],
-                    [b[2], b[1]],
-                    [b[2], b[3]],
-                    [b[0], b[3]],
-                    [b[0], b[1]],
-                  ],
-                ],
-              },
-            }
-          : empty,
+      const bounds = m.getBounds();
+      const selectable = m.getZoom() >= MIN_SELECT_ZOOM;
+      const visible = (s.cells ?? []).filter(
+        (cell) =>
+          cell.bbox[0] <= bounds.getEast() &&
+          cell.bbox[2] >= bounds.getWest() &&
+          cell.bbox[1] <= bounds.getNorth() &&
+          cell.bbox[3] >= bounds.getSouth(),
       );
       (m.getSource("cells") as maplibregl.GeoJSONSource)?.setData(
-        s.cells?.length
+        visible.length
           ? {
               type: "FeatureCollection",
-              features: s.cells.map((cell) => ({
+              features: visible.map((cell) => ({
                 type: "Feature" as const,
                 properties: {
                   id: cell.id,
@@ -306,6 +350,7 @@ export function MapView({
                   color: CELL_COLORS[cell.state],
                   active:
                     cell.state !== "available" && cell.state !== "unavailable",
+                  selectable,
                 },
                 geometry: {
                   type: "Polygon" as const,
@@ -327,14 +372,19 @@ export function MapView({
         type: "FeatureCollection",
         features: s.tracks
           .filter((t) => t.visible && t.result?.status === "ok")
-          .map((t) => ({
-            ...line(t.result!.geometry),
-            properties: {
-              color: t.color,
+          .flatMap((t) => {
+            const meta = {
+              trackId: t.id,
+              trackColor: t.color,
               active: t.id === s.activeId,
               stale: t.resultRevision !== t.revision,
-            },
-          })),
+            };
+            return rideFeatures(
+              t.result!.segments ?? [],
+              t.result!.geometry,
+              meta,
+            );
+          }),
       });
       (m.getSource("reference") as maplibregl.GeoJSONSource)?.setData(
         s.debug && s.comparison?.reference.status === "ok"
@@ -347,15 +397,6 @@ export function MapView({
           ? (route?.corridor ?? []).filter((p) => p.length > 1).map(line)
           : [],
       });
-      (m.getSource("attraction") as maplibregl.GeoJSONSource)?.setData(
-        s.attraction
-          ? {
-              type: "Feature",
-              properties: {},
-              geometry: { type: "Point", coordinates: s.attraction.point },
-            }
-          : empty,
-      );
       if (s.history && !m.getSource("history")) {
         m.addSource("history", {
           type: "vector",
@@ -395,64 +436,65 @@ export function MapView({
       disposed = true;
       window.removeEventListener("online", changeConnection);
       window.removeEventListener("offline", changeConnection);
-      markers.current.forEach((marker) => marker.remove());
-      markers.current = [];
+      markers.current?.destroy();
+      markers.current = undefined;
       m.remove();
       map.current = undefined;
     };
   }, []);
+  // Markers reconcile by index; only anchors can change them, so nothing else belongs
+  // in this dependency list. Recreating them on every data change dropped live drags.
   useEffect(() => {
     const m = map.current;
     if (!m) return;
-    m.fire("cyclatractor-update");
-    markers.current.forEach((marker) => marker.remove());
-    markers.current = anchors.map((p, i) => {
-      const element = document.createElement("button");
-      element.className = "anchor-marker";
-      element.textContent = String(i + 1);
-      element.setAttribute("aria-label", `Move waypoint ${i + 1}`);
-      const marker = new maplibregl.Marker({ element, draggable: true })
-        .setLngLat(p)
-        .addTo(m);
-      marker.on("dragend", () => {
-        const p = marker.getLngLat();
-        handlers.current.onMove(i, [p.lng, p.lat]);
-      });
-      return marker;
-    });
+    if (!markers.current) markers.current = new MarkerLayer(m, handlers);
+    markers.current.sync(anchors);
+  }, [anchors]);
+  // Redrawing the geojson sources is separate from the markers, and every rendered input
+  // has to be listed here or its layer silently stops updating.
+  useEffect(() => {
+    map.current?.fire("cyclatractor-update");
   }, [
     anchors,
-    attraction,
     comparison,
     partial,
     debug,
     history,
     tracks,
     activeId,
-    coverage,
     cells,
   ]);
   useEffect(() => {
     const m = map.current;
-    if (!m || !command?.points.length) return;
-    if (command.points.length === 1)
+    if (!m || !command) return;
+    const instant = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (command.kind === "zoomIn") return void m.zoomIn();
+    if (command.kind === "zoomOut") return void m.zoomOut();
+    if (command.kind === "resetNorth")
+      return void m.easeTo({
+        bearing: 0,
+        pitch: 0,
+        duration: instant ? 0 : 400,
+      });
+    const points = command.points ?? [];
+    if (!points.length) return;
+    if (points.length === 1)
       m.flyTo({
-        center: command.points[0],
+        center: points[0],
         zoom: 13,
         duration: matchMedia("(prefers-reduced-motion: reduce)").matches
           ? 0
           : 700,
       });
     else {
-      const bounds = new maplibregl.LngLatBounds(
-        command.points[0],
-        command.points[0],
-      );
-      command.points.forEach((p) => bounds.extend(p));
+      const bounds = new maplibregl.LngLatBounds(points[0], points[0]);
+      points.forEach((p) => bounds.extend(p));
       m.fitBounds(bounds, {
         padding: {
           top: 110,
-          bottom: Math.min(innerHeight * 0.48, 430),
+          // The panel is an overlay the map never reflows around, so its real height
+          // has to be padded out explicitly or fits land underneath it.
+          bottom: Math.min(bottomInset, innerHeight * 0.7),
           left: 45,
           right: 90,
         },
@@ -462,7 +504,7 @@ export function MapView({
           : 700,
       });
     }
-  }, [command]);
+  }, [command, bottomInset]);
   return (
     <>
       <div ref={container} className="map" aria-label="Route map" />

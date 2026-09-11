@@ -1,19 +1,15 @@
-import { expect, test } from "./fixtures";
+import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
 test("independent tracks persist, require explicit computation, and export only current results", async ({
   page,
 }) => {
   await page.goto("./");
-  await page.getByRole("tab", { name: "Data", exact: true }).click();
-  await page.getByRole("button", { name: /Save offline/ }).click();
-  await expect(
-    page.getByText("Region saved offline", { exact: true }),
-  ).toBeVisible();
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByRole("button", { name: "Along the Arve" }).click();
   await expect(page.locator(".track-state")).toHaveText("Needs computation");
-  await page.getByRole("tab", { name: "Tools", exact: true }).click();
   await page
-    .getByRole("button", { name: "Compute current track", exact: true })
+    .getByRole("button", { name: "Reprocess waypoints", exact: true })
     .click();
   await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
@@ -22,10 +18,10 @@ test("independent tracks persist, require explicit computation, and export only 
     .click();
   await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Road", exact: true }).click();
+  await page.getByRole("button", { name: "Touring", exact: true }).click();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-card").first()).toContainText("Gravel");
-  await expect(page.locator(".track-card").nth(1)).toContainText("Road");
+  await expect(page.locator(".track-card").nth(1)).toContainText("Touring");
   await expect(page.locator(".track-card").nth(1)).toContainText(
     "Needs computation",
   );
@@ -46,7 +42,6 @@ test("independent tracks persist, require explicit computation, and export only 
   await expect(
     page.getByRole("button", { name: "Select Track 1 copy", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.locator(".track-details > summary").click();
   const event = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
   const file = await event;
