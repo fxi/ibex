@@ -182,4 +182,31 @@ describe("ride classification", () => {
   it("treats a ferry way as a ferry however it is traversed", () => {
     expect(rideClass({ ...base, highway: "ferry" }, "ride")).toBe("ferry");
   });
+  it("reads an untagged surface off the hierarchy instead of calling it rough", () => {
+    const untagged = { ...base, surface: "unknown" };
+    // Three quarters of ways carry no surface tag. A street with none is sealed until
+    // something says otherwise; calling it rough put broken ground over ordinary tarmac.
+    expect(rideClass({ ...untagged, highway: "residential" }, "ride")).toBe(
+      "paved",
+    );
+    expect(rideClass({ ...untagged, highway: "tertiary" }, "ride")).toBe(
+      "paved",
+    );
+    // A track is unsurfaced by definition, and its tracktype grades how badly.
+    expect(rideClass({ ...untagged, highway: "track" }, "ride")).toBe("gravel");
+    expect(
+      rideClass(
+        { ...untagged, highway: "track", tags: { tracktype: "grade2" } },
+        "ride",
+      ),
+    ).toBe("gravel");
+    expect(
+      rideClass(
+        { ...untagged, highway: "track", tags: { tracktype: "grade5" } },
+        "ride",
+      ),
+    ).toBe("rough");
+    // A path with nothing at all to go on claims nothing.
+    expect(rideClass({ ...untagged, highway: "path" }, "ride")).toBe("unknown");
+  });
 });

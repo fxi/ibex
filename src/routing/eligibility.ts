@@ -19,6 +19,27 @@ const gravel = new Set([
   "unpaved",
   "pebblestone",
 ]);
+/**
+ * Rideable, but loose, broken or slow. Setts and cobbles are paved in OSM's sense and
+ * rough under a wheel: this table describes the ride, not the tagging.
+ */
+const rough = new Set([
+  "dirt",
+  "ground",
+  "earth",
+  "grass",
+  "grass_paver",
+  "mud",
+  "sand",
+  "rock",
+  "stone",
+  "woodchips",
+  "sett",
+  "cobblestone",
+  "unhewn_cobblestone",
+  "metal",
+  "wood",
+]);
 const streets = new Set([
   "primary",
   "primary_link",
@@ -70,7 +91,13 @@ function scale(value: string | undefined): number | undefined {
  * `walk` or `rough` in the middle of a route is the signal that the chosen line is not
  * what the rider had in mind.
  */
-export type RideClass = "paved" | "gravel" | "rough" | "walk" | "ferry";
+export type RideClass =
+  | "paved"
+  | "gravel"
+  | "rough"
+  | "walk"
+  | "ferry"
+  | "unknown";
 
 export function rideClass(
   edge: Edge,
@@ -82,7 +109,18 @@ export function rideClass(
   if (mode === "walk" || mode === "blocked") return "walk";
   if (isPaved(edge)) return "paved";
   if (gravel.has(edge.surface)) return "gravel";
-  return "rough";
+  if (rough.has(edge.surface)) return "rough";
+  // Most ways carry no `surface` at all — three quarters of the Voirons network — so the
+  // old fallback to "rough" turned that silence into a claim and drew broken ground over
+  // ordinary tarmac. Read the hierarchy instead, and only say "unknown" when the
+  // hierarchy is silent too.
+  if (isStreet(edge)) return "paved";
+  const track = /^grade([1-5])$/.exec(edge.tags?.tracktype ?? "");
+  if (track) return Number(track[1]) <= 3 ? "gravel" : "rough";
+  // A `highway=track` is an unsurfaced farm or forest road by definition. An untagged
+  // path genuinely could be anything, and says so.
+  if (edge.highway === "track") return "gravel";
+  return "unknown";
 }
 
 export function traversalSegments(edge: Edge, input: ProfileInput) {

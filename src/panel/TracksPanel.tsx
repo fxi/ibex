@@ -11,7 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
-import { RIDE_STYLE, rideTotals } from "../map/rideStyle";
+import { SURFACE_STYLE, rideTotals } from "../map/rideStyle";
+import { SurfaceSample } from "./SurfaceSample";
 import { download, exportGPX } from "../gpx";
 import { modelSnapshot, type Track } from "../tracks";
 import type { Point } from "../routing/types";
@@ -317,7 +318,7 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                   {t.result && (
                     <div className="result">
                       <Elevation route={t.result} />
-                      <RideLegend segments={t.result.segments ?? []} />
+                      <RideLegend segments={t.result.segments ?? []} color={t.color} />
                       {stale && (
                         <p>
                           Waypoints or profile changed. Reprocess to update this
@@ -376,17 +377,19 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
  */
 function RideLegend({
   segments,
+  color,
 }: {
   segments: import("../routing/types").RouteSegment[];
+  color: string;
 }) {
   const totals = rideTotals(segments);
-  const present = RIDE_STYLE.filter((s) => (totals.get(s.ride) ?? 0) > 0);
+  const present = SURFACE_STYLE.filter((s) => (totals.get(s.ride) ?? 0) > 0);
   if (present.length < 2) return null;
   return (
     <ul className="ride-legend">
       {present.map((s) => (
         <li key={s.ride}>
-          <i style={{ background: s.color }} />
+          <SurfaceSample ride={s.ride} color={color} width={26} />
           {s.label}
           <b>{((totals.get(s.ride) ?? 0) / 1000).toFixed(1)} km</b>
         </li>

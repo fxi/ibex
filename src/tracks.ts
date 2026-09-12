@@ -29,7 +29,20 @@ export type Track = {
   packVersion?: string;
 };
 export type TrackCollection = { version: 1; activeId: string; tracks: Track[] };
-const colors = ["#2485ff", "#ed42ed", "#ffb34d", "#54d5ba", "#b29aff"];
+/**
+ * A track's colour is its identity on the map, so the palette only has to separate one
+ * track from another. Warm hues are deliberately absent: yellow through red is reserved
+ * for how hard or how busy a stretch is, and a track that happened to be orange would
+ * read as a warning.
+ */
+const colors = [
+  "#2f7df6",
+  "#14b86a",
+  "#a855f7",
+  "#00b3c7",
+  "#e0399b",
+  "#6b7bff",
+];
 export function modelSnapshot(profile: ProfileInput): UserProfile {
   return structuredClone(resolveProfile(profile));
 }

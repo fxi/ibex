@@ -50,9 +50,12 @@ test("a computed route is drawn as its rideability classes", async ({
   const classes = new Set(features.map((f) => f.ride));
   expect(classes.has("paved")).toBe(true);
   expect(classes.has("gravel")).toBe(true);
-  // Every feature carries the paint properties the layers read.
+  // Every feature carries the paint properties the layers read, and every one of them
+  // carries the same track colour: colour says which track, never what it is made of.
+  const colors = new Set(features.map((f) => String(f.trackColor)));
+  expect(colors.size).toBe(1);
   for (const f of features) {
-    expect(String(f.color)).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(String(f.trackColor)).toMatch(/^#[0-9a-f]{6}$/i);
     expect(typeof f.active).toBe("boolean");
     expect(typeof f.stale).toBe("boolean");
   }
@@ -70,5 +73,15 @@ test("a computed route is drawn as its rideability classes", async ({
   );
   expect(layers).toContain("route-gravel");
   expect(layers).toContain("route-walk");
+  // Paved is drawn clean, so it must not have a centre-line layer of its own.
+  expect(layers).not.toContain("route-paved");
   expect(await page.getByTestId("map-error").count()).toBe(0);
+
+  // The Legend tab explains the two channels and lists the classes it just drew.
+  await page.getByRole("tab", { name: "Legend", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Symbology" })).toBeVisible();
+  const surfaces = page.locator(".symbology-list").first();
+  await expect(surfaces).toContainText("Paved");
+  await expect(surfaces).toContainText("Hike-a-bike");
+  await expect(surfaces).toContainText("Surface unknown");
 });

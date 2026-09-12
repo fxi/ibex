@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  RIDE_STYLE,
-  rideColorExpression,
+  SURFACE_STYLE,
   rideFeatures,
   rideTotals,
+  surfaceBands,
+  surfaceStyle,
+  trackColorExpression,
 } from "../src/map/rideStyle";
 import type { Point, RideClass, RouteSegment } from "../src/routing/types";
 
@@ -74,7 +76,6 @@ describe("ride features", () => {
       expect(f.properties.trackId).toBe("t1");
       expect(f.properties.trackColor).toBe("#2485ff");
       expect(f.properties.stale).toBe(true);
-      expect(f.properties.color).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
 
@@ -106,30 +107,88 @@ describe("ride features", () => {
   });
 });
 
-describe("ride colour expression", () => {
-  it("names every class in the table, with a fallback", () => {
-    const expression = rideColorExpression() as unknown[];
-    expect(expression[0]).toBe("case");
-    for (const { ride, color } of RIDE_STYLE) {
-      const at = expression.findIndex(
-        (part) =>
-          Array.isArray(part) &&
-          part[0] === "==" &&
-          Array.isArray(part[1]) &&
-          part[1][1] === "ride" &&
-          part[2] === ride,
-      );
-      expect(at, ride).toBeGreaterThan(0);
-      expect(expression[at + 1]).toBe(color);
-    }
-    // Last element is the fallback colour, not a condition.
-    expect(typeof expression.at(-1)).toBe("string");
-    expect(expression.length).toBe(RIDE_STYLE.length * 2 + 2);
+describe("track colour expression", () => {
+  it("reads the track's own colour, with a fallback", () => {
+    const expression = trackColorExpression() as unknown[];
+    // Colour is identity, never terrain: nothing in the expression may look at `ride`.
+    expect(JSON.stringify(expression)).not.toContain("ride");
+    expect(expression[0]).toBe("to-color");
+    expect(expression[1]).toEqual(["get", "trackColor"]);
+    expect(expression[2]).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe("surface style table", () => {
+  it("covers every ride class exactly once", () => {
+    const rides = SURFACE_STYLE.map((s) => s.ride);
+    expect(new Set(rides).size).toBe(rides.length);
+    // Every class a segment can carry must have a symbol, or it draws as bare track
+    // colour and silently claims to be paved.
+    for (const ride of [
+      "paved",
+      "gravel",
+      "rough",
+      "walk",
+      "ferry",
+      "unknown",
+    ] as const)
+      expect(rides).toContain(ride);
   });
 
-  it("gives every class a distinct colour", () => {
-    const colors = RIDE_STYLE.map((s) => s.color);
-    expect(new Set(colors).size).toBe(colors.length);
+  it("leaves paved clean and marks everything else", () => {
+    expect(surfaceStyle("paved").center).toBeNull();
+    for (const s of SURFACE_STYLE.filter((s) => s.ride !== "paved"))
+      expect(s.center, s.ride).not.toBeNull();
+  });
+
+  it("gets heavier as the going gets worse", () => {
+    const weight = (ride: "gravel" | "rough" | "walk") =>
+      surfaceStyle(ride).center!.weight;
+    expect(weight("gravel")).toBeLessThan(weight("rough"));
+    expect(weight("rough")).toBeLessThan(weight("walk"));
+    // Denser hatching under the elevation curve, in the same order.
+    const spacing = (ride: "gravel" | "rough" | "walk") =>
+      surfaceStyle(ride).profile.spacing!;
+    expect(spacing("gravel")).toBeGreaterThan(spacing("rough"));
+    expect(spacing("rough")).toBeGreaterThan(spacing("walk"));
+  });
+
+  it("gives hike-a-bike a colour of its own under the profile", () => {
+    // Everything else is hatched in the track's colour. A carry is the one thing the
+    // profile has to shout about, so it does not inherit the track's identity.
+    expect(surfaceStyle("walk").profile.color).toBe("#ff7043");
+    for (const ride of ["gravel", "rough", "unknown"] as const)
+      expect(surfaceStyle(ride).profile.color, ride).toBeUndefined();
+  });
+
+  it("falls back to a real style for an unrecognised class", () => {
+    expect(surfaceStyle("nonsense" as never).ride).toBe("paved");
+  });
+});
+
+describe("surface bands", () => {
+  it("tiles the route end to end, merging repeats", () => {
+    const bands = surfaceBands(
+      [segment(0, 1, "paved"), segment(1, 2, "paved"), segment(2, 4, "walk")],
+      400,
+    );
+    expect(bands.map((b) => b.ride)).toEqual(["paved", "walk"]);
+    expect(bands[0].startM).toBe(0);
+    expect(bands[0].endM).toBeCloseTo(200);
+    expect(bands[1].endM).toBeCloseTo(400);
+  });
+
+  it("rescales spans to the router's own distance", () => {
+    // Segment lengths are straight-line spans and run short of the measured distance;
+    // the bands still have to end exactly where the elevation profile does.
+    const bands = surfaceBands([segment(0, 2, "gravel")], 500);
+    expect(bands).toHaveLength(1);
+    expect(bands[0].endM).toBeCloseTo(500);
+  });
+
+  it("produces nothing without segments or distance", () => {
+    expect(surfaceBands([], 100)).toEqual([]);
+    expect(surfaceBands([segment(0, 2, "paved")], 0)).toEqual([]);
   });
 });
 

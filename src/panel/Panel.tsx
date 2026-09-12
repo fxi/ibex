@@ -3,6 +3,7 @@ import {
   Route,
   Layers,
   Wrench,
+  Palette,
   Settings,
   RefreshCw,
   ChevronDown,
@@ -11,6 +12,7 @@ import { TracksPanel } from "./TracksPanel";
 import { DataPanel } from "./DataPanel";
 import { ToolsPanel } from "./ToolsPanel";
 import { ConfigurePanel } from "./ConfigurePanel";
+import { SymbologyPanel } from "./SymbologyPanel";
 import type { PanelContext } from "./context";
 import type { PanelHeight } from "../state/usePanelHeight";
 
@@ -18,6 +20,7 @@ const tabs = [
   ["tracks", "Tracks", Route],
   ["data", "Data", Layers],
   ["tools", "Tools", Wrench],
+  ["symbology", "Legend", Palette],
   ["configure", "Configure", Settings],
 ] as const;
 
@@ -111,6 +114,9 @@ export function Panel({
           </Tabs.Content>
           <Tabs.Content value="tools">
             <ToolsPanel ctx={ctx} />
+          </Tabs.Content>
+          <Tabs.Content value="symbology">
+            <SymbologyPanel ctx={ctx} />
           </Tabs.Content>
           <Tabs.Content value="configure">
             <ConfigurePanel ctx={ctx} />

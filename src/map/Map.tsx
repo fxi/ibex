@@ -8,10 +8,11 @@ import { customMapStyle, mapResourceURL } from "./style";
 import type { Track } from "../tracks";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
 import {
-  RIDE_STYLE,
-  rideColorExpression,
+  CENTER_COLOR,
+  SURFACE_STYLE,
   rideFeatures,
-  rideWidthExpression,
+  trackColorExpression,
+  trackWidthExpression,
 } from "./rideStyle";
 /** Below this zoom the grid is context only: one stray click must not queue an area. */
 const MIN_SELECT_ZOOM = 6;
@@ -262,7 +263,7 @@ export function MapView({
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": "#fffdf5",
+          "line-color": CENTER_COLOR,
           "line-width": [
             "interpolate",
             ["linear"],
@@ -281,45 +282,43 @@ export function MapView({
         source: "route",
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          // The active track shows what it is made of; the others stay their own colour
-          // so several routes on screen remain tellable apart.
-          "line-color": [
+          // Every track keeps its own colour, active or not: colour is which track this
+          // is, never what it is made of. Surface rides on top as a centre line.
+          "line-color": trackColorExpression(),
+          "line-width": trackWidthExpression(),
+          "line-opacity": [
             "case",
+            ["get", "stale"],
+            0.45,
             ["get", "active"],
-            rideColorExpression(),
-            ["get", "trackColor"],
+            1,
+            0.8,
           ],
-          "line-width": rideWidthExpression(),
-          "line-opacity": ["case", ["get", "stale"], 0.5, 1],
         },
       });
-      // Dash density encodes roughness on top of the colour, so a stretch of hiking
-      // path is unmistakable even at a glance or in greyscale.
-      for (const { ride, dash } of RIDE_STYLE) {
-        if (!dash) continue;
+      // The centre line is the surface indicator: absent on tarmac, finer and more broken
+      // as the going worsens, so terrain reads at a glance and in greyscale without ever
+      // taking a colour away from the track it belongs to.
+      for (const { ride, center } of SURFACE_STYLE) {
+        if (!center) continue;
         m.addLayer({
           id: `route-${ride}`,
           type: "line",
           source: "route",
           layout: { "line-cap": "butt", "line-join": "round" },
-          filter: [
-            "all",
-            ["==", ["get", "ride"], ride],
-            ["get", "active"],
-          ],
+          filter: ["==", ["get", "ride"], ride],
           paint: {
-            "line-color": "#fffdf5",
-            "line-dasharray": dash,
-            "line-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              5,
-              1.5,
-              14,
-              3.5,
+            "line-color": CENTER_COLOR,
+            ...(center.dash ? { "line-dasharray": center.dash } : {}),
+            "line-width": trackWidthExpression(center.weight),
+            "line-opacity": [
+              "case",
+              ["get", "stale"],
+              center.opacity * 0.5,
+              ["get", "active"],
+              center.opacity,
+              center.opacity * 0.8,
             ],
-            "line-opacity": ["case", ["get", "stale"], 0.5, 0.95],
           },
         });
       }
