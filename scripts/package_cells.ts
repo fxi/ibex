@@ -27,6 +27,13 @@ const output = process.argv[3] ?? "public/packs/geneva-grid";
 const BLOCK_ZOOM = 13;
 const FIELD_ZOOM = 15;
 const CELL_BYTE_LIMIT = 50_000_000;
+/**
+ * Mirrors PREPROCESSOR_VERSION in scripts/region_config.py. It rides in the release tag,
+ * so raising it retires every installed pack: bump it whenever the pipeline changes the
+ * edge data it publishes. 6 gives bridges and tunnels a portal-to-portal grade instead of
+ * none, which is what lets a grade-limited model cross them at all.
+ */
+const PREPROCESSOR_VERSION = 6;
 
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -86,7 +93,7 @@ const osmTimestamp =
     : "") ||
   "unknown";
 const edition = osmTimestamp.slice(0, 10).replace(/-/g, "");
-const release = `g${COST_MODEL_VERSION}-${edition}-p5-${shortHash(sources)}`;
+const release = `g${COST_MODEL_VERSION}-${edition}-p${PREPROCESSOR_VERSION}-${shortHash(sources)}`;
 const tag = releaseTag(release);
 console.log(`release ${release}\n`);
 

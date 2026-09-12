@@ -136,7 +136,20 @@ describe("directional capability and walking", () => {
         rider,
       ),
     ).toBe(false);
-    expect(eligible(edge({ grades: null }), rider)).toBe(false);
+  });
+  it("keeps an unmeasured way rather than deleting it from the graph", () => {
+    // Bridges and tunnels are deliberately left unsampled, so a grade limit must not
+    // remove them: a handful of unmeasured road bridges are cut vertices for a massif.
+    expect(eligible(edge({ grades: null }), rider)).toBe(true);
+    expect(
+      eligible(
+        edge({ grades: null, bridge: true, highway: "residential" }),
+        rider,
+      ),
+    ).toBe(true);
+    // Unknown terrain is still priced pessimistically, so it is kept but not preferred.
+    const unknown = total(scoreEdge(edge({ grades: null }), rider));
+    expect(unknown).toBeGreaterThan(total(scoreEdge(edge(), rider)));
   });
   it("prices and reports only the portions requiring hike-a-bike", () => {
     const p = { ...rider, access: { hike_a_bike: true } };

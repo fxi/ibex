@@ -35,7 +35,10 @@ EXTRACTS = (
 # The pre-grid single-region bbox, kept for the pipeline regression diff.
 LEGACY_BBOX = [5.80, 45.95, 6.55, 46.45]
 
-PREPROCESSOR_VERSION = 5
+# Raised whenever the pipeline changes the edge data it publishes; it rides in the release
+# tag (see PREPROCESSOR_VERSION in scripts/package_cells.ts, which must match), so every
+# installed pack is retired. 6 gives bridges and tunnels a portal-to-portal grade.
+PREPROCESSOR_VERSION = 6
 
 
 def release_cells(window=WINDOW, zoom=GRID_ZOOM):

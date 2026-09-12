@@ -22,10 +22,11 @@ import {
 } from "../src/routing/provider";
 import { cellBBox, parseCellId } from "../src/geo/grid";
 import { route } from "../src/routing/engine";
-import { resolveProfile } from "../src/routing/profiles";
+import { profileSchema, resolveProfile } from "../src/routing/profiles";
+import mountainWanderer from "../profiles/mountain-wanderer.json";
 import { validateEdge, validateNode } from "../src/offline/validate";
 import type { Installed } from "../src/offline/store";
-import type { Point } from "../src/routing/types";
+import { COST_MODEL_VERSION, type Point } from "../src/routing/types";
 
 const DIR = "public/packs/geneva-grid";
 const present = existsSync(`${DIR}/catalogue.json`);
@@ -71,7 +72,11 @@ describe.skipIf(!present)("generated release", () => {
   it("publishes a catalogue that validates and is grid-consistent", () => {
     expect(catalogue!.cells.length).toBeGreaterThan(0);
     expect(catalogue!.grid).toMatchObject({ scheme: "xyz", blockZoom: 13 });
-    expect(catalogue!.release).toMatch(/^g4-\d{8}-p5-[0-9a-f]{8}$/);
+    // The cost model is an invariant the app enforces; the preprocessor digit is only a
+    // cache-buster, so pin its shape rather than a value that moves with the pipeline.
+    expect(catalogue!.release).toMatch(
+      new RegExp(`^g${COST_MODEL_VERSION}-\\d{8}-p\\d+-[0-9a-f]{8}$`),
+    );
     for (const cell of catalogue!.cells) {
       const derived = cellBBox(parseCellId(cell.id));
       derived.forEach((v, i) => expect(cell.bbox[i]).toBeCloseTo(v, 6));
@@ -218,10 +223,55 @@ describe.skipIf(!present)("generated release", () => {
         expect(covered).toBeGreaterThan(result.distanceM * 0.98);
         expect(covered).toBeLessThan(result.distanceM * 1.02);
         // Real terrain is not uniform, and every segment names a real surface.
-        expect(new Set(result.segments.map((s) => s.ride)).size).toBeGreaterThan(
-          1,
-        );
+        expect(
+          new Set(result.segments.map((s) => s.ride)).size,
+        ).toBeGreaterThan(1);
         expect(result.segments.every((s) => s.surface.length > 0)).toBe(true);
+      },
+      120_000,
+    );
+
+    /**
+     * The reported four-waypoint track, verbatim. It failed with "No route connects these
+     * waypoints under this model" because the leg from Monnetier to the Prieuré crosses
+     * the Menoge on small road bridges, and every bridge is published without grades —
+     * which the eligibility check used to treat as impassable whenever the model set a
+     * grade limit. Mountain wanderer sets both, so it could not cross a bridge anywhere.
+     */
+    it.skipIf(!hasCells)(
+      "solves the reported Voirons track under a grade-limited model",
+      async () => {
+        const track: Point[] = [
+          [6.1934, 46.197],
+          [6.3062, 46.242],
+          [6.3576, 46.2289],
+          [6.3545, 46.2285],
+        ];
+        const { packs, reader } = installedFor(ids);
+        const provider = new CellGraphProvider(
+          packs,
+          catalogue!.release,
+          catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
+          reader,
+        );
+        await provider.open();
+        const graph = await provider.load(searchArea(track));
+        const wanderer = profileSchema.parse(mountainWanderer);
+        const result = route(
+          graph,
+          { anchors: track, profile: wanderer },
+          "reference",
+        );
+        expect(result.failedLeg).toBeUndefined();
+        expect(result.status).toBe("ok");
+        expect(result.distanceM).toBeGreaterThan(20_000);
+        expect(result.distanceM).toBeLessThan(45_000);
+        // Every leg of a grade-limited model is still subject to its limits.
+        expect(
+          result.segments.every(
+            (s) => s.grade === null || Math.abs(s.grade) * 100 <= 25,
+          ),
+        ).toBe(true);
       },
       120_000,
     );

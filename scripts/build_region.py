@@ -18,12 +18,12 @@ import httpx
 from PIL import Image
 from grid import cell_bbox, cell_id, mercator_x, mercator_y, tile_of
 from prepare_tracks import BBOX, distance
-from region_config import HALO_KM, TERRAIN_ZOOM, halo_degrees
+from region_config import HALO_KM, PREPROCESSOR_VERSION, TERRAIN_ZOOM, halo_degrees
 from shapely.geometry import Point
 from shapely.ops import unary_union
 from shapely.prepared import prep
 from profile_features import tagged_polygons, urban_index, urban_fraction, cycling_memberships, on_cycling_network, ferry_ways
-from terrain_profile import bilinear_height, way_profile, slice_profile
+from terrain_profile import bilinear_height, way_profile, slice_profile, structure_grade
 
 DENIED = {"no", "private", "use_sidepath"}
 PAVED = {"asphalt", "concrete", "concrete:plates", "paving_stones", "paved"}
@@ -397,6 +397,15 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
         if any(node not in positions for node in sequence):
             continue
         offsets, profile = way_profile(sequence, positions, elevations, tags.get("incline"))
+        # A structure is never sampled along its length, only across it, and the rise is
+        # taken between the way's own portals rather than a segment's ends: a bridge split
+        # at an intermediate junction has a mid-deck node whose DEM height is the ground
+        # under it. One grade therefore serves every segment of the way.
+        structure = (
+            structure_grade(sequence, elevations, offsets[-1], tags.get("incline"))
+            if tags.get("bridge", "no") != "no" or tags.get("tunnel", "no") != "no"
+            else None
+        )
         start = 0
         for i in range(1, len(sequence)):
             if sequence[i] not in kept and i < len(sequence) - 1:
@@ -426,7 +435,18 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
                 continue
             bridge = tags.get("bridge", "no") != "no"
             tunnel = tags.get("tunnel", "no") != "no"
-            grade_samples = None if bridge or tunnel or tags["highway"] == "ferry" else slice_profile(profile, profile_start, profile_end)
+            if tags["highway"] == "ferry":
+                grade_samples = None
+            elif bridge or tunnel:
+                grade_samples = (
+                    None
+                    if structure is None
+                    else [[round(length, 3), round(structure, 5)]]
+                )
+            else:
+                grade_samples = slice_profile(profile, profile_start, profile_end)
+            # A structure's grade is inferred from its portals, not measured along it.
+            estimated = grade_samples is None or bridge or tunnel
             highway = tags["highway"]
             stress = {
                 "primary": 0.95,
@@ -455,7 +475,7 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
             uncertainty = min(
                 1,
                 (0.55 if surface == "unknown" else 0.1)
-                + (0.15 if grade_samples is None else 0)
+                + (0.15 if estimated else 0)
                 + (
                     0.15
                     if highway in {"path", "track"} and "bicycle" not in tags
@@ -802,7 +822,7 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
         "bbox": BBOX,
         "osmTimestamp": osm_timestamp,
         "costModelVersion": 4,
-        "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": 4, "layers": source_layers},
+        "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": PREPROCESSOR_VERSION, "layers": source_layers},
         "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3

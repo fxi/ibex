@@ -4,7 +4,8 @@ import { expect, it } from "vitest";
 import { route, snapAnchors } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
 import type { Graph, Point } from "../src/routing/types";
-import type { UserProfile } from "../src/routing/profiles";
+import { profileSchema, type UserProfile } from "../src/routing/profiles";
+import mountainWanderer from "../profiles/mountain-wanderer.json";
 const graph: Graph = JSON.parse(
   gunzipSync(
     readFileSync(new URL("./fixtures/voirons-graph.json.gz", import.meta.url)),
@@ -75,4 +76,54 @@ it("refuses a hiking-only Road destination but routes between road-access points
     "reference",
   );
   expect(road.status).toBe("ok");
+});
+
+/**
+ * The Menoge road bridges are the only links between the Geneva plain and the massif, and
+ * the terrain sampler leaves every bridge and tunnel without grades on purpose — the DEM
+ * reads the ground under the deck. Blocking an unmeasured grade therefore used to delete
+ * these three edges and strand the whole of the Voirons from any profile with a grade
+ * limit, which is every mountain model.
+ */
+it("routes over the unmeasured Menoge bridges instead of deleting them", () => {
+  const wanderer: UserProfile = profileSchema.parse(mountainWanderer);
+  const bridge = graph.edges.find((e) => e.way === "252371604")!;
+  expect(bridge.bridge).toBe(true);
+  expect(bridge.grades).toBeNull();
+  expect(wanderer.capabilities?.max_grade_up).toBe(15);
+  expect(eligible(bridge, wanderer)).toBe(true);
+  const west = bridge.geometry[0];
+  const east = bridge.geometry.at(-1)!;
+  const across: Point[] = [
+    [west[0] - 0.0004, west[1]],
+    [east[0] + 0.0004, east[1]],
+  ];
+  const result = route(
+    graph,
+    { profile: wanderer, anchors: across },
+    "reference",
+  );
+  expect(result.status).toBe("ok");
+  expect(result.failedLeg).toBeUndefined();
+  expect(result.edgeIds).toContain(bridge.id);
+});
+
+it("never excludes a structure for the grade it could not measure", () => {
+  const wanderer: UserProfile = profileSchema.parse(mountainWanderer);
+  // Same model with the limits lifted: anything it still rejects is rejected on surface,
+  // access or difficulty — reasons a missing grade has no bearing on.
+  const unlimited: UserProfile = {
+    ...wanderer,
+    capabilities: {
+      ...wanderer.capabilities,
+      max_grade_up: null,
+      max_grade_down: null,
+    },
+  };
+  const structures = graph.edges.filter((e) => e.bridge || e.tunnel);
+  expect(structures.length).toBeGreaterThan(0);
+  expect(structures.every((e) => e.grades === null)).toBe(true);
+  expect(
+    structures.filter((e) => eligible(e, unlimited) !== eligible(e, wanderer)),
+  ).toEqual([]);
 });

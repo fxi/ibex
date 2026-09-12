@@ -18,6 +18,40 @@ def bilinear_height(image, px, py):
             + dy * ((1-dx)*height(x0,y1) + dx*height(x1,y1)))
 
 
+# Grades are smoothed over this window so DEM pixel noise does not become a wall.
+WINDOW = 80
+CLAMP = 0.45
+
+
+def numeric_incline(incline):
+    """The OSM incline tag as a grade, in the way's coordinate direction, or None."""
+    try:
+        text = (incline or "").strip()
+        grade = math.tan(math.radians(float(text[:-1]))) if text.endswith("°") else float(text.rstrip("%")) / 100
+    except ValueError:
+        return None
+    return max(-CLAMP, min(CLAMP, grade)) if math.isfinite(grade) else None
+
+
+def structure_grade(ids, elevations, length, incline=None):
+    """One constant grade across a bridge or tunnel.
+
+    The DEM reads the ground under a deck and the mountain over a bore, so sampling along a
+    structure is meaningless — but its portals stand on real ground, so the rise between
+    them is the gradient a rider actually climbs. Spreading that rise over at least the
+    same 80 m window `way_profile` smooths with is what keeps it honest: the median
+    structure is 9 m long, and dividing a metre of DEM noise by 9 m invents a 1-in-9 wall.
+    Anything longer than the window keeps its own gradient, so a viaduct stays a viaduct.
+    """
+    tagged = numeric_incline(incline)
+    if tagged is not None:
+        return tagged
+    if length < 0.1 or any(node not in elevations for node in (ids[0], ids[-1])):
+        return None
+    rise = elevations[ids[-1]] - elevations[ids[0]]
+    return max(-CLAMP, min(CLAMP, rise / max(length, WINDOW)))
+
+
 def way_profile(ids, positions, elevations, incline=None):
     offsets = [0.0]
     for a, b in zip(ids, ids[1:]):
@@ -26,13 +60,9 @@ def way_profile(ids, positions, elevations, incline=None):
     if length < 0.1:
         return offsets, None
     # Numeric OSM incline applies in the way's coordinate direction.
-    try:
-        text = (incline or "").strip()
-        grade = math.tan(math.radians(float(text[:-1]))) if text.endswith("°") else float(text.rstrip("%")) / 100
-        if math.isfinite(grade):
-            return offsets, [(0.0, length, max(-0.45, min(0.45, grade)))]
-    except ValueError:
-        pass
+    tagged = numeric_incline(incline)
+    if tagged is not None:
+        return offsets, [(0.0, length, tagged)]
     if any(node not in elevations for node in ids):
         return offsets, None
 
@@ -48,10 +78,10 @@ def way_profile(ids, positions, elevations, incline=None):
         end = min(length, start+20)
         middle = (start+end)/2
         # Shift the full window at way ends instead of creating a tiny tail.
-        low = max(0, min(length-80, middle-40))
-        high = min(length, low+80)
+        low = max(0, min(length-WINDOW, middle-WINDOW/2))
+        high = min(length, low+WINDOW)
         grade = (height(high)-height(low))/max(high-low, 1)
-        samples.append((start, end, max(-0.45, min(0.45, grade))))
+        samples.append((start, end, max(-CLAMP, min(CLAMP, grade))))
         start = end
     return offsets, samples
 

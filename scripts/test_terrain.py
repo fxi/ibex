@@ -1,6 +1,6 @@
 import unittest
 from PIL import Image
-from terrain_profile import bilinear_height, way_profile, slice_profile
+from terrain_profile import bilinear_height, way_profile, slice_profile, structure_grade
 from prepare_tracks import distance
 
 class TerrainTests(unittest.TestCase):
@@ -30,3 +30,26 @@ class TerrainTests(unittest.TestCase):
         self.assertIsNone(missing)
         _,incline=way_profile([0,1],positions,{},'-15%')
         self.assertEqual(incline[0][2],-.15)
+
+class StructureTests(unittest.TestCase):
+    def test_portal_rise_becomes_the_deck_grade(self):
+        # A 100 m viaduct climbing 8 m is an 8% deck, sampled across rather than along.
+        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:408},100),.08)
+
+    def test_short_deck_spreads_its_rise_over_the_smoothing_window(self):
+        # Nine metres of bridge between portals a metre apart is not a 1-in-9 wall; the
+        # rise belongs to the approach ramps, so it is damped the way every way is.
+        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:401},9),1/80)
+        self.assertLess(structure_grade([0,1],{0:400,1:403},5),.05)
+
+    def test_tagged_incline_outranks_the_terrain_model(self):
+        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:408},100,'-6%'),-.06)
+
+    def test_unknown_portal_height_reports_no_grade(self):
+        self.assertIsNone(structure_grade([0,1],{0:400},100))
+        self.assertIsNone(structure_grade([0,1],{},100))
+        self.assertIsNone(structure_grade([0,1],{0:400,1:401},0))
+
+    def test_grade_stays_within_the_shared_clamp(self):
+        self.assertEqual(structure_grade([0,1],{0:0,1:1000},100),.45)
+        self.assertEqual(structure_grade([0,1],{0:1000,1:0},100),-.45)

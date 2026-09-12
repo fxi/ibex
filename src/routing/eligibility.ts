@@ -130,8 +130,11 @@ function segmentMode(
     )
       walking = true;
     const limit = c[`max_grade_${d}`];
-    // A configured grade limit cannot be verified against missing elevation.
-    if (grade === null && limit !== null && !walking) return "blocked";
+    // An unmeasured grade is a gap in the terrain data, never evidence that the way is
+    // impassable. Bridges and tunnels are deliberately left unsampled — the DEM reads the
+    // ground under a deck and the mountain over a bore — so blocking on a missing grade
+    // deletes cut vertices: three unsampled road bridges once stranded the whole Voirons
+    // massif from every profile that set a limit. Treat it as flat and let cost decide.
     if (
       (mtb ?? 0) > c[`max_mtb_scale_${d}`] ||
       (grade !== null && limit !== null && Math.abs(grade) * 100 > limit)
