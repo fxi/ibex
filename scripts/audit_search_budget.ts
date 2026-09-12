@@ -4,10 +4,11 @@ import { gunzipSync } from "node:zlib";
 import { route, snapAnchors } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
 import type { Graph, Point } from "../src/routing/types";
-import type { ProfileInput } from "../src/routing/profiles";
-const profile: ProfileInput = process.argv[2]?.endsWith(".json")
-  ? JSON.parse(await fs.readFile(process.argv[2], "utf8"))
-  : ((process.argv[2] ?? "gravel") as ProfileInput);
+import { parseProfile } from "../src/routing/profiles";
+import { loadProfile } from "./profile";
+const profile = process.argv[2]?.endsWith(".json")
+  ? parseProfile(JSON.parse(await fs.readFile(process.argv[2], "utf8")))
+  : await loadProfile(process.argv[2] ?? "gravel_40");
 const directory = "public/packs/geneva";
 const index = JSON.parse(
   gunzipSync(await fs.readFile(`${directory}/index.bin`)).toString(),

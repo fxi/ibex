@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
 import type { Graph, RouteRequest } from "../src/routing/types";
+import { loadProfile } from "./profile";
+const wanderer = await loadProfile("wanderer");
 const graph: Graph = JSON.parse(
   await fs.readFile("data/build/geneva/graph.json", "utf8"),
 );
@@ -9,7 +11,7 @@ const request: RouteRequest = {
     [6.151, 46.201],
     [6.171, 46.119],
   ],
-  profile: "gravel",
+  profile: await loadProfile("gravel_40"),
 };
 const experiments = [
   { name: "baseline", graph, request },
@@ -41,17 +43,17 @@ const experiments = [
   {
     name: "scenic-baseline",
     graph,
-    request: { ...request, profile: "scenic" as const },
+    request: { ...request, profile: wanderer },
   },
   {
     name: "scenic-reward-disabled",
     graph: { ...graph, edges: graph.edges.map((e) => ({ ...e, reward: 0 })) },
-    request: { ...request, profile: "scenic" as const },
+    request: { ...request, profile: wanderer },
   },
   {
     name: "scenic-junction-disabled",
     graph: { ...graph, edges: graph.edges.map((e) => ({ ...e, junction: 0 })) },
-    request: { ...request, profile: "scenic" as const },
+    request: { ...request, profile: wanderer },
   },
   {
     name: "scenic-technical-tags-stripped",
@@ -66,7 +68,7 @@ const experiments = [
         return { ...e, tags: rest };
       }),
     },
-    request: { ...request, profile: "scenic" as const },
+    request: { ...request, profile: wanderer },
   },
 ];
 const rows = [];

@@ -123,7 +123,9 @@ Public data CORS can be refreshed with `uv run scripts/publish_release.py --conf
 
 Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
 
-Custom routing profiles use versioned JSON with master and bike defaults. Open
-**Configure → Custom profile** in the app to edit, save locally, or import/export a profile.
-See [the profile guide](profiles/README.md) and
-[Mountain wanderer](profiles/mountain-wanderer.json) for fields and current data limitations.
+Routing profiles are self-contained JSON: every profile carries its own bike, rider,
+preferences and permissions, with nothing inherited from a master file. Open **Configure**
+in the app to edit, save locally, or import/export one. Preferences use a single
+five-level vocabulary, and grade and technical capability are derived from the bike and
+rider rather than hand-set. See [the profile guide](profiles/README.md) and
+[Gravel 40 mm](profiles/gravel_40.profile.json) for fields and current data limitations.

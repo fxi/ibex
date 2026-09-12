@@ -1,0 +1,38 @@
+{
+  "format_version": 2,
+  "id": "gravel_40",
+  "name": "Gravel 40 mm",
+  "description": "A relaxed gravel profile that favours quiet, scenic, unpaved riding without drifting into MTB terrain.",
+  "setup": {
+    "preset": "gravel_40 / expert",
+    "bike": {
+      "tire_mm": 40,
+      "mass_kg": 11.5,
+      "lowest_gear_ratio": 0.85,
+      "suspension": "none",
+      "load_kg": 3
+    },
+    "rider": {
+      "mass_kg": 75,
+      "sustained_w_per_kg": 3.2,
+      "tech_skill": 0.7,
+      "descend_confidence": 0.7
+    }
+  },
+  "preferences": {
+    "detour": "prefer",
+    "traffic_stress": "strongly_avoid",
+    "unpaved": "prefer",
+    "roughness": "avoid",
+    "technicality": "avoid",
+    "climbing": "neutral",
+    "scenic": "prefer",
+    "urbanity": "avoid",
+    "cycle_infrastructure": "prefer"
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": true,
+    "push": true
+  }
+}

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { resolveProfile } from "../routing/profiles";
+import { toCompiled } from "../routing/compile";
 import type { Installed } from "../offline/store";
 import {
   validateAnchors,
@@ -178,7 +178,7 @@ async function routeCells(data: CellInput) {
   const { id, packs, release } = data;
   const request = {
     ...data.request,
-    profile: resolveProfile(data.request.profile),
+    profile: toCompiled(data.request.profile),
   };
   validateAnchors(request.anchors);
   const start = performance.now();

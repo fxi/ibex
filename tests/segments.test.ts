@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { distance, route } from "../src/routing/engine";
 import { rideClass } from "../src/routing/eligibility";
 import type { Edge, Graph, Point, RouteResult } from "../src/routing/types";
-import type { UserProfile } from "../src/routing/profiles";
+import type { Profile } from "../src/routing/profiles";
+import { TRAIL, withPermissions } from "./helpers";
 
 const points: Point[] = [
   [6.1, 46.2],
@@ -11,12 +12,9 @@ const points: Point[] = [
   [6.13, 46.2],
 ];
 
-const profile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
-  version: 1,
-  name: "Segments",
-  bike: "gravel",
-  access: { hike_a_bike: true, steps: true, ferry: true },
-  capabilities: { allow_unknown_paths: true, allow_rough_surfaces: true },
+/** A permissive profile: these tests are about how a route is described, not chosen. */
+const profile = (overrides: Partial<Profile> = {}): Profile => ({
+  ...withPermissions(TRAIL, { ferry: true, stairs: true, push: true }),
   ...overrides,
 });
 
@@ -99,7 +97,7 @@ describe("route segments", () => {
   it("marks a hike-a-bike stretch as walking", () => {
     const result = run(
       chain({}, { highway: "steps", surface: "ground" }, {}),
-      profile({ access: { hike_a_bike: true, steps: true, ferry: true } }),
+      profile(),
     );
     expect(result.status).toBe("ok");
     expect(result.segments.map((s) => s.ride)).toContain("walk");

@@ -13,7 +13,7 @@ import "./style.css";
 import { MapView, type MapCommand } from "./map/Map";
 import { loadModels } from "./models";
 import type { Point } from "./routing/types";
-import type { UserProfile } from "./routing/profiles";
+import type { Profile } from "./routing/profiles";
 import { DEFAULT_CATALOGUE_URL, absoluteURL } from "./config";
 import { useTracks } from "./state/useTracks";
 import { useCatalogue } from "./state/useCatalogue";
@@ -35,7 +35,7 @@ function App() {
   const [status, setStatus] = useState("");
   const [command, setCommand] = useState<MapCommand>();
   const [online, setOnline] = useState(navigator.onLine);
-  const [models, setModels] = useState<UserProfile[]>([]);
+  const [models, setModels] = useState<Profile[]>([]);
   const [debug, setDebug] = useState(false);
   const [history, setHistory] = useState(false);
   const [menu, setMenu] = useState<WaypointMenuState>();

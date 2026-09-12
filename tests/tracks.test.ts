@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { GRAVEL, ROAD } from "./helpers";
+import { serializeProfile } from "../src/routing/profiles";
 import {
   acceptResult,
   editTrack,
@@ -21,10 +23,10 @@ describe("independent track revisions", () => {
     const ready = acceptResult(gravel, 0, result, "pack-1");
     const road = editTrack(
       { ...structuredClone(ready), id: "road" },
-      { profile: modelSnapshot("road") },
+      { profile: modelSnapshot(ROAD) },
     );
-    expect(gravel.profile.bike).toBe("gravel");
-    expect(road.profile.bike).toBe("road");
+    expect(gravel.profile.id).toBe("gravel_40");
+    expect(road.profile.id).toBe("road_28");
     expect(road.resultRevision).not.toBe(road.revision);
     expect(road.result).toEqual(result);
     expect(ready.revision).toBe(ready.resultRevision);
@@ -53,17 +55,26 @@ describe("independent track revisions", () => {
       restoreCollection({ version: 2, activeId: track.id, tracks: [track] }),
     ).toThrow();
   });
-  it("preserves explicit false, zero and null in a snapshot", () => {
-    const p = modelSnapshot({
-      version: 1,
-      name: "Custom",
-      bike: "gravel",
-      attraction: { quiet: 0 },
-      access: { ferry: false },
-      capabilities: { max_grade_up: null },
-    });
-    expect(p.attraction?.quiet).toBe(0);
-    expect(p.access?.ferry).toBe(false);
-    expect(p.capabilities?.max_grade_up).toBe(null);
+  it("snapshots a profile by value, so editing the model leaves the track alone", () => {
+    // There is nothing to resolve any more — a profile is already complete — so the only
+    // job left is the copy, and the copy has to be deep.
+    const snapshot = modelSnapshot(GRAVEL);
+    expect(snapshot).toEqual(GRAVEL);
+    expect(snapshot).not.toBe(GRAVEL);
+    expect(snapshot.setup.bike).not.toBe(GRAVEL.setup.bike);
+    expect(serializeProfile(snapshot)).toBe(serializeProfile(GRAVEL));
+  });
+
+  it("refuses a collection holding a profile in the old format", () => {
+    // Sparse v1 profiles meant nothing without a master file that no longer exists, so
+    // they are rejected rather than guessed at.
+    const track = newTrack();
+    const legacy = {
+      ...track,
+      profile: { version: 1, name: "Old", bike: "gravel" },
+    };
+    expect(() =>
+      restoreCollection({ version: 1, activeId: track.id, tracks: [legacy] }),
+    ).toThrow();
   });
 });

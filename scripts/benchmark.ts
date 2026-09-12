@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
-import type { Graph, Point, Profile } from "../src/routing/types";
+import type { Graph, Point } from "../src/routing/types";
+import { loadProfile } from "./profile";
 const graph: Graph = JSON.parse(
   await fs.readFile("data/build/geneva/graph.json", "utf8"),
 );
@@ -29,13 +30,14 @@ const scenarios: { name: string; anchors: Point[] }[] = [
 ];
 const report = [];
 for (const scenario of scenarios)
-  for (const profile of ["gravel", "road", "touring"] as Profile[]) {
+  for (const id of ["gravel_40", "road_28", "touring_45"]) {
+    const profile = await loadProfile(id);
     const request = { anchors: scenario.anchors, profile };
     const reference = route(graph, request, "reference");
     const corridor = route(graph, request, "corridor");
     const row = {
       scenario: scenario.name,
-      profile,
+      profile: id,
       reference: {
         status: reference.status,
         cost: reference.cost,

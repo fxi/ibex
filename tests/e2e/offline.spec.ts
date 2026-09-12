@@ -61,14 +61,20 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   // Building a profile while offline exercises the IndexedDB write path with no network.
-  await page.getByRole("button", { name: "Duplicate gravel" }).click();
+  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
   await page.getByLabel("Model name").fill("Offline explorer");
-  await page.getByLabel("Quiet roads", { exact: true }).fill("80");
-  await page.getByLabel("Climbing", { exact: true }).fill("50");
-  await page.getByLabel("Countryside", { exact: true }).fill("90");
-  await page.getByLabel("Hike-a-bike", { exact: true }).check();
-  await page.getByLabel("Steps", { exact: true }).check();
-  await page.getByLabel("Ferry", { exact: true }).check();
+  await page.getByLabel("Profile id").fill("offline_explorer");
+  const setLevel = (field: string, level: string) =>
+    page
+      .locator(".field", { has: page.getByText(field, { exact: true }) })
+      .getByRole("radio", { name: level, exact: true })
+      .click();
+  await setLevel("Climbing", "Prefer ++");
+  await setLevel("Built-up", "Avoid ++");
+  await setLevel("Detour", "Prefer ++");
+  await page.getByLabel("Pushing", { exact: true }).check();
+  await page.getByLabel("Stairs", { exact: true }).check();
+  await page.getByLabel("Ferries", { exact: true }).check();
   await page.getByRole("button", { name: "Save and use" }).click();
   await expect(
     page.getByText("Saved Offline explorer.", { exact: true }),
@@ -102,7 +108,7 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page
-    .getByRole("button", { name: "Touring", exact: true })
+    .getByRole("button", { name: "Loaded touring", exact: true })
     .first()
     .click();
   await page

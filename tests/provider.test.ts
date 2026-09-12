@@ -11,7 +11,7 @@ import { crc32 } from "../src/offline/ibex/varint";
 import { releaseTag, type BlockRef } from "../src/offline/ibex/spec";
 import { cellBBox, parseCellId, tileOf } from "../src/geo/grid";
 import { route, buildField } from "../src/routing/engine";
-import { resolveProfile } from "../src/routing/profiles";
+import { GRAVEL } from "./helpers";
 import type { Installed } from "../src/offline/store";
 import type { Edge, Node, Point, Restriction } from "../src/routing/types";
 
@@ -222,7 +222,7 @@ describe("multi-pack graph provider", () => {
   it("routes across a cell boundary using both packs", async () => {
     const provider = await open([west, east]);
     const graph = await provider.load(searchArea(anchors));
-    const request = { anchors, profile: resolveProfile("gravel") };
+    const request = { anchors, profile: GRAVEL };
     const result = route(graph, request, "reference");
     expect(result.status).toBe("ok");
     // Three 1550 m segments, minus the two 0.001 deg anchor offsets.
@@ -237,7 +237,7 @@ describe("multi-pack graph provider", () => {
     const graph = await provider.load(searchArea(anchors));
     const result = route(
       graph,
-      { anchors, profile: resolveProfile("gravel") },
+      { anchors, profile: GRAVEL },
       "reference",
     );
     expect(result.status).not.toBe("ok");
@@ -355,7 +355,7 @@ describe("multi-pack graph provider", () => {
     const graph = await provider.load(searchArea(anchors));
     const field = buildField(graph, {
       anchors,
-      profile: resolveProfile("gravel"),
+      profile: GRAVEL,
     });
     expect(field.width * field.height).toBeGreaterThan(0);
     expect(field.paths).toHaveLength(1);

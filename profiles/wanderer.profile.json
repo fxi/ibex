@@ -1,0 +1,38 @@
+{
+  "format_version": 2,
+  "id": "wanderer",
+  "name": "Mountain wanderer",
+  "description": "The long way round, on purpose. Trades a great deal of distance for quiet, height and a view.",
+  "setup": {
+    "preset": "gravel_50 / expert",
+    "bike": {
+      "tire_mm": 50,
+      "mass_kg": 12.5,
+      "lowest_gear_ratio": 0.7,
+      "suspension": "none",
+      "load_kg": 3
+    },
+    "rider": {
+      "mass_kg": 75,
+      "sustained_w_per_kg": 3.2,
+      "tech_skill": 0.7,
+      "descend_confidence": 0.7
+    }
+  },
+  "preferences": {
+    "detour": "strongly_prefer",
+    "traffic_stress": "strongly_avoid",
+    "unpaved": "strongly_prefer",
+    "roughness": "neutral",
+    "technicality": "neutral",
+    "climbing": "strongly_prefer",
+    "scenic": "strongly_prefer",
+    "urbanity": "strongly_avoid",
+    "cycle_infrastructure": "neutral"
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": true,
+    "push": true
+  }
+}

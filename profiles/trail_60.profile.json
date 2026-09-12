@@ -1,0 +1,38 @@
+{
+  "format_version": 2,
+  "id": "trail_60",
+  "name": "Trail 60 mm",
+  "description": "Singletrack when it is there, and happy to climb or push to reach it.",
+  "setup": {
+    "preset": "mtb_60 / expert",
+    "bike": {
+      "tire_mm": 60,
+      "mass_kg": 13.5,
+      "lowest_gear_ratio": 0.52,
+      "suspension": "front",
+      "load_kg": 2
+    },
+    "rider": {
+      "mass_kg": 75,
+      "sustained_w_per_kg": 3.2,
+      "tech_skill": 0.7,
+      "descend_confidence": 0.7
+    }
+  },
+  "preferences": {
+    "detour": "prefer",
+    "traffic_stress": "strongly_avoid",
+    "unpaved": "strongly_prefer",
+    "roughness": "prefer",
+    "technicality": "prefer",
+    "climbing": "prefer",
+    "scenic": "prefer",
+    "urbanity": "strongly_avoid",
+    "cycle_infrastructure": "neutral"
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": true,
+    "push": true
+  }
+}

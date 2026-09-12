@@ -22,8 +22,8 @@ import {
 } from "../src/routing/provider";
 import { cellBBox, parseCellId } from "../src/geo/grid";
 import { route } from "../src/routing/engine";
-import { profileSchema, resolveProfile } from "../src/routing/profiles";
-import mountainWanderer from "../profiles/mountain-wanderer.json";
+import { compileProfile } from "../src/routing/compile";
+import { GRAVEL, WANDERER } from "./helpers";
 import { validateEdge, validateNode } from "../src/offline/validate";
 import type { Installed } from "../src/offline/store";
 import { COST_MODEL_VERSION, type Point } from "../src/routing/types";
@@ -200,7 +200,7 @@ describe.skipIf(!present)("generated release", () => {
         expect(graph.edges.length).toBeGreaterThan(50_000);
         const result = route(
           graph,
-          { anchors, profile: resolveProfile("gravel") },
+          { anchors, profile: GRAVEL },
           "reference",
         );
         expect(result.status).toBe("ok");
@@ -256,22 +256,21 @@ describe.skipIf(!present)("generated release", () => {
         );
         await provider.open();
         const graph = await provider.load(searchArea(track));
-        const wanderer = profileSchema.parse(mountainWanderer);
         const result = route(
           graph,
-          { anchors: track, profile: wanderer },
+          { anchors: track, profile: WANDERER },
           "reference",
         );
         expect(result.failedLeg).toBeUndefined();
         expect(result.status).toBe("ok");
         expect(result.distanceM).toBeGreaterThan(20_000);
         expect(result.distanceM).toBeLessThan(45_000);
-        // Every leg of a grade-limited model is still subject to its limits.
-        expect(
-          result.segments.every(
-            (s) => s.grade === null || Math.abs(s.grade) * 100 <= 25,
-          ),
-        ).toBe(true);
+        // Grades are no longer capped — they are priced — so the guarantee is that the
+        // wanderer stays within its detour budget rather than that it dodges gradients.
+        const direct = route(graph, { anchors: track, profile: GRAVEL }, "reference");
+        expect(result.distanceM).toBeLessThan(
+          direct.distanceM * compileProfile(WANDERER).detour.budget_ratio,
+        );
       },
       120_000,
     );

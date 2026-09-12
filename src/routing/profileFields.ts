@@ -1,217 +1,183 @@
+import { BIKE_PRESET_IDS, RIDER_PRESET_IDS } from "./presets";
+import type { Bike, Rider } from "./profiles";
+import { PREFERENCE_KEYS, type PreferenceKey } from "./vocabulary";
+
 /**
- * Form controls for every editable profile field.
+ * What the setup form draws, and the only place a control's bounds are written twice.
  *
- * The bounds here are the same constants the zod schemas in `./profiles.ts` validate
- * against, so a control can never offer a value the schema rejects. `tests/profileFields`
- * asserts the two stay in step: a new field with no descriptor fails the build's tests
- * rather than silently disappearing from the editor.
+ * `tests/profileFields.test.ts` asserts these keys match the schema exactly, so a field
+ * added to a profile without a control here — or the reverse — fails the build rather
+ * than quietly disappearing from the form.
  */
-
-export type Control =
-  | { kind: "slider"; min: number; max: number; step: number }
-  | { kind: "checkbox" }
-  | { kind: "radio"; options: { value: string; label: string }[] }
-  | { kind: "select"; options: { value: string; label: string }[] };
-
-export type FieldGroup = "attraction" | "capabilities" | "access" | "costs";
-
-export type Field = {
-  key: string;
+export type NumberField<T> = {
+  key: keyof T & string;
   label: string;
-  control: Control;
-  /** Why this field exists, in the language of riding rather than of cost models. */
-  hint?: string;
-  /** Fields that accept "no limit" as an explicit value, distinct from unset. */
-  nullable?: boolean;
+  hint: string;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
 };
 
-const attraction = (): Control => ({
-  kind: "slider",
-  min: 0,
-  max: 100,
-  step: 1,
-});
-const coefficient = (): Control => ({
-  kind: "slider",
-  min: 0,
-  max: 1000,
-  step: 1,
-});
-const discount = (): Control => ({
-  kind: "slider",
-  min: 0,
-  max: 0.95,
-  step: 0.05,
-});
-const grade = (): Control => ({ kind: "slider", min: 0, max: 100, step: 1 });
-
-/** The 0-6 technical scales read better as a row of choices than as a slider. */
-const scale = (labels: string[]): Control => ({
-  kind: "radio",
-  options: labels.map((label, value) => ({ value: String(value), label })),
-});
-const sacScale = () =>
-  scale(["none", "T1", "T2", "T3", "T4", "T5", "T6"]);
-const mtbScale = () => scale(["0", "1", "2", "3", "4", "5", "6"]);
-
-const titleCase = (key: string) =>
-  key.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
-
-const sliders = (keys: string[], control: () => Control): Field[] =>
-  keys.map((key) => ({ key, label: titleCase(key), control: control() }));
-
-export const PROFILE_FIELDS: Record<FieldGroup, Field[]> = {
-  attraction: [
-    {
-      key: "quiet",
-      label: "Quiet roads",
-      control: attraction(),
-      hint: "Prefer roads away from traffic.",
-    },
-    {
-      key: "countryside",
-      label: "Countryside",
-      control: attraction(),
-      hint: "Prefer roads outside built-up areas.",
-    },
-    { key: "scenic", label: "Scenic", control: attraction() },
-    { key: "climbing", label: "Climbing", control: attraction() },
-    {
-      key: "cycling_network",
-      label: "Cycling network",
-      control: attraction(),
-      hint: "Prefer mapped cycle routes.",
-    },
-    { key: "offroad_up", label: "Offroad uphill", control: attraction() },
-    { key: "offroad_down", label: "Offroad downhill", control: attraction() },
-  ],
-  capabilities: [
-    {
-      key: "max_grade_up",
-      label: "Max grade up",
-      control: grade(),
-      nullable: true,
-      hint: "Percent. No limit means any climb is acceptable.",
-    },
-    {
-      key: "max_grade_down",
-      label: "Max grade down",
-      control: grade(),
-      nullable: true,
-      hint: "Percent. No limit means any descent is acceptable.",
-    },
-    { key: "max_mtb_scale_up", label: "Max MTB scale up", control: mtbScale() },
-    {
-      key: "max_mtb_scale_down",
-      label: "Max MTB scale down",
-      control: mtbScale(),
-    },
-    {
-      key: "max_hike_sac_up",
-      label: "Max hiking scale up",
-      control: sacScale(),
-      hint: "SAC hiking difficulty you will push a bike up.",
-    },
-    {
-      key: "max_hike_sac_down",
-      label: "Max hiking scale down",
-      control: sacScale(),
-    },
-    { key: "paved_only", label: "Paved only", control: { kind: "checkbox" } },
-    {
-      key: "allow_unknown_paths",
-      label: "Allow unknown paths",
-      control: { kind: "checkbox" },
-    },
-    {
-      key: "allow_rough_surfaces",
-      label: "Allow rough surfaces",
-      control: { kind: "checkbox" },
-    },
-    {
-      key: "max_track_grade",
-      label: "Max track grade",
-      control: { kind: "slider", min: 1, max: 5, step: 1 },
-      hint: "OSM tracktype: 1 is solid, 5 is soft ground.",
-    },
-    {
-      key: "max_smoothness",
-      label: "Max smoothness",
-      control: { kind: "slider", min: 0, max: 6, step: 1 },
-    },
-  ],
-  access: [
-    {
-      key: "hike_a_bike",
-      label: "Hike-a-bike",
-      control: { kind: "checkbox" },
-      hint: "Allow pushing the bike where riding is not possible.",
-    },
-    {
-      key: "steps",
-      label: "Steps",
-      control: { kind: "checkbox" },
-      hint: "Steps require hike-a-bike permission.",
-    },
-    {
-      key: "ferry",
-      label: "Ferry",
-      control: { kind: "checkbox" },
-      hint: "Uses mapped services; check operating times before travelling.",
-    },
-  ],
-  costs: [
-    ...sliders(
-      [
-        "slope",
-        "surface",
-        "uncertainty",
-        "graph_utility",
-        "technical",
-        "junction",
-        "quiet_factor",
-        "downhill_factor",
-        "technical_up",
-        "technical_down",
-        "junction_meters",
-        "countryside_factor",
-        "cycling_network_factor",
-        "ferry_factor",
-        "ferry_second_meters",
-        "ferry_boarding_meters",
-      ],
-      coefficient,
-    ),
-    {
-      key: "slope_reference_grade",
-      label: "Slope reference grade",
-      control: { kind: "slider", min: 0.01, max: 1, step: 0.01 },
-    },
-    {
-      key: "downhill_free_grade",
-      label: "Downhill free grade",
-      control: { kind: "slider", min: 0, max: 1, step: 0.01 },
-    },
-    ...sliders(
-      ["scenic_discount", "climbing_discount", "offroad_discount"],
-      discount,
-    ),
-    {
-      key: "walking_factor",
-      label: "Walking factor",
-      control: { kind: "slider", min: 1, max: 1000, step: 1 },
-    },
-    {
-      key: "steps_factor",
-      label: "Steps factor",
-      control: { kind: "slider", min: 1, max: 1000, step: 1 },
-    },
-  ],
-};
-
-export const BIKE_OPTIONS = [
-  { value: "gravel", label: "Gravel" },
-  { value: "road", label: "Road" },
-  { value: "touring", label: "Touring" },
-  { value: "scenic", label: "Scenic" },
+export const BIKE_FIELDS: NumberField<Bike>[] = [
+  {
+    key: "tire_mm",
+    label: "Tire width",
+    hint: "Sets rolling resistance and how much rough ground the bike shrugs off.",
+    min: 18,
+    max: 110,
+    step: 1,
+    unit: "mm",
+  },
+  {
+    key: "mass_kg",
+    label: "Bike weight",
+    hint: "Frame, wheels and fittings, without luggage.",
+    min: 4,
+    max: 40,
+    step: 0.5,
+    unit: "kg",
+  },
+  {
+    key: "lowest_gear_ratio",
+    label: "Lowest gear",
+    hint: "Chainring teeth over largest cog: 34/40 is 0.85. Decides the steepest grade you can still turn over.",
+    min: 0.2,
+    max: 3,
+    step: 0.01,
+  },
+  {
+    key: "load_kg",
+    label: "Luggage",
+    hint: "Bags and water. Heavy loads cost more on rough and technical ground than on a gradient.",
+    min: 0,
+    max: 60,
+    step: 0.5,
+    unit: "kg",
+  },
 ];
+
+export const RIDER_FIELDS: NumberField<Rider>[] = [
+  {
+    key: "mass_kg",
+    label: "Rider weight",
+    hint: "With clothing and shoes.",
+    min: 30,
+    max: 200,
+    step: 1,
+    unit: "kg",
+  },
+  {
+    key: "sustained_w_per_kg",
+    label: "Sustained power",
+    hint: "Watts per kilo held for the length of a climb. About 1.9 casual, 3.2 strong, 4.3 racing.",
+    min: 0.8,
+    max: 7,
+    step: 0.1,
+    unit: "W/kg",
+  },
+  {
+    key: "tech_skill",
+    label: "Technical skill",
+    hint: "Handling on loose, steep or broken ground.",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: "descend_confidence",
+    label: "Descending",
+    hint: "Willingness to let the bike run downhill. Independent of fitness.",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+];
+
+export const SUSPENSION_OPTIONS: {
+  value: Bike["suspension"];
+  label: string;
+}[] = [
+  { value: "none", label: "Rigid" },
+  { value: "front", label: "Front" },
+  { value: "full", label: "Full" },
+];
+
+export const BIKE_OPTIONS = BIKE_PRESET_IDS;
+export const RIDER_OPTIONS = RIDER_PRESET_IDS;
+
+export const PREFERENCE_FIELDS: {
+  key: PreferenceKey;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: "detour",
+    label: "Detour",
+    hint: "How much further you will ride for everything below. This is the one knob that decides whether the route wanders at all.",
+  },
+  {
+    key: "traffic_stress",
+    label: "Traffic",
+    hint: "Estimated from road class and cycle infrastructure in the pack, not from live traffic.",
+  },
+  {
+    key: "unpaved",
+    label: "Unpaved",
+    hint: "Gravel, track and dirt, where the surface is actually mapped. Unsurveyed ways are never assumed to be gravel.",
+  },
+  {
+    key: "roughness",
+    label: "Roughness",
+    hint: "How broken the surface is, read from surface, smoothness and tracktype.",
+  },
+  {
+    key: "technicality",
+    label: "Technicality",
+    hint: "Mapped MTB and hiking difficulty, judged separately uphill and downhill.",
+  },
+  {
+    key: "climbing",
+    label: "Climbing",
+    hint: "Whether height gain is the point or the price.",
+  },
+  {
+    key: "scenic",
+    label: "Scenery",
+    hint: "Proximity to viewpoints, peaks, forest and good ground. Selects between lines; it will not invent landmarks.",
+  },
+  {
+    key: "urbanity",
+    label: "Built-up",
+    hint: "How built-up the surroundings are, from land use and settlement density. A quiet suburban street is still urban.",
+  },
+  {
+    key: "cycle_infrastructure",
+    label: "Cycle routes",
+    hint: "Membership of mapped cycle and MTB route relations.",
+  },
+];
+
+export const PERMISSION_FIELDS: {
+  key: "ferry" | "stairs" | "push";
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: "ferry",
+    label: "Ferries",
+    hint: "Mapped bicycle ferries. Schedules are not checked — confirm seasons and departures.",
+  },
+  {
+    key: "stairs",
+    label: "Stairs",
+    hint: "Carrying the bike up or down steps. Allowed either way; refusing only makes them a last resort.",
+  },
+  {
+    key: "push",
+    label: "Pushing",
+    hint: "Walking the bike where it cannot be ridden. Refusing makes pushing very expensive, never impossible.",
+  },
+];
+
+export { PREFERENCE_KEYS };

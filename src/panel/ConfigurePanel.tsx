@@ -1,26 +1,27 @@
 import { useEffect, useState } from "react";
 import { Settings, Bike, Mountain, Plus, Trash2 } from "lucide-react";
 import { download } from "../gpx";
-import { loadModels, saveModels } from "../models";
+import { loadModels, saveModels, shippedProfiles } from "../models";
 import { modelSnapshot } from "../tracks";
 import {
-  bundledProfiles,
-  profileSchema,
-  resolveProfile,
-  type ProfileInput,
-  type UserProfile,
+  parseProfile,
+  serializeProfile,
+  type Profile,
 } from "../routing/profiles";
-import { BIKE_OPTIONS } from "../routing/profileFields";
 import { ProfileForm } from "./ProfileForm";
 import type { PanelContext } from "./context";
 
-const PRESETS = ["gravel", "road", "touring", "scenic"] as const;
-type Preset = (typeof PRESETS)[number];
+/** Keep a duplicated profile from colliding with one that already exists. */
+function uniqueId(base: string, existing: { id: string }[]): string {
+  let id = base;
+  for (let n = 2; existing.some((p) => p.id === id); n++) id = `${base}_${n}`;
+  return id;
+}
 
 export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
   const { tracks, routing, models, reloadModels, setError } = ctx;
   const { active, edit } = tracks;
-  const [editing, setEditing] = useState<UserProfile>();
+  const [editing, setEditing] = useState<Profile>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [confirming, setConfirming] = useState<string>();
@@ -38,24 +39,27 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       ? routing.comparison.value
       : undefined;
 
-  const sameModel = (p: ProfileInput) =>
-    !!active &&
-    JSON.stringify(modelSnapshot(p)) === JSON.stringify(active.profile);
-  const useModel = (p: ProfileInput) => edit({ profile: modelSnapshot(p) });
+  // Compared through the canonical serializer rather than raw `JSON.stringify`, so two
+  // identical profiles built in a different field order still count as the same model.
+  const sameModel = (p: Profile) =>
+    !!active && serializeProfile(p) === serializeProfile(active.profile);
+  const useModel = (p: Profile) => edit({ profile: modelSnapshot(p) });
 
-  function startEdit(source: UserProfile | Preset, duplicate = false) {
-    const base =
-      typeof source === "string" ? bundledProfiles[source] : source;
+  const shipped = shippedProfiles();
+  const isShipped = (p: Profile) => shipped.some((q) => q.id === p.id);
+
+  function startEdit(source: Profile, duplicate = false) {
     setNotice("");
     setError("");
     setJson(undefined);
     setEditing(
-      duplicate || typeof source === "string"
+      duplicate
         ? {
-            ...structuredClone(base),
-            name: `${base.name} copy`,
+            ...structuredClone(source),
+            id: uniqueId(`${source.id}_copy`, [...shipped, ...models]),
+            name: `${source.name} copy`,
           }
-        : structuredClone(base),
+        : structuredClone(source),
     );
   }
 
@@ -67,13 +71,15 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
     try {
       // Unparsed JSON text wins over the form: it is what the user is looking at, and
       // failing here reports the real reason rather than a generic "fix the JSON".
-      const parsed = profileSchema.parse(
+      const parsed = parseProfile(
         json === undefined ? editing : JSON.parse(json),
       );
-      resolveProfile(parsed);
       const saved = await loadModels();
-      // Saving over an existing name replaces it; that is how a profile is renamed too.
-      const next = [...saved.filter((p) => p.name !== parsed.name), parsed];
+      // Saving over an existing id replaces it; that is how a profile is renamed too.
+      const next = [
+        ...saved.filter((p) => p.id !== parsed.id && !isShipped(p)),
+        parsed,
+      ];
       await saveModels(next);
       reloadModels();
       useModel(parsed);
@@ -87,14 +93,14 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
     }
   }
 
-  async function remove(name: string) {
+  async function remove(id: string) {
     setBusy(true);
     try {
       const saved = await loadModels();
-      await saveModels(saved.filter((p) => p.name !== name));
+      await saveModels(saved.filter((p) => p.id !== id && !isShipped(p)));
       reloadModels();
-      setNotice(`Deleted ${name}.`);
-      if (editing?.name === name) setEditing(undefined);
+      setNotice("Deleted.");
+      if (editing?.id === id) setEditing(undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -102,10 +108,6 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       setConfirming(undefined);
     }
   }
-
-  const resolved = editing
-    ? resolveProfile({ ...editing, name: editing.name || "Draft" })
-    : undefined;
 
   return (
     <>
@@ -118,59 +120,55 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       </div>
 
       <div className="model-list">
-        {PRESETS.map((p) => (
-          <div key={p} className="model-row-wrap">
+        {[
+          ...shipped.filter((p) => !models.some((q) => q.id === p.id)),
+          ...models,
+        ].map((p) => (
+          <div key={p.id} className="model-row-wrap">
             <button
               className="model-row"
               aria-pressed={sameModel(p)}
               onClick={() => useModel(p)}
+              title={p.description}
             >
-              <Bike />
-              <span>{p[0].toUpperCase() + p.slice(1)}</span>
-              <i />
-            </button>
-            {/* Bundled presets are read-only, so editing one means copying it first. */}
-            <button
-              className="icon-button"
-              aria-label={`Duplicate ${p}`}
-              onClick={() => startEdit(p)}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-        ))}
-        {models.map((p) => (
-          <div key={p.name} className="model-row-wrap">
-            <button
-              className="model-row"
-              aria-pressed={sameModel(p)}
-              onClick={() => useModel(p)}
-            >
-              <Mountain />
+              {isShipped(p) ? <Bike /> : <Mountain />}
               <span>{p.name}</span>
               <i />
             </button>
-            <button
-              className="icon-button"
-              aria-label={`Edit ${p.name}`}
-              onClick={() => startEdit(p)}
-            >
-              <Settings size={16} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label={`Delete ${p.name}`}
-              onClick={() => setConfirming(p.name)}
-            >
-              <Trash2 size={16} />
-            </button>
+            {/* A shipped profile is read-only, so editing one means copying it first. */}
+            {isShipped(p) ? (
+              <button
+                className="icon-button"
+                aria-label={`Duplicate ${p.name}`}
+                onClick={() => startEdit(p, true)}
+              >
+                <Plus size={16} />
+              </button>
+            ) : (
+              <>
+                <button
+                  className="icon-button"
+                  aria-label={`Edit ${p.name}`}
+                  onClick={() => startEdit(p)}
+                >
+                  <Settings size={16} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`Delete ${p.name}`}
+                  onClick={() => setConfirming(p.id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            )}
           </div>
         ))}
       </div>
 
       {confirming && (
         <div className="confirm" role="alertdialog">
-          <span>{`Delete “${confirming}”?`}</span>
+          <span>{`Delete “${models.find((p) => p.id === confirming)?.name ?? confirming}”?`}</span>
           <button onClick={() => setConfirming(undefined)}>Cancel</button>
           <button
             className="danger"
@@ -184,7 +182,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
 
       {notice && <p role="status">{notice}</p>}
 
-      {editing && resolved ? (
+      {editing ? (
         <section className="profile-editor-panel" aria-label="Edit profile">
           <div className="track-meta">
             <label>
@@ -197,30 +195,18 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
               />
             </label>
             <label>
-              Bike type
-              <select
-                value={editing.bike}
+              Profile id
+              <input
+                value={editing.id}
+                aria-label="Profile id"
                 onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    bike: e.target.value as UserProfile["bike"],
-                  })
+                  setEditing({ ...editing, id: e.target.value.trim() })
                 }
-              >
-                {BIKE_OPTIONS.map((b) => (
-                  <option key={b.value} value={b.value}>
-                    {b.label}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
           </div>
 
-          <ProfileForm
-            draft={editing}
-            resolved={resolved}
-            onChange={setEditing}
-          />
+          <ProfileForm draft={editing} onChange={setEditing} />
 
           <div className="profile-actions">
             <button
@@ -234,8 +220,8 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
             <button
               onClick={() =>
                 download(
-                  `${editing.name.replace(/[^a-z0-9_-]/gi, "-")}.json`,
-                  JSON.stringify(editing, null, 2) + "\n",
+                  `${editing.id}.profile.json`,
+                  serializeProfile(editing) + "\n",
                   "application/json",
                 )
               }
@@ -249,11 +235,11 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
             <textarea
               aria-label="Profile JSON"
               spellCheck={false}
-              value={json ?? JSON.stringify(editing, null, 2)}
+              value={json ?? serializeProfile(editing)}
               onChange={(e) => {
                 setJson(e.target.value);
                 try {
-                  setEditing(profileSchema.parse(JSON.parse(e.target.value)));
+                  setEditing(parseProfile(JSON.parse(e.target.value)));
                   setError("");
                   setJson(undefined);
                 } catch (err) {
@@ -284,7 +270,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
               try {
                 if (file.size > 64_000)
                   throw new Error("Profile files must be smaller than 64 KB.");
-                setEditing(profileSchema.parse(JSON.parse(await file.text())));
+                setEditing(parseProfile(JSON.parse(await file.text())));
                 setError("");
                 setNotice("Imported. Save and use to apply.");
               } catch (err) {
@@ -331,8 +317,8 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
               </p>
               <p>
                 Full graph: {shownComparison.reference.metrics.explored}{" "}
-                explored · Corridor:{" "}
-                {shownComparison.corridor.metrics.explored} explored
+                explored · Corridor: {shownComparison.corridor.metrics.explored}{" "}
+                explored
               </p>
               <button
                 onClick={() =>

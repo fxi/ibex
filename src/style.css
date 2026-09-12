@@ -1164,8 +1164,101 @@ progress {
   justify-content: space-between;
   gap: 10px;
 }
-.field-head label {
+.field-head label,
+.field > .field-label {
   font-size: 12px;
+  color: #cfdbe7;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field > select,
+.field > input[type="text"] {
+  width: 100%;
+}
+.field-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.field-control input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.field-control output {
+  min-width: 62px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--muted);
+}
+.field-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+.field-check .field-hint {
+  grid-column: 2;
+  margin-top: 0;
+}
+.group-note {
+  margin: 2px 0 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Five words, one row. The old form put a 0-100 slider here and asked riders to invent
+   a number; these are the only five answers the vocabulary has. */
+.level-picker {
+  display: flex;
+  gap: 3px;
+}
+.level-picker .level {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--muted);
+  background: #9db1c310;
+  border: 1px solid #aec4dc26;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.level-picker .level:hover {
+  background: #9db1c322;
+  color: #cfdbe7;
+}
+.level-picker .level.on {
+  background: #2f7df633;
+  border-color: #2f7df6aa;
+  color: #dbe8f7;
+}
+
+/* What the bike and rider numbers actually concluded. The complaint that started this
+   refactor was that inherited values were invisible; a derived model has the same failure
+   mode unless it says out loud what it derived. */
+.capability-readout {
+  border: 1px solid #2f7df63d;
+  background: #2f7df614;
+  border-radius: 11px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.capability-readout p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
   color: #cfdbe7;
 }
 .slider-row {

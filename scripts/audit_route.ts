@@ -4,7 +4,8 @@ import fs from "node:fs/promises";
 import { dirname } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { route, scoreEdge, snapAnchors, total } from "../src/routing/engine";
-import type { Graph, Point, Profile } from "../src/routing/types";
+import type { Graph, Point } from "../src/routing/types";
+import { loadProfile } from "./profile";
 const directory = process.argv[2] ?? "public/packs/geneva";
 const prefix = process.argv[3] ?? "data/derived/routing-audit/current";
 await fs.mkdir(dirname(prefix), { recursive: true });
@@ -39,7 +40,8 @@ const anchors: Point[] = process.argv[4]
       [6.151, 46.201],
       [6.37, 46.22],
     ];
-for (const profile of ["road", "gravel"] as Profile[]) {
+for (const id of ["road_28", "gravel_40"]) {
+  const profile = await loadProfile(id);
   const snapped = snapAnchors(
     { ...graph, edges: graph.edges.filter((e) => eligible(e, profile)) },
     anchors,
@@ -65,12 +67,12 @@ for (const profile of ["road", "gravel"] as Profile[]) {
       ratio: total(scoreEdge(e, profile)) / e.length,
     }));
     await fs.writeFile(
-      `${prefix}-${profile}-${mode}.json`,
+      `${prefix}-${id}-${mode}.json`,
       JSON.stringify({ anchors, result, highways, edges: detail }, null, 2),
     );
     console.log(
       JSON.stringify({
-        profile,
+        profile: id,
         mode,
         status: result.status,
         meters: result.distanceM,

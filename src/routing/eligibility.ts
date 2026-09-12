@@ -1,88 +1,39 @@
 import type { Edge } from "./types";
+import type { CompiledProfile } from "./compile";
+import { toCompiled } from "./compile";
+import type { Profile } from "./profiles";
+import { edgeSignals, type Signals } from "./signals";
+import { exceedance } from "./capability";
 import {
-  resolveProfile,
-  type ProfileInput,
-  type ResolvedProfile,
-} from "./profiles";
+  footBarred,
+  GRAVEL_SURFACES,
+  isFerry,
+  isPaved,
+  isStreet,
+  RIDEABLE_HIGHWAYS,
+  ROUGH_SURFACES,
+} from "./tagging";
 
-const paved = new Set([
-  "paved",
-  "asphalt",
-  "concrete",
-  "concrete:plates",
-  "paving_stones",
-]);
-const gravel = new Set([
-  "compacted",
-  "fine_gravel",
-  "gravel",
-  "unpaved",
-  "pebblestone",
-]);
+export {
+  isFerry,
+  isPaved,
+  isStreet,
+  GRAVEL_SURFACES,
+  ROUGH_SURFACES,
+} from "./tagging";
+
 /**
- * Rideable, but loose, broken or slow. Setts and cobbles are paved in OSM's sense and
- * rough under a wheel: this table describes the ride, not the tagging.
+ * What a rider is not allowed to do — and nothing about what they would rather not do.
+ *
+ * This file used to decide both. `max_grade_up`, `max_mtb_scale_*`, `max_smoothness`,
+ * `max_track_grade`, `paved_only` and `allow_rough_surfaces` all deleted edges from the
+ * graph, so a preference could return `no-path`: three unsampled bridges once stranded
+ * the whole Voirons massif from every profile that set a grade limit. All of those are
+ * now cost, in `scoreEdge`, where being steep or loose makes a way expensive and never
+ * makes it disappear. What remains here is only what a rider genuinely may not do: legal
+ * access, and the three things they explicitly opted into or out of.
  */
-const rough = new Set([
-  "dirt",
-  "ground",
-  "earth",
-  "grass",
-  "grass_paver",
-  "mud",
-  "sand",
-  "rock",
-  "stone",
-  "woodchips",
-  "sett",
-  "cobblestone",
-  "unhewn_cobblestone",
-  "metal",
-  "wood",
-]);
-const streets = new Set([
-  "primary",
-  "primary_link",
-  "secondary",
-  "secondary_link",
-  "tertiary",
-  "tertiary_link",
-  "unclassified",
-  "residential",
-  "service",
-  "living_street",
-  "cycleway",
-]);
-export const isFerry = (edge: Edge) =>
-  edge.highway === "ferry" || edge.tags?.route === "ferry";
-export const isPaved = (edge: Edge) => paved.has(edge.surface);
-export const isStreet = (edge: Edge) => streets.has(edge.highway);
 
-const sacLevels = [
-  "hiking",
-  "mountain_hiking",
-  "demanding_mountain_hiking",
-  "alpine_hiking",
-  "demanding_alpine_hiking",
-  "difficult_alpine_hiking",
-];
-const smoothnessLevels = [
-  "excellent",
-  "good",
-  "intermediate",
-  "bad",
-  "very_bad",
-  "horrible",
-  "very_horrible",
-  "impassable",
-];
-function scale(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  if (!/^[0-6]\+?$/.test(value)) return NaN;
-  return Number(value[0]) + (value.endsWith("+") ? 0.5 : 0);
-}
-
-/** Segment classification is shared by eligibility, scoring, and reporting. */
 /**
  * How a stretch of road will feel under the wheels, for the map.
  *
@@ -92,12 +43,7 @@ function scale(value: string | undefined): number | undefined {
  * what the rider had in mind.
  */
 export type RideClass =
-  | "paved"
-  | "gravel"
-  | "rough"
-  | "walk"
-  | "ferry"
-  | "unknown";
+  "paved" | "gravel" | "rough" | "walk" | "ferry" | "unknown";
 
 export function rideClass(
   edge: Edge,
@@ -108,8 +54,8 @@ export function rideClass(
   // pushed rather than ridden, so it reads the same way.
   if (mode === "walk" || mode === "blocked") return "walk";
   if (isPaved(edge)) return "paved";
-  if (gravel.has(edge.surface)) return "gravel";
-  if (rough.has(edge.surface)) return "rough";
+  if (GRAVEL_SURFACES.has(edge.surface)) return "gravel";
+  if (ROUGH_SURFACES.has(edge.surface)) return "rough";
   // Most ways carry no `surface` at all — three quarters of the Voirons network — so the
   // old fallback to "rough" turned that silence into a claim and drew broken ground over
   // ordinary tarmac. Read the hierarchy instead, and only say "unknown" when the
@@ -123,83 +69,85 @@ export function rideClass(
   return "unknown";
 }
 
-export function traversalSegments(edge: Edge, input: ProfileInput) {
-  const p = resolveProfile(input);
+export type TraversalSegment = {
+  length: number;
+  grade: number | null;
+  mode: "ride" | "walk" | "ferry" | "blocked";
+};
+
+/**
+ * Split an edge by grade run and decide, for each run, whether it is ridden or pushed.
+ *
+ * "Pushed" is not a judgement about difficulty — cost handles that — it is the point
+ * where the capability model says the pedals stop turning. `high_cost_at` is derived as
+ * exactly that: the grade at which full effort in the lowest gear falls to a 40 rpm
+ * grind, which is where walking stops being slower. Past it, the rider is on foot, and
+ * whether that is allowed is `permissions.push`.
+ */
+export function traversalSegments(
+  edge: Edge,
+  input: Profile | CompiledProfile,
+  signals?: Signals,
+): TraversalSegment[] {
+  const p = toCompiled(input);
+  const s = signals ?? edgeSignals(edge);
   return (edge.grades ?? [[edge.length, null]]).map(([length, grade]) => ({
     length: length!,
     grade,
-    mode: segmentMode(edge, grade, p),
+    mode: segmentMode(edge, grade, p, s),
   }));
 }
+
 function segmentMode(
   edge: Edge,
   grade: number | null,
-  p: ResolvedProfile,
-): "ride" | "walk" | "ferry" | "blocked" {
-  if (isFerry(edge)) return p.access.ferry ? "ferry" : "blocked";
-  const t = edge.tags ?? {},
-    c = p.capabilities;
-  const directions: ("up" | "down")[] =
-    grade === null || grade === 0
-      ? ["up", "down"]
-      : grade > 0
-        ? ["up"]
-        : ["down"];
-  const sac =
-    t.sac_scale === undefined ? undefined : sacLevels.indexOf(t.sac_scale) + 1;
-  if (
-    sac === 0 ||
-    directions.some((d) => sac !== undefined && sac > c[`max_hike_sac_${d}`])
-  )
-    return "blocked";
-  let walking = t.bicycle === "dismount" || edge.highway === "steps";
-  for (const d of directions) {
-    const mtb = scale(
-      t[`mtb:scale:${d === "up" ? "uphill" : "downhill"}`] ?? t["mtb:scale"],
-    );
-    if (mtb !== undefined && !Number.isFinite(mtb)) return "blocked";
-    // Hiking classification alone establishes walking terrain, not rideability.
-    if (
-      ["path", "footway", "pedestrian"].includes(edge.highway) &&
-      !c.allow_unknown_paths &&
-      !isPaved(edge) &&
-      !gravel.has(edge.surface) &&
-      mtb === undefined
-    )
-      walking = true;
-    const limit = c[`max_grade_${d}`];
+  p: CompiledProfile,
+  s: Signals,
+): TraversalSegment["mode"] {
+  if (isFerry(edge)) return p.permissions.ferry ? "ferry" : "blocked";
+  const tags = edge.tags ?? {};
+  const k = p.capability;
+
+  let walking = tags.bicycle === "dismount" || edge.highway === "steps";
+  if (!walking) {
+    const technical =
+      grade !== null && grade < 0
+        ? exceedance(s.technicalDown, k.technical_down)
+        : exceedance(s.technicalUp, k.technical_up);
     // An unmeasured grade is a gap in the terrain data, never evidence that the way is
     // impassable. Bridges and tunnels are deliberately left unsampled — the DEM reads the
-    // ground under a deck and the mountain over a bore — so blocking on a missing grade
-    // deletes cut vertices: three unsampled road bridges once stranded the whole Voirons
-    // massif from every profile that set a limit. Treat it as flat and let cost decide.
-    if (
-      (mtb ?? 0) > c[`max_mtb_scale_${d}`] ||
-      (grade !== null && limit !== null && Math.abs(grade) * 100 > limit)
-    )
-      walking = true;
+    // ground under a deck and the mountain over a bore — so treating a missing grade as
+    // unrideable deletes cut vertices. Treat it as flat and let cost decide.
+    const slope =
+      grade === null
+        ? 0
+        : grade > 0
+          ? exceedance(grade, k.uphill_grade)
+          : exceedance(-grade, k.downhill_grade);
+    walking = technical >= 1 || slope >= 1;
   }
   if (!walking) return "ride";
-  const documentedWalking =
-    edge.highway === "steps" ||
-    sac !== undefined ||
-    isStreet(edge) ||
-    isPaved(edge) ||
-    gravel.has(edge.surface);
-  if (
-    !p.access.hike_a_bike ||
-    t.foot === "no" ||
-    t.foot === "private" ||
-    !documentedWalking
-  )
-    return "blocked";
-  return "walk";
+
+  // Refusing to push is a strong preference, not a physical impossibility: a rider can
+  // always get off and walk, they just very much do not want to. Pricing it instead of
+  // blocking it is what keeps a preference from ever returning "no-path" — and it is what
+  // the spec meant by a permission, which may be used "with its normal large penalty".
+  // Only the law stops a rider here.
+  return footBarred(edge) ? "blocked" : "walk";
 }
 
-export function eligible(edge: Edge, input: ProfileInput): boolean {
-  const p = resolveProfile(input),
-    c = p.capabilities,
-    tags = edge.tags ?? {};
+/**
+ * The hard gate. Legal access, the highway whitelist, and the three permissions.
+ *
+ * Everything a profile used to exclude for being too rough, too steep or too technical
+ * now survives this function and is priced instead.
+ */
+export function eligible(
+  edge: Edge,
+  input: Profile | CompiledProfile,
+): boolean {
+  const p = toCompiled(input);
+  const tags = edge.tags ?? {};
   if (!edge.highway) return false;
   if (
     ["no", "private", "use_sidepath"].includes(
@@ -207,26 +155,11 @@ export function eligible(edge: Edge, input: ProfileInput): boolean {
     )
   )
     return false;
-  if (edge.highway === "steps" && !p.access.steps) return false;
-  if (isFerry(edge)) return p.access.ferry;
-  const smoothness = smoothnessLevels.indexOf(tags.smoothness ?? "");
-  if (smoothness > c.max_smoothness) return false;
-  const track = /^grade([1-5])$/.exec(tags.tracktype ?? "");
-  if (track && Number(track[1]) > c.max_track_grade) return false;
-  if (!c.allow_rough_surfaces && ["sand", "mud", "rock"].includes(edge.surface))
-    return false;
-  if (
-    edge.highway !== "steps" &&
-    c.paved_only &&
-    !(isPaved(edge) || (edge.surface === "unknown" && isStreet(edge)))
-  )
-    return false;
-  if (
-    !isStreet(edge) &&
-    !["track", "steps", "ferry", "path", "footway", "pedestrian"].includes(
-      edge.highway,
-    )
-  )
-    return false;
+  // Stairs a rider did not permit are priced as a last resort in `scoreEdge`, not removed.
+  if (edge.highway === "steps" && footBarred(edge)) return false;
+  if (isFerry(edge)) return p.permissions.ferry;
+  if (!isStreet(edge) && !RIDEABLE_HIGHWAYS.has(edge.highway)) return false;
+  // Surfaces tagged `impassable` are not a preference anyone can hold.
+  if (tags.smoothness === "impassable") return false;
   return traversalSegments(edge, p).every((s) => s.mode !== "blocked");
 }

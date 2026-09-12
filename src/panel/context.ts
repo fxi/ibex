@@ -1,5 +1,5 @@
 import type { Point } from "../routing/types";
-import type { UserProfile } from "../routing/profiles";
+import type { Profile } from "../routing/profiles";
 import type { TracksState } from "../state/useTracks";
 import type { CatalogueState } from "../state/useCatalogue";
 import type { RoutingState } from "../state/useRouting";
@@ -25,6 +25,6 @@ export type PanelContext = {
   setDebug: (value: boolean) => void;
   history: boolean;
   setHistory: (value: boolean) => void;
-  models: UserProfile[];
+  models: Profile[];
   reloadModels: () => void;
 };

@@ -10,7 +10,8 @@ import {
   type Graph,
   type Point,
 } from "../src/routing/types";
-import type { UserProfile } from "../src/routing/profiles";
+import type { Profile } from "../src/routing/profiles";
+import { loadProfile } from "./profile";
 const directory = process.argv[2] ?? "public/packs/geneva";
 const manifest = JSON.parse(
   await fs.readFile(`${directory}/manifest.json`, "utf8"),
@@ -49,9 +50,13 @@ assert(
       (e.cyclingNetwork === 0 || e.cyclingNetwork === 1),
   ),
 );
-const base: UserProfile = { version: 1, name: "Review", bike: "gravel" };
+const base = await loadProfile("gravel_40");
+const without = (permissions: Partial<Profile["permissions"]>): Profile => ({
+  ...base,
+  permissions: { ...base.permissions, ...permissions },
+});
 const cases: unknown[] = [];
-function run(name: string, anchors: Point[], profile: UserProfile) {
+function run(name: string, anchors: Point[], profile: Profile) {
   const r = route(graph, { anchors, profile }, "reference");
   const record = {
     name,
@@ -73,32 +78,39 @@ const arve: Point[] = [
   [6.235, 46.177],
 ];
 run("Arve baseline", arve, base);
-run("Arve countryside", arve, { ...base, attraction: { countryside: 100 } });
-run("Arve cycling network", arve, {
+run("Arve avoiding built-up", arve, {
   ...base,
-  attraction: { cycling_network: 100 },
+  preferences: { ...base.preferences, urbanity: "strongly_avoid" },
+});
+run("Arve on cycle routes", arve, {
+  ...base,
+  preferences: { ...base.preferences, cycle_infrastructure: "strongly_prefer" },
 });
 const stair = graph.edges.find(
-  (e) =>
-    e.highway === "steps" &&
-    e.length > 15 &&
-    eligible(e, { ...base, access: { steps: true, hike_a_bike: true } }),
+  (e) => e.highway === "steps" && e.length > 15 && eligible(e, base),
 )!;
 assert(stair, "A usable stair connection exists");
-assert(!eligible(stair, base));
-run("Mapped stairs enabled", [stair.geometry[0], stair.geometry.at(-1)!], {
-  ...base,
-  access: { steps: true, hike_a_bike: true },
-});
+// Stairs are always usable; refusing them makes them a last resort, not a wall.
+const stairAnchors: Point[] = [stair.geometry[0], stair.geometry.at(-1)!];
+const allowed = run("Mapped stairs allowed", stairAnchors, base);
+const refused = run(
+  "Mapped stairs refused",
+  stairAnchors,
+  without({ stairs: false }),
+);
+assert(
+  refused.cost >= allowed.cost,
+  "Refusing stairs never makes a route cheaper",
+);
 const ferry =
   graph.edges.find((e) => e.way === "23927374") ??
   graph.edges.find((e) => e.highway === "ferry");
 assert(ferry, "A bicycle-accessible ferry exists");
-assert(!eligible(ferry, base));
+assert(!eligible(ferry, without({ ferry: false })));
 const crossing = run(
   "Nyon–Yvoire ferry enabled",
   [ferry.geometry[0], ferry.geometry.at(-1)!],
-  { ...base, access: { ferry: true } },
+  base,
 );
 assert(crossing.ferryM > 0, "Ferry-enabled crossing uses the ferry");
 const report = {

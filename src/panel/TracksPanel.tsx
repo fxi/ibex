@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { serializeProfile } from "../routing/profiles";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Route,
@@ -58,17 +59,18 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
   const [confirming, setConfirming] = useState<string>();
 
   const stale = active?.result && active.resultRevision !== active.revision;
-  /** Preset names plus saved models, matched to the track's own snapshot by value. */
-  const presets = ["gravel", "road", "touring", "scenic"] as const;
-  const same = (track: Track, name: string) =>
-    JSON.stringify(track.profile) ===
-    JSON.stringify(
-      modelSnapshot(
-        (presets as readonly string[]).includes(name)
-          ? (name as (typeof presets)[number])
-          : (models.find((m) => m.name === name) ?? track.profile),
-      ),
+  /**
+   * Which listed model a track is on, matched by value rather than by name.
+   *
+   * Compared through the canonical serializer: with no inheritance a profile is just its
+   * fields, and two identical profiles built in a different key order are the same model.
+   */
+  const same = (track: Track, id: string) => {
+    const model = models.find((m) => m.id === id);
+    return (
+      !!model && serializeProfile(track.profile) === serializeProfile(model)
     );
+  };
 
   return (
     <>
@@ -252,30 +254,18 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     <label>
                       Profile
                       <select
-                        value={
-                          presets.find((p) => same(t, p)) ??
-                          models.find((m) => same(t, m.name))?.name ??
-                          ""
-                        }
+                        value={models.find((m) => same(t, m.id))?.id ?? ""}
                         onChange={(e) => {
-                          const name = e.target.value;
-                          const chosen = (
-                            presets as readonly string[]
-                          ).includes(name)
-                            ? (name as (typeof presets)[number])
-                            : models.find((m) => m.name === name);
+                          const chosen = models.find(
+                            (m) => m.id === e.target.value,
+                          );
                           if (chosen) edit({ profile: modelSnapshot(chosen) });
                         }}
                       >
                         {/* An edited model matches nothing in the list until it is saved. */}
                         <option value="">{t.profile.name} (custom)</option>
-                        {presets.map((p) => (
-                          <option key={p} value={p}>
-                            {p[0].toUpperCase() + p.slice(1)}
-                          </option>
-                        ))}
                         {models.map((m) => (
-                          <option key={m.name} value={m.name}>
+                          <option key={m.id} value={m.id}>
                             {m.name}
                           </option>
                         ))}
@@ -318,7 +308,10 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                   {t.result && (
                     <div className="result">
                       <Elevation route={t.result} />
-                      <RideLegend segments={t.result.segments ?? []} color={t.color} />
+                      <RideLegend
+                        segments={t.result.segments ?? []}
+                        color={t.color}
+                      />
                       {stale && (
                         <p>
                           Waypoints or profile changed. Reprocess to update this

@@ -2,7 +2,9 @@ import { expect, it } from "vitest";
 import { eligible } from "../src/routing/eligibility";
 import { route, scoreEdge, distance } from "../src/routing/engine";
 import { selectedRoute } from "../src/routing/selection";
+import { total } from "../src/routing/engine";
 import type { Edge, Graph, Point } from "../src/routing/types";
+import { GRAVEL, ROAD, TOURING } from "./helpers";
 const points: Point[] = [
   [6.1, 46.1],
   [6.102, 46.1],
@@ -21,36 +23,47 @@ const edge = (from = 0, to = 1): Edge => ({
   stress: 0.08,
   uncertainty: 0.7,
   utility: 0.5,
+  urban: 0,
+  cyclingNetwork: 0,
+  reward: 0.1,
   bridge: false,
   tunnel: false,
   name: "",
   tile: "test",
 });
-it("excludes technical and undocumented hiking paths despite missing grades", () => {
-  for (const profile of ["road", "gravel", "touring"] as const) {
+it("prices technical and unsurveyed paths steeply without excluding them", () => {
+  // This test used to assert the opposite: an unsurveyed path or an mtb:scale tag made
+  // the edge ineligible, which is how a preference could return "no-path". Difficulty is
+  // priced now, so the ordering it was really checking survives and the exclusions do not.
+  for (const profile of [ROAD, GRAVEL, TOURING]) {
+    const plain = total(scoreEdge(edge(), profile));
+    let previous = plain;
     for (const tags of [
-      {},
+      { "mtb:scale": "2" },
       { "mtb:scale": "3" },
       { "mtb:scale": "5" },
-      { sac_scale: "mountain_hiking" },
-    ] as Record<string, string>[])
-      expect(eligible({ ...edge(), tags }, profile)).toBe(false);
-    expect(
-      eligible(
-        { ...edge(), surface: "paved", tags: { "mtb:scale": "5" } },
-        profile,
-      ),
-    ).toBe(false);
-    expect(scoreEdge(edge(), profile).slope).toBeGreaterThan(0);
+    ]) {
+      const e = { ...edge(), tags };
+      expect(eligible(e, profile), profile.id).toBe(true);
+      const cost = total(scoreEdge(e, profile));
+      expect(cost, `${profile.id} ${JSON.stringify(tags)}`).toBeGreaterThanOrEqual(previous);
+      previous = cost;
+    }
+    // An unsurveyed path is not assumed easy either: it still costs more than a street.
+    expect(plain).toBeGreaterThan(
+      total(scoreEdge({ ...edge(), highway: "residential", surface: "paved" }, profile)),
+    );
   }
-  expect(eligible({ ...edge(), surface: "compacted" }, "gravel")).toBe(true);
-  expect(
-    eligible({ ...edge(), highway: "track", surface: "gravel" }, "road"),
-  ).toBe(false);
-  expect(eligible({ ...edge(), highway: "residential" }, "road")).toBe(true);
+  // A road bike is more put off by a gravel track than a gravel bike is.
+  const track = { ...edge(), highway: "track", surface: "gravel" };
+  expect(total(scoreEdge(track, ROAD))).toBeGreaterThan(
+    total(scoreEdge(track, GRAVEL)),
+  );
 });
 it("takes a rideable detour and snaps only to eligible edges", () => {
-  const bad = { ...edge(), tags: { "mtb:scale": "3" } };
+  // Snapping must land on a usable edge, so the one to avoid has to be genuinely barred
+  // rather than merely hard: difficulty is priced now and never removes an edge.
+  const bad = { ...edge(), tags: { bicycle: "no" } };
   const a = {
     ...edge(0, 2),
     id: 1,
@@ -74,7 +87,7 @@ it("takes a rideable detour and snaps only to eligible edges", () => {
     edges: [bad, a, b],
     restrictions: [],
   };
-  for (const profile of ["road", "gravel"] as const) {
+  for (const profile of [ROAD, GRAVEL]) {
     const result = route(
       graph,
       { profile, anchors: [points[0], points[1]] },
@@ -101,7 +114,7 @@ it("displays and exports the cheaper full-graph result", () => {
   };
   const reference = route(
     g,
-    { profile: "road", anchors: points.slice(0, 2) },
+    { profile: ROAD, anchors: points.slice(0, 2) },
     "reference",
   );
   const corridor = {

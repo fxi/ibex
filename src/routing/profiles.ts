@@ -1,137 +1,159 @@
 import { z } from "zod";
-import master from "../../profiles/master.json";
-import gravel from "../../profiles/gravel.json";
-import road from "../../profiles/road.json";
-import touring from "../../profiles/touring.json";
-import scenic from "../../profiles/scenic.json";
-import type { Profile } from "./types";
+import { LEVELS, PREFERENCE_KEYS, type PreferenceKey } from "./vocabulary";
 
-const attraction = z.number().min(0).max(100);
-const coefficient = z.number().min(0).max(1000);
-const discount = z.number().min(0).max(0.95);
-const grade = z.number().min(0).max(100).nullable();
-const mtb = z.number().int().min(0).max(6);
-const sac = z.number().int().min(0).max(6);
-const attractionSchema = z.strictObject({
-  quiet: attraction,
-  countryside: attraction,
-  scenic: attraction,
-  climbing: attraction,
-  cycling_network: attraction,
-  offroad_up: attraction,
-  offroad_down: attraction,
+/**
+ * A profile is complete or it is not a profile.
+ *
+ * The previous format was a sparse overlay resolved master -> bike preset -> user, which
+ * meant a shipped profile could be three lines long and mean nothing on its own: the
+ * values that decided a route were somewhere else, and the form could only show them as
+ * a greyed-out "inherited". Every field is required here, nothing is merged, and export
+ * writes exactly what routed. A file is readable by whoever receives it.
+ */
+export const FORMAT_VERSION = 2;
+
+const unit = z.number().min(0).max(1);
+const level = z.enum(LEVELS);
+
+export const bikeSchema = z.strictObject({
+  /** Nominal tire width. Drives rolling resistance, roughness tolerance, wheel size. */
+  tire_mm: z.number().min(18).max(110),
+  /** Frame, wheels and everything bolted on, without luggage. */
+  mass_kg: z.number().min(4).max(40),
+  /**
+   * Chainring teeth over largest cog — 34/40 is 0.85. The single most important number
+   * for whether a steep climb is rideable, and the one riders most often cannot name;
+   * the presets carry sensible values per bike type.
+   */
+  lowest_gear_ratio: z.number().min(0.2).max(3),
+  suspension: z.enum(["none", "front", "full"]),
+  /** Luggage and water. Separate from bike mass because it is the field riders change. */
+  load_kg: z.number().min(0).max(60),
 });
-const capabilitiesSchema = z.strictObject({
-  max_grade_up: grade,
-  max_grade_down: grade,
-  max_mtb_scale_up: mtb,
-  max_mtb_scale_down: mtb,
-  max_hike_sac_up: sac,
-  max_hike_sac_down: sac,
-  paved_only: z.boolean(),
-  allow_unknown_paths: z.boolean(),
-  allow_rough_surfaces: z.boolean(),
-  max_track_grade: z.number().int().min(1).max(5),
-  max_smoothness: z.number().int().min(0).max(6),
+
+export const riderSchema = z.strictObject({
+  mass_kg: z.number().min(30).max(200),
+  /**
+   * Power a rider holds for the length of a climb, per kilo of rider. Roughly FTP/mass;
+   * 1.9 is a casual rider, 3.2 a strong amateur, 4.3 a racer.
+   */
+  sustained_w_per_kg: z.number().min(0.8).max(7),
+  /** Handling on technical ground, 0 to 1. */
+  tech_skill: unit,
+  /** Willingness to let the bike run downhill, 0 to 1. Independent of fitness. */
+  descend_confidence: unit,
 });
-const accessSchema = z.strictObject({
-  hike_a_bike: z.boolean(),
-  steps: z.boolean(),
+
+export const setupSchema = z.strictObject({
+  /**
+   * Where the numbers below came from. A label for the form, never resolved at routing
+   * time — so this profile cannot change meaning when the preset table does.
+   */
+  preset: z.string().trim().min(1).max(60),
+  bike: bikeSchema,
+  rider: riderSchema,
+});
+
+const preferencesSchema = z.strictObject(
+  Object.fromEntries(PREFERENCE_KEYS.map((k) => [k, level])) as Record<
+    PreferenceKey,
+    typeof level
+  >,
+);
+
+export const permissionsSchema = z.strictObject({
   ferry: z.boolean(),
+  /** Stairs, ramped or not. Always pushed or carried, never ridden. */
+  stairs: z.boolean(),
+  /** Hike-a-bike: may a stretch be walked when it cannot be ridden? */
+  push: z.boolean(),
 });
-const costsSchema = z.strictObject({
-  slope: coefficient,
-  surface: coefficient,
-  uncertainty: coefficient,
-  graph_utility: coefficient,
-  technical: coefficient,
-  junction: coefficient,
-  quiet_factor: coefficient,
-  slope_reference_grade: z.number().min(0.01).max(1),
-  downhill_free_grade: z.number().min(0).max(1),
-  downhill_factor: coefficient,
-  technical_up: coefficient,
-  technical_down: coefficient,
-  scenic_discount: discount,
-  climbing_discount: discount,
-  offroad_discount: discount,
-  junction_meters: coefficient,
-  walking_factor: z.number().min(1).max(1000),
-  countryside_factor: coefficient,
-  cycling_network_factor: coefficient,
-  steps_factor: z.number().min(1).max(1000),
-  ferry_factor: coefficient,
-  ferry_second_meters: coefficient,
-  ferry_boarding_meters: coefficient,
-});
-const metadata = {
-  version: z.literal(1),
-  name: z.string().trim().min(1).max(100),
-  bike: z.enum(["gravel", "road", "touring", "scenic"]),
-};
-export const profileSchema = z.strictObject({
-  ...metadata,
-  attraction: attractionSchema.partial().optional(),
-  capabilities: capabilitiesSchema.partial().optional(),
-  access: accessSchema.partial().optional(),
-  costs: costsSchema.partial().optional(),
-});
-const resolvedSchema = z.strictObject({
-  ...metadata,
-  attraction: attractionSchema,
-  capabilities: capabilitiesSchema,
-  access: accessSchema,
-  costs: costsSchema,
-});
-export type UserProfile = z.infer<typeof profileSchema>;
-export type ResolvedProfile = z.infer<typeof resolvedSchema>;
-export type ProfileInput = Profile | UserProfile;
-export const bundledProfiles: Record<Profile, UserProfile> = {
-  gravel: profileSchema.parse(gravel),
-  road: profileSchema.parse(road),
-  touring: profileSchema.parse(touring),
-  scenic: profileSchema.parse(scenic),
-};
-const defaults = resolvedSchema.parse(master);
-const resolved = new WeakSet<object>();
-const presets = new Map<Profile, ResolvedProfile>();
 
-/** Merge individual fields, preserving explicit zero, false, and null values. */
-export function resolveProfile(input: ProfileInput): ResolvedProfile {
-  if (typeof input === "object" && input !== null && resolved.has(input))
-    return input as ResolvedProfile;
-  if (typeof input === "string" && presets.has(input))
-    return presets.get(input)!;
-  const custom = profileSchema.parse(
-    typeof input === "string" ? bundledProfiles[input] : input,
-  );
-  const base = bundledProfiles[custom.bike];
-  const value = resolvedSchema.parse({
-    ...defaults,
-    ...base,
-    ...custom,
-    attraction: {
-      ...defaults.attraction,
-      ...base.attraction,
-      ...custom.attraction,
-    },
-    capabilities: {
-      ...defaults.capabilities,
-      ...base.capabilities,
-      ...custom.capabilities,
-    },
-    access: { ...defaults.access, ...base.access, ...custom.access },
-    costs: { ...defaults.costs, ...base.costs, ...custom.costs },
-  });
-  for (const group of [
-    value.attraction,
-    value.capabilities,
-    value.access,
-    value.costs,
-  ])
-    Object.freeze(group);
-  Object.freeze(value);
-  resolved.add(value);
-  if (typeof input === "string") presets.set(input, value);
-  return value;
+export const profileSchema = z.strictObject({
+  format_version: z.literal(FORMAT_VERSION),
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z0-9][a-z0-9_-]*$/, "lowercase letters, digits, - and _"),
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(400).default(""),
+  setup: setupSchema,
+  preferences: preferencesSchema,
+  permissions: permissionsSchema,
+});
+
+export type Bike = z.infer<typeof bikeSchema>;
+export type Rider = z.infer<typeof riderSchema>;
+export type Setup = z.infer<typeof setupSchema>;
+export type Permissions = z.infer<typeof permissionsSchema>;
+export type Preferences = z.infer<typeof preferencesSchema>;
+export type Profile = z.infer<typeof profileSchema>;
+
+/**
+ * Parse, then freeze all the way down.
+ *
+ * Routing reads a profile on every edge of every search. Freezing is cheap insurance
+ * that nothing downstream mutates a value mid-route and produces a path that no single
+ * set of settings would have produced.
+ */
+export function parseProfile(input: unknown): Profile {
+  const value = profileSchema.parse(input);
+  Object.freeze(value.setup.bike);
+  Object.freeze(value.setup.rider);
+  Object.freeze(value.setup);
+  Object.freeze(value.preferences);
+  Object.freeze(value.permissions);
+  return Object.freeze(value);
 }
+
+export const isProfile = (input: unknown): input is Profile =>
+  profileSchema.safeParse(input).success;
+
+/**
+ * One canonical field order for the whole app.
+ *
+ * Two places compare profiles by `JSON.stringify` equality to decide whether a track is
+ * still on a named model. Key order is part of that string, so it cannot be left to
+ * whichever object literal happened to build the value.
+ */
+export function serializeProfile(profile: Profile): string {
+  return JSON.stringify(orderProfile(profile), null, 2);
+}
+
+export function orderProfile(profile: Profile) {
+  return {
+    format_version: profile.format_version,
+    id: profile.id,
+    name: profile.name,
+    description: profile.description,
+    setup: {
+      preset: profile.setup.preset,
+      bike: {
+        tire_mm: profile.setup.bike.tire_mm,
+        mass_kg: profile.setup.bike.mass_kg,
+        lowest_gear_ratio: profile.setup.bike.lowest_gear_ratio,
+        suspension: profile.setup.bike.suspension,
+        load_kg: profile.setup.bike.load_kg,
+      },
+      rider: {
+        mass_kg: profile.setup.rider.mass_kg,
+        sustained_w_per_kg: profile.setup.rider.sustained_w_per_kg,
+        tech_skill: profile.setup.rider.tech_skill,
+        descend_confidence: profile.setup.rider.descend_confidence,
+      },
+    },
+    preferences: Object.fromEntries(
+      PREFERENCE_KEYS.map((k) => [k, profile.preferences[k]]),
+    ),
+    permissions: {
+      ferry: profile.permissions.ferry,
+      stairs: profile.permissions.stairs,
+      push: profile.permissions.push,
+    },
+  };
+}
+
+export const sameProfile = (a: Profile, b: Profile) =>
+  serializeProfile(a) === serializeProfile(b);

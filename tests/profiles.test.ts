@@ -1,335 +1,330 @@
 import { describe, expect, it } from "vitest";
 import {
-  profileSchema,
-  resolveProfile,
-  type UserProfile,
+  parseProfile,
+  serializeProfile,
+  sameProfile,
 } from "../src/routing/profiles";
+import { compileProfile } from "../src/routing/compile";
 import { eligible, traversalSegments } from "../src/routing/eligibility";
-import { buildField, route, scoreEdge, total } from "../src/routing/engine";
-import type { Edge, Graph } from "../src/routing/types";
-const profile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
-  version: 1,
-  name: "Test",
-  bike: "gravel",
-  ...overrides,
-});
+import { scoreEdge, total } from "../src/routing/engine";
+import { LEVELS } from "../src/routing/vocabulary";
+import { matchBike, matchRider, BIKE_PRESETS } from "../src/routing/presets";
+import type { Edge } from "../src/routing/types";
+import {
+  GRAVEL,
+  PROFILES,
+  ROAD,
+  TOURING,
+  TRAIL,
+  withPermissions,
+  withPreferences,
+} from "./helpers";
+
 const edge = (overrides: Partial<Edge> = {}): Edge => ({
   id: 1,
   from: 0,
   to: 1,
-  way: "a",
+  way: "1",
   length: 1000,
   geometry: [
-    [6, 46],
-    [6.01, 46],
+    [6.1, 46.1],
+    [6.11, 46.1],
   ],
-  grades: [[1000, 0.08]],
+  grades: [[1000, 0]],
+  surface: "paved",
   highway: "track",
-  surface: "gravel",
-  stress: 0,
-  uncertainty: 0,
-  utility: 1,
+  stress: 0.1,
+  uncertainty: 0.1,
+  utility: 0.8,
+  urban: 0,
+  cyclingNetwork: 0,
+  reward: 0.2,
   bridge: false,
   tunnel: false,
   name: "",
-  tile: "test",
+  tile: "0",
   ...overrides,
 });
-const graph = (edges: Edge[]): Graph => ({
-  schemaVersion: 1,
-  bbox: [5.99, 45.99, 6.02, 46.02],
-  nodes: [
-    { id: 0, p: [6, 46], elevation: 0 },
-    { id: 1, p: [6.01, 46], elevation: 0 },
-  ],
-  edges,
-  restrictions: [],
-});
-describe("profile resolution", () => {
-  it("inherits master and bike defaults while preserving zero, false, and null", () => {
-    const p = resolveProfile(
-      profile({
-        bike: "scenic",
-        attraction: { quiet: 0 },
-        capabilities: { allow_unknown_paths: false, max_grade_up: null },
-        costs: { technical: 0 },
+
+describe("the profile format", () => {
+  it("is complete: every shipped profile parses with nothing inherited", () => {
+    for (const p of PROFILES) {
+      expect(p.format_version).toBe(2);
+      expect(Object.keys(p.preferences).length).toBe(LEVELS.length + 4);
+      expect(p.setup.bike.tire_mm).toBeGreaterThan(0);
+      expect(p.setup.rider.sustained_w_per_kg).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects a partial profile rather than filling the gaps in", () => {
+    // This is the whole point of dropping inheritance: a file that does not say what it
+    // wants is an incomplete file, not an invitation to guess.
+    const { preferences, ...withoutPreferences } = GRAVEL;
+    expect(preferences).toBeDefined();
+    expect(() => parseProfile(withoutPreferences)).toThrow();
+    expect(() =>
+      parseProfile({ ...GRAVEL, preferences: { detour: "prefer" } }),
+    ).toThrow();
+    expect(() =>
+      parseProfile({
+        ...GRAVEL,
+        preferences: { ...GRAVEL.preferences, detour: "yes" },
+      }),
+    ).toThrow();
+    expect(() => parseProfile({ ...GRAVEL, extra: true })).toThrow();
+  });
+
+  it("round-trips through its own serializer, key order included", () => {
+    const shuffled = JSON.parse(
+      JSON.stringify({
+        permissions: GRAVEL.permissions,
+        preferences: GRAVEL.preferences,
+        setup: GRAVEL.setup,
+        description: GRAVEL.description,
+        name: GRAVEL.name,
+        id: GRAVEL.id,
+        format_version: GRAVEL.format_version,
       }),
     );
-    expect(p.attraction.quiet).toBe(0);
-    expect(p.attraction.scenic).toBe(100);
-    expect(p.capabilities.allow_unknown_paths).toBe(false);
-    expect(p.capabilities.max_grade_up).toBeNull();
-    expect(p.costs.technical).toBe(0);
-    expect(p.costs.walking_factor).toBe(5);
-    expect(resolveProfile("scenic").capabilities.allow_unknown_paths).toBe(
-      true,
+    // Two panels decide "is this track still on that model" by string equality, so a
+    // profile written field-for-field in another order has to compare equal.
+    expect(serializeProfile(parseProfile(shuffled))).toBe(
+      serializeProfile(GRAVEL),
     );
+    expect(sameProfile(parseProfile(shuffled), GRAVEL)).toBe(true);
+    expect(sameProfile(GRAVEL, ROAD)).toBe(false);
   });
-  it("rejects typos, unknown versions, invalid types, and out-of-range settings", () => {
-    for (const value of [
-      profile({ version: 2 as 1 }),
-      profile({ attraction: { quiet: 101 } }),
-      profile({ capabilities: { max_grade_up: -2 } }),
-      { ...profile(), typo: true },
-      { ...profile(), attraction: { quet: 20 } },
-      { ...profile(), access: { steps: "false" } },
-      profile({ costs: { climbing_discount: 1 } }),
-    ])
-      expect(() => profileSchema.parse(value)).toThrow();
+
+  it("keeps the preset name as a label, never as a lookup", () => {
+    expect(matchBike(GRAVEL.setup.bike)).toBe("gravel_40");
+    expect(matchRider(GRAVEL.setup.rider)).toBe("expert");
+    // Edit one number and the profile stops matching the preset — but it still routes,
+    // because nothing ever resolves the name.
+    const custom = parseProfile({
+      ...GRAVEL,
+      setup: {
+        ...GRAVEL.setup,
+        bike: { ...GRAVEL.setup.bike, tire_mm: 43 },
+      },
+    });
+    expect(matchBike(custom.setup.bike)).toBe("custom");
+    expect(
+      compileProfile(custom).capability.uphill_grade.comfortable_until,
+    ).toBeGreaterThan(0);
   });
-  it("requires updated graph fields when using the new map features", () => {
-    for (const p of [
-      profile({ attraction: { countryside: 1 } }),
-      profile({ attraction: { cycling_network: 1 } }),
-      profile({ access: { steps: true } }),
-      profile({ access: { ferry: true } }),
-    ]) {
-      expect(() =>
-        buildField(graph([edge()]), {
-          profile: p,
-          anchors: [
-            [6, 46],
-            [6.01, 46],
-          ],
-        }),
-      ).toThrow(/updated region/);
-      expect(() =>
-        buildField(graph([edge({ urban: 0, cyclingNetwork: 0 })]), {
-          profile: p,
-          anchors: [
-            [6, 46],
-            [6.01, 46],
-          ],
-        }),
-      ).not.toThrow();
+
+  it("freezes what it parses", () => {
+    expect(Object.isFrozen(GRAVEL)).toBe(true);
+    expect(Object.isFrozen(GRAVEL.preferences)).toBe(true);
+    expect(Object.isFrozen(GRAVEL.setup.bike)).toBe(true);
+  });
+});
+
+describe("preferences reach the cost", () => {
+  it("moves cost in the direction the word says, for every signal", () => {
+    const cases: [string, Partial<Edge>][] = [
+      ["traffic_stress", { stress: 0.9 }],
+      ["roughness", { surface: "gravel" }],
+      ["urbanity", { urban: 1 }],
+      // Scale 2 is still ridden; past a rider capability it becomes walking, and then
+      // it is the push cost talking rather than the preference.
+      ["technicality", { highway: "path", tags: { "mtb:scale": "2" } }],
+    ];
+    for (const [key, overrides] of cases) {
+      const e = edge(overrides);
+      const avoid = total(
+        scoreEdge(e, withPreferences(GRAVEL, { [key]: "strongly_avoid" })),
+      );
+      const prefer = total(
+        scoreEdge(e, withPreferences(GRAVEL, { [key]: "strongly_prefer" })),
+      );
+      expect(avoid, key).toBeGreaterThan(prefer);
     }
   });
-  it("gives bundled names and equivalent JSON identical scores", () => {
-    for (const bike of ["gravel", "road", "touring", "scenic"] as const)
-      expect(scoreEdge(edge(), profile({ bike }))).toEqual(
-        scoreEdge(edge(), bike),
-      );
-  });
-});
-describe("directional capability and walking", () => {
-  const rider = profile({
-    capabilities: {
-      max_grade_up: 15,
-      max_grade_down: 25,
-      max_mtb_scale_up: 0,
-      max_mtb_scale_down: 2,
-    },
-  });
-  it("uses grade and technical limits in each travel direction", () => {
-    expect(eligible(edge({ grades: [[1000, 0.2]] }), rider)).toBe(false);
-    expect(eligible(edge({ grades: [[1000, -0.2]] }), rider)).toBe(true);
-    expect(eligible(edge({ tags: { "mtb:scale": "2" } }), rider)).toBe(false);
-    expect(
-      eligible(
-        edge({ tags: { "mtb:scale": "2" }, grades: [[1000, -0.1]] }),
-        rider,
-      ),
-    ).toBe(true);
-    expect(
-      eligible(
-        edge({ tags: { "mtb:scale": "0", "mtb:scale:uphill": "1" } }),
-        rider,
-      ),
-    ).toBe(false);
-  });
-  it("keeps an unmeasured way rather than deleting it from the graph", () => {
-    // Bridges and tunnels are deliberately left unsampled, so a grade limit must not
-    // remove them: a handful of unmeasured road bridges are cut vertices for a massif.
-    expect(eligible(edge({ grades: null }), rider)).toBe(true);
-    expect(
-      eligible(
-        edge({ grades: null, bridge: true, highway: "residential" }),
-        rider,
-      ),
-    ).toBe(true);
-    // Unknown terrain is still priced pessimistically, so it is kept but not preferred.
-    const unknown = total(scoreEdge(edge({ grades: null }), rider));
-    expect(unknown).toBeGreaterThan(total(scoreEdge(edge(), rider)));
-  });
-  it("prices and reports only the portions requiring hike-a-bike", () => {
-    const p = { ...rider, access: { hike_a_bike: true } };
-    const e = edge({
-      grades: [
-        [400, 0.2],
-        [600, -0.1],
-      ],
+
+  it("lets a liked way cost less than its own length", () => {
+    // The old model charged full distance and only ever discounted the penalties on top,
+    // so nothing could ever come in under 1.0 and no detour could pay for itself.
+    const lovely = edge({
+      stress: 0.02,
+      surface: "compacted",
+      urban: 0,
+      reward: 0.95,
+      cyclingNetwork: 1,
+      uncertainty: 0,
+      utility: 1,
     });
-    expect(eligible(e, p)).toBe(true);
-    expect(traversalSegments(e, p).map((s) => s.mode)).toEqual([
-      "walk",
-      "ride",
-    ]);
-    expect(scoreEdge(e, p).walking).toBe(2000);
-    const result = route(
-      graph([e]),
-      {
-        profile: p,
-        anchors: [
-          [6, 46],
-          [6.01, 46],
-        ],
-      },
-      "reference",
-    );
-    expect(result.status).toBe("ok");
-    expect(result.hikeABikeM).toBeCloseTo(400);
+    const rate = total(scoreEdge(lovely, GRAVEL)) / lovely.length;
+    expect(rate).toBeLessThan(1);
+    expect(rate).toBeGreaterThan(0);
   });
-  it("does not mistake a hiking classification for bicycle rideability", () => {
-    const trail = edge({
-      highway: "path",
-      surface: "unknown",
-      tags: { sac_scale: "hiking" },
-    });
-    expect(eligible(trail, profile())).toBe(false);
-    const walker = profile({ access: { hike_a_bike: true } });
-    expect(eligible(trail, walker)).toBe(true);
-    expect(traversalSegments(trail, walker)[0].mode).toBe("walk");
-  });
-  it("checks SAC limits and walking permission independently", () => {
-    const p = profile({
-      access: { hike_a_bike: true },
-      capabilities: {
-        max_grade_up: 10,
-        max_hike_sac_up: 1,
-        max_hike_sac_down: 2,
+
+  it("never prices a busy road below a quiet one, however many defects it lacks", () => {
+    // The regression that prompted this rule. A smooth paved main road is *perfect* on
+    // "avoid unpaved", "avoid roughness" and "avoid technicality" all at once, and when
+    // those credits counted in full they buried the traffic penalty it had honestly
+    // earned: a stress-0.95 departmental road with lorries on it priced at 0.68 — below
+    // its own length — against 0.67 for a signed cycle route one field away.
+    const road = parseProfile({
+      ...GRAVEL,
+      preferences: {
+        ...GRAVEL.preferences,
+        detour: "strongly_prefer",
+        traffic_stress: "strongly_avoid",
+        unpaved: "strongly_avoid",
+        roughness: "strongly_avoid",
+        technicality: "strongly_avoid",
+        scenic: "neutral",
+        urbanity: "neutral",
+        cycle_infrastructure: "prefer",
       },
     });
-    expect(
-      eligible(
-        edge({ grades: [[1000, 0.2]], tags: { sac_scale: "mountain_hiking" } }),
-        p,
-      ),
-    ).toBe(false);
-    expect(
-      eligible(
-        edge({
-          grades: [[1000, -0.2]],
-          tags: { sac_scale: "mountain_hiking" },
-        }),
-        p,
-      ),
-    ).toBe(true);
-    expect(
-      eligible(edge({ grades: [[1000, 0.2]], tags: { foot: "no" } }), p),
-    ).toBe(false);
-    expect(
-      eligible(
-        edge({
-          surface: "unknown",
-          highway: "path",
-          grades: [[1000, 0.2]],
-          tags: { "mtb:scale": "0" },
-        }),
-        p,
-      ),
-    ).toBe(false);
-  });
-});
-describe("attraction costs", () => {
-  it("actively chooses a climb over a flat alternative at strong attraction", () => {
-    const uphill = edge({ surface: "asphalt" });
-    const flat = edge({
-      id: 2,
-      way: "flat",
-      surface: "asphalt",
-      length: 1100,
-      grades: [[1100, 0]],
+    const trunk = edge({
+      highway: "primary",
+      surface: "paved",
+      stress: 0.95,
+      cyclingNetwork: 0,
+      tags: { smoothness: "excellent" },
     });
-    const request = {
-      anchors: [
-        [6, 46],
-        [6.01, 46],
-      ] as [number, number][],
-    };
-    expect(
-      route(
-        graph([uphill, flat]),
-        { ...request, profile: profile() },
-        "reference",
-      ).edgeIds,
-    ).toEqual([2]);
-    expect(
-      route(
-        graph([uphill, flat]),
-        { ...request, profile: profile({ attraction: { climbing: 100 } }) },
-        "reference",
-      ).edgeIds,
-    ).toEqual([1]);
-  });
-  it("rewards offroad separately uphill and downhill without rewarding asphalt", () => {
-    const p = profile({ attraction: { offroad_up: 0, offroad_down: 100 } });
-    expect(scoreEdge(edge(), p).offroad).toBe(0);
-    expect(
-      scoreEdge(edge({ grades: [[1000, -0.08]] }), p).offroad,
-    ).toBeLessThan(0);
-    expect(
-      scoreEdge(edge({ surface: "asphalt", grades: [[1000, -0.08]] }), p)
-        .offroad,
-    ).toBe(0);
-  });
-  it("keeps attraction costs additive when a waypoint splits mixed grades", () => {
-    const p = profile({
-      attraction: {
-        climbing: 80,
-        scenic: 90,
-        offroad_up: 20,
-        offroad_down: 85,
-      },
+    const signed = edge({
+      highway: "tertiary",
+      surface: "paved",
+      stress: 0.55,
+      cyclingNetwork: 1,
+      tags: { smoothness: "good" },
     });
-    const whole = edge({
+    const rate = (e: Edge) => total(scoreEdge(e, road)) / e.length;
+    expect(rate(trunk)).toBeGreaterThan(1);
+    expect(rate(trunk)).toBeGreaterThan(rate(signed) * 1.3);
+  });
+
+  it("never produces a zero or negative cost, whatever is stacked on it", () => {
+    const lovely = edge({
+      stress: 0,
+      surface: "compacted",
+      urban: 0,
       reward: 1,
+      cyclingNetwork: 1,
+      uncertainty: 0,
+      utility: 1,
+    });
+    for (const p of PROFILES)
+      for (const strength of [0, 0.5, 1, 10])
+        expect(
+          total(
+            scoreEdge(lovely, p, {
+              point: [6.105, 46.1],
+              radiusM: 9000,
+              strength,
+            }),
+          ),
+        ).toBeGreaterThan(0);
+  });
+
+  it("splits an edge's cost by grade run, so a waypoint cannot change it", () => {
+    const whole = edge({
       grades: [
-        [400, 0.2],
-        [600, -0.04],
+        [500, 0.12],
+        [500, -0.04],
       ],
     });
-    const first = {
-      ...whole,
-      length: 400,
-      grades: [[400, 0.2]] as [number, number][],
-    };
-    const second = {
-      ...whole,
-      length: 600,
-      grades: [[600, -0.04]] as [number, number][],
-    };
-    expect(total(scoreEdge(whole, p))).toBeCloseTo(
-      total(scoreEdge(first, p)) + total(scoreEdge(second, p)),
-      8,
-    );
+    const first = edge({ length: 500, grades: [[500, 0.12]] });
+    const second = edge({ length: 500, grades: [[500, -0.04]] });
+    const joined =
+      total(scoreEdge(first, GRAVEL)) + total(scoreEdge(second, GRAVEL));
+    // Junctions are per-event, so drop that one term from the comparison.
+    expect(total(scoreEdge(whole, GRAVEL))).toBeCloseTo(joined, 6);
   });
-  it("continues strengthening scenic preference across its full range", () => {
-    const costs = [0, 25, 50, 75, 100].map((scenic) =>
-      total(
-        scoreEdge(edge({ reward: 1 }), profile({ attraction: { scenic } })),
-      ),
-    );
-    expect(costs.every((cost, i) => i === 0 || cost < costs[i - 1])).toBe(true);
-  });
-  it("keeps combined maximum attractions finite and strictly positive", () => {
-    const p = profile({
-      bike: "scenic",
-      attraction: {
-        quiet: 100,
-        climbing: 100,
-        scenic: 100,
-        offroad_up: 100,
-        offroad_down: 100,
-      },
-    });
-    for (const grade of [-0.4, -0.08, 0, 0.08, 0.4]) {
+
+  it("reports parts that sum to the whole", () => {
+    for (const p of PROFILES) {
       const c = scoreEdge(
-        edge({ stress: 1, reward: 1, grades: [[1000, grade]] }),
+        edge({ surface: "gravel", grades: [[1000, 0.25]] }),
         p,
-        { point: [6.01, 46], strength: 1, radiusM: 10000 },
       );
-      expect(Number.isFinite(total(c))).toBe(true);
-      expect(total(c)).toBeGreaterThan(0);
+      const parts =
+        c.base +
+        c.preference +
+        c.slope +
+        c.technical +
+        c.roughness +
+        c.uncertainty +
+        c.network +
+        c.junction +
+        c.walking +
+        c.ferry +
+        c.attraction +
+        c.clamp;
+      expect(parts).toBeCloseTo(total(c), 6);
     }
+  });
+});
+
+describe("capability replaces exclusion", () => {
+  it("prices steep and technical ground instead of deleting it", () => {
+    const brutal = edge({
+      highway: "path",
+      surface: "ground",
+      grades: [[1000, 0.4]],
+      tags: { "mtb:scale": "5", sac_scale: "alpine_hiking" },
+    });
+    for (const p of PROFILES) {
+      expect(eligible(brutal, p), p.id).toBe(true);
+      expect(total(scoreEdge(brutal, p))).toBeGreaterThan(brutal.length * 3);
+    }
+    // And it is still worse for the rider less equipped for it.
+    expect(total(scoreEdge(brutal, ROAD))).toBeGreaterThan(
+      total(scoreEdge(brutal, TRAIL)),
+    );
+  });
+
+  it("never treats a missing grade as impassable", () => {
+    // Bridges and tunnels are left unsampled on purpose; three of them once stranded a
+    // whole massif from every profile that set a grade limit.
+    const bridge = edge({ grades: null, bridge: true });
+    for (const p of PROFILES) expect(eligible(bridge, p), p.id).toBe(true);
+  });
+
+  it("still excludes what the law excludes", () => {
+    expect(eligible(edge({ tags: { bicycle: "no" } }), TRAIL)).toBe(false);
+    expect(eligible(edge({ tags: { access: "private" } }), TRAIL)).toBe(false);
+    expect(eligible(edge({ highway: "motorway" }), TRAIL)).toBe(false);
+    expect(eligible(edge({ tags: { smoothness: "impassable" } }), TRAIL)).toBe(
+      false,
+    );
+  });
+
+  it("walks a gradient past what the lowest gear can turn", () => {
+    const wall = edge({ highway: "track", grades: [[1000, 0.45]] });
+    const modes = traversalSegments(wall, TOURING).map((s) => s.mode);
+    expect(modes).toContain("walk");
+    // Lower gearing on the same hill keeps the rider pedalling for longer.
+    const geared = parseProfile({
+      ...TOURING,
+      setup: { ...TOURING.setup, bike: { ...BIKE_PRESETS.mtb_60 } },
+    });
+    const up = compileProfile(geared).capability.uphill_grade.high_cost_at;
+    expect(up).toBeGreaterThan(
+      compileProfile(TOURING).capability.uphill_grade.high_cost_at,
+    );
+  });
+
+  it("makes refusing to push expensive, not impossible", () => {
+    const wall = edge({ highway: "track", grades: [[1000, 0.45]] });
+    const willing = withPermissions(GRAVEL, { push: true });
+    const unwilling = withPermissions(GRAVEL, { push: false });
+    expect(eligible(wall, unwilling)).toBe(true);
+    expect(total(scoreEdge(wall, unwilling))).toBeGreaterThan(
+      total(scoreEdge(wall, willing)),
+    );
+  });
+
+  it("blocks only where the law says a rider may not walk", () => {
+    const wall = edge({
+      highway: "path",
+      grades: [[1000, 0.45]],
+      tags: { foot: "no" },
+    });
+    expect(eligible(wall, GRAVEL)).toBe(false);
   });
 });

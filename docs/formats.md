@@ -70,8 +70,8 @@ root directory `cyclatractor`, per-pack subdirectory `` `${manifest.id}-${manife
 | Key                     | Written by                     | Value                                               |
 | ----------------------- | ------------------------------ | --------------------------------------------------- |
 | `ibex-tracks`           | `saveTracks` (`src/tracks.ts`) | `TrackCollection`                                   |
-| `plan`                  | _legacy, read-only_            | pre-multi-track `{ anchors, profile, attraction? }` |
-| `routing-profiles`      | `saveModels` (`src/models.ts`) | `UserProfile[]`                                     |
+| `plan`                  | _legacy, read-only_            | pre-multi-track `{ anchors }`; its profile is dropped |
+| `routing-profiles`      | `saveModels` (`src/models.ts`) | `Profile[]` (format_version 2)                      |
 | `download:${directory}` | `installPack`                  | `string[]` of verified staged paths                 |
 
 Renaming the database or any of these keys is out of bounds; new state gets a new key.
@@ -250,6 +250,7 @@ decoded RGB image in one dict, which is fine for 30 tiles and not for thousands.
 - `scripts/verify_public_release.py` probes `bytes=0-63` of a `graph.ibx` to prove the CDN
   honours range requests, which is the router's hot path.
 - The fixture deliberately mixes paved and gravel surfaces so `tests/e2e/styling.spec.ts`
-  can assert a route renders as more than one rideability class. A `paved_only` profile
-  such as Road cannot ride it, which is why the browser specs use Touring as their second
-  profile.
+  can assert a route renders as more than one rideability class. No profile is excluded
+  from it any more — surface is priced, not gated — so the browser specs use Loaded
+  touring as their second profile for its visibly different line rather than because Road
+  cannot ride there.

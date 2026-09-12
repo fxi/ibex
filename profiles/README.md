@@ -1,116 +1,147 @@
 # Routing profiles
 
-Profiles are ordinary JSON. The app bundles `master.json`, the four bike presets,
-and other `*.json` profiles in this directory. Add a named file and rebuild to
-ship another profile. Browser users can edit JSON, save profiles locally, and
-import/export files through **Custom profile**. A saved name replaces the previous
-local profile with that name. Browser saving does not write to this directory.
+A profile is one `*.profile.json` file in this directory. It is complete: every field it
+needs is in it, nothing is inherited, and what you export is exactly what routed. Send one
+to someone and it means the same thing on their machine as on yours.
 
-`mountain-wanderer.json` is a working example. `version`, `name`, and `bike` are
-required. Bike values are `gravel`, `road`, `touring`, and `scenic` (the last is a
-legacy preset name). Resolution is **master → bike preset → user fields**.
-Groups merge field by field. Omitted fields inherit; explicit `0`, `false`, and
-`null` override. Arrays/expressions, unknown fields, unknown versions, and invalid
-values are rejected. `Show inherited fields` expands the draft into a complete
-configuration; exported expanded values will no longer inherit future defaults.
+The app bundles every `*.profile.json` here. Add a file and rebuild to ship another.
+Browser users can edit, import and export profiles in **Configure**; saved profiles live
+in IndexedDB under `routing-profiles` and shadow a shipped profile with the same `id`.
 
-## Attractions
+> Profiles written for the old format (`version: 1`, a `bike` key, `attraction` /
+> `capabilities` / `access` / `costs` groups) cannot be converted. Their meaning lived in
+> `master.json` and a bike preset that no longer exist, so they are discarded on load
+> rather than guessed at.
 
-All attractions range from 0 (neutral) to 100 (strong). They are preferences, not
-hard exclusions. Other inherited effort costs still apply at zero.
+## Shape
 
-- `quiet`: adds a cost for traffic stress. This uses the pack's estimated stress,
-  not live traffic measurements.
-- `scenic`: discounts hardship near the pack's existing reward signal. It selects
-  connections between waypoints; it does not select additional landmarks or
+```jsonc
+{
+  "format_version": 2,
+  "id": "gravel_40",                 // lowercase, digits, - and _
+  "name": "Gravel 40 mm",
+  "description": "…",
+  "setup": {
+    "preset": "gravel_40 / expert",  // a label only — never looked up
+    "bike":  { "tire_mm": 40, "mass_kg": 11.5, "lowest_gear_ratio": 0.85,
+               "suspension": "none", "load_kg": 3 },
+    "rider": { "mass_kg": 75, "sustained_w_per_kg": 3.2,
+               "tech_skill": 0.7, "descend_confidence": 0.7 }
+  },
+  "preferences": { "detour": "prefer", "traffic_stress": "strongly_avoid", … },
+  "permissions": { "ferry": true, "stairs": true, "push": true }
+}
+```
+
+## Setup
+
+`setup` describes the bike and the rider, not the route. It exists so that nobody has to
+answer "what is the steepest grade you can ride?" — a question whose real answer is "it
+depends on my gearing, my load and how far up the climb I already am".
+
+| Field | Means |
+| --- | --- |
+| `tire_mm` | Nominal tire width. Sets rolling resistance, wheel size, and how much rough ground the bike shrugs off. |
+| `mass_kg` (bike) | Frame, wheels and fittings, without luggage. |
+| `lowest_gear_ratio` | Chainring teeth over largest cog; 34/40 is `0.85`. The number that decides whether a steep climb is rideable at all. |
+| `suspension` | `none`, `front` or `full`. |
+| `load_kg` | Luggage and water. Costs more on rough and technical ground than on a gradient. |
+| `mass_kg` (rider) | With clothing and shoes. |
+| `sustained_w_per_kg` | Power held for the length of a climb, per kilo of rider. Roughly FTP/mass: 1.9 casual, 3.2 strong, 4.3 racing. |
+| `tech_skill` | 0–1, handling on loose, steep or broken ground. |
+| `descend_confidence` | 0–1, willingness to let the bike run downhill. Independent of fitness. |
+
+The Configure tab offers bike and rider presets. Choosing one **copies its numbers into
+the file**; it does not leave a reference behind. `setup.preset` records where they came
+from so the form can say so, and reads `custom` once any value is edited by hand. This is
+deliberate: a profile that referenced a preset by name would change meaning whenever the
+app's preset table did, which is the problem the old inheritance had.
+
+From `setup` the app derives directional soft thresholds — `comfortable_until` and
+`high_cost_at` for uphill grade, downhill grade, technical difficulty and surface
+roughness (`src/routing/capability.ts`). Uphill comes from a steady-state power balance
+solved for speed, so lower gearing and lighter luggage genuinely raise it. The rest are
+calibrated heuristics and are labelled as such in the code: there is no honest physics for
+how steep a descent a given rider will commit to. Configure shows the result in words.
+
+## Preferences
+
+Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
+`strongly_prefer`. Each is scored against what an ordinary way looks like
+(`REFERENCE` in `src/routing/vocabulary.ts`), so a preference both penalises and rewards:
+"strongly avoid traffic" makes a main road expensive *and* makes the quiet lane cheap.
+
+- `detour` — how much further you will ride for everything below. `prefer` means you will
+  accept roughly 1.5× the direct distance for a better line; `strongly_prefer`, 2×. It
+  also widens the search corridor, because a route that long has to be reachable. This is
+  the knob that decides whether the app wanders at all.
+- `traffic_stress` — estimated from road class and cycle infrastructure in the pack, not
+  from live traffic.
+- `unpaved` — gravel, track and dirt, where the surface is actually mapped. An unsurveyed
+  way is never *rewarded* as unpaved; guessing would hand out credit for silence.
+- `roughness` — how broken the surface is, from `surface`, `smoothness` and `tracktype`.
+- `technicality` — mapped MTB and hiking difficulty, judged separately uphill and down.
+- `climbing` — whether height gain is the point or the price. Unlike the others this
+  scales a cost that already exists (`ENGINE.climb_effort`, 5 equivalent metres per metre
+  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×.
+- `scenic` — proximity to viewpoints, peaks, forest and good ground, decayed backwards
+  along the direction of travel. It selects between lines; it does not invent landmarks or
   promise a particular detour length.
-- `climbing`: rewards uphill segments, including their distance/effort. The reward
-  increases with grade up to the reference grade (8% by default), and accumulates
-  over the ridden length. It can make a climb win over a flat alternative. It does
-  not recognize named climbs or classify an entire mountain ascent.
-- `offroad_up`, `offroad_down`: discount known unpaved riding in that direction.
-  Flat segments use the mean preference. Unknown surfaces receive no reward.
-- `countryside`: penalizes the fraction of a road in built-up areas. Model 4 uses
-  residential/commercial/industrial/retail/garages/construction polygons, buffered
-  40 m to include streets between plots. City/town/village centres have fallback
-  radii of 1500/700/250 m; residential/living streets count as built-up. Boundary
-  crossings are sampled every 30 m. This is a mapped-land-use estimate, not a
-  promise to avoid every building or municipal boundary.
-- `cycling_network`: penalizes roads outside mapped bicycle/MTB route relations
-  or legacy lcn/rcn/ncn/icn tags. Forward/backward member roles are respected;
-  proposed routes and explicitly unsigned routes are excluded. This is distinct
-  from the older connectivity signal, `costs.graph_utility`. At 100, non-network
-  connectors remain available at a higher cost.
+- `urbanity` — how built-up the surroundings are, from land use and settlement density. A
+  quiet residential street has low traffic stress and high urbanity.
+- `cycle_infrastructure` — membership of mapped cycle and MTB route relations.
 
-## Capabilities and access
+## Permissions
 
-- `max_grade_up`, `max_grade_down`: positive percentages, 0–100. `null` removes the
-  grade limit. Missing elevation fails an explicit grade limit rather than being
-  treated as flat. Uphill/downhill are evaluated per grade segment, not net ascent.
-- `max_mtb_scale_up`, `max_mtb_scale_down`: integer limits 0–6. Directional tags take
-  precedence over `mtb:scale`. A `+` value is treated as half a level higher. Flat
-  and unknown-grade segments must meet both directional limits.
-- `max_hike_sac_up`, `max_hike_sac_down`: 0–6, with 1=T1 (`hiking`), 2=T2
-  (`mountain_hiking`), through 6=T6. Zero excludes SAC-tagged hiking terrain.
-  SAC limits remain independent of MTB limits and apply even with walking enabled.
-- `access.hike_a_bike`: exceeding a riding grade/MTB limit changes that portion to
-  walking when enabled. Walking has its own effort cost and route distance report.
-  It requires documented walking terrain (SAC, a street, paved or gravel surface),
-  respects retained foot prohibitions, and does not open edges removed by the pack
-  builder. Unknown technical paths are not assumed feasible on foot.
-- `access.steps`: permits stairs only when `hike_a_bike` is also true. Stairs are
-  priced as carrying/pushing and included in hike-a-bike distance. Their missing
-  riding-grade data and unknown surface do not disqualify an otherwise permitted
-  stair connection; foot/bicycle prohibitions still do.
-- `access.ferry`: permits bicycle-accessible mapped ferry connections independently
-  of road surface, climbing limits, or hike-a-bike permission. Water travel has no
-  riding elevation/surface cost and is reported separately. Known OSM duration is
-  used as a cost proxy; otherwise distance is used. Boarding is charged once per
-  service entry, including when a ferry is split by graph junctions or waypoints.
-  Schedules are not evaluated: check seasonal availability and departure times.
+`ferry`, `stairs`, `push`. Only `ferry` can remove a connection — a crossing you will not
+take is genuinely not available. Refusing stairs or pushing makes them a last resort
+instead: a rider can always get off and walk, and no preference is allowed to make a
+destination unreachable.
 
-Advanced inherited capabilities preserve the previous preset surface rules:
-`paved_only`, `allow_unknown_paths`, `allow_rough_surfaces`, `max_track_grade`
-(1–5), and `max_smoothness` (0 excellent, 1 good, 2 intermediate, 3 bad,
-4 very_bad, 5 horrible, 6 very_horrible). Impassable is always excluded.
-Surface rules still apply to ordinary hike-a-bike paths; stairs and ferries have
-separate handling. Set `paved_only: false`
-when adapting the road preset to permit offroad riding.
+## What can and cannot exclude a way
 
-## Advanced costs and implementation
+| | Example | Effect |
+| --- | --- | --- |
+| Hard constraint | `bicycle=no`, `foot=no` on ground that must be walked, `smoothness=impassable`, a highway class bikes may not use | Excluded |
+| Permission | `ferry: false` | Excluded. `stairs`/`push: false`: priced as a last resort |
+| Capability | A very steep loose climb | Cost rises steeply, and keeps rising. Never excluded |
 
-`master.json` lists all cost coefficients. Ordinary coefficients are nonnegative
-and capped at 1000. `slope_reference_grade` uses a fraction, not a percentage, and
-must be 0.01–1; `downhill_free_grade` is 0–1. Discount caps are 0–0.95.
-`walking_factor` is 1–1000 equivalent-distance units per walking metre, added to
-base distance and surface/stress costs in place of riding slope/technical cost.
-`steps_factor` defaults to 8. `countryside_factor` defaults to 4 and
-`cycling_network_factor` to 3. Ferry cost adds `ferry_second_meters` (default 4)
-per mapped second or `ferry_factor` (default 1) per metre if duration is missing,
-plus `ferry_boarding_meters` (default 1000) once on entering a service. Base distance
-still applies. These are tuning coefficients, not calibrated travel-time predictions.
+The old model made grade, MTB scale, SAC scale, smoothness, tracktype and surface into
+hard limits that deleted edges, so a preference could return `no-path`. Three unsampled
+road bridges once stranded the whole Voirons massif from every profile that set a grade
+limit. `tests/detour.test.ts` now asserts the opposite guarantee: every shipped profile,
+every detour level and every combination of permissions must find a route.
 
-Cost components include climbing/offroad discounts and walking effort. Discounts
-are bounded and sequential, retaining strictly positive traversal costs. A profile
-is validated and resolved once at each routing boundary; the immutable resolved
-object is reused for edge scoring and eligibility.
+## How a way is priced
 
-The worker currently loads the full regional graph once and builds a field for
-the selected configuration, reusing the graph for corridor and reference routing.
-It cannot use a field baked for another profile. This moves full-graph loading
-before the first result; profile-specific field caching is a future optimization.
+Cost is in equivalent metres, at a rate that can fall below 1:
 
-Model-4 packs are required by the app. Older installed regions prompt for an
-update. Road/Gravel/Touring/Scenic retain their default attractions and keep steps
-and ferries disabled until explicitly enabled. The Mountain wanderer example now
-uses countryside and cycling-network attraction.
+```
+cost = length × (1 + hard) × budget_ratio ** tanh(net / NET_SCALE)
+```
 
-The new extract query is in `scripts/fetch_osm.py`. If an upstream snapshot is older
-than the cached roads, `scripts/merge_osm_profiles.py` adds only the missing profile
-layers, retaining newer road geometry/access and recording both source dates.
-The manifest's `osmTimestamp` is the oldest contributing layer date; source hashes
-and individual layer dates are retained under `source.layers`. No deleted highway
-is restored from the older extract.
+`net` is the weighted mean of how well the way matches the preferences you actually
+expressed — `neutral` contributes nothing and does not dilute the rest. `hard` carries
+what is not a matter of taste: being past your capability, unsurveyed ground, severed
+fragments, and the effort of climbing. A way you like costs **less than its own length**,
+which is what lets a detour pay for itself; the old model charged full distance and only
+ever discounted the penalties on top of it, so the cheapest possible edge still cost its
+own length and no scenic line could ever beat a shorter plain one.
+
+`REFERENCE` and `NET_SCALE` are calibrations measured against a real release, not
+constants of nature. Re-measure them with `npx tsx scripts/audit_signals.ts` whenever the
+builder changes how a signal is derived.
+
+## Tuning and inspection
+
+- `npx tsx scripts/audit_signals.ts [graph] [profile-id]` — signal distributions against
+  the current `REFERENCE`, and the resulting spread of rates.
+- `npx tsx scripts/audit_route.ts` — per-edge costs along a chosen route.
+- `npx tsx scripts/ablation.ts` — routes with individual signals disabled.
+- `npm run benchmark` — search cost per profile.
+
+Configure's diagnostics show the compiled profile for the last route, so `prefer` is never
+a claim the app makes without showing the number behind it.
 
 Data conventions: [OSM cycling routes](https://wiki.openstreetmap.org/wiki/Cycle_routes),
 [OSM ferries](https://wiki.openstreetmap.org/wiki/Tag:route%3Dferry), and

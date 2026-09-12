@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GRAVEL, ROAD, TOURING, TRAIL } from "./helpers";
 import {
   distance,
   Heap,
@@ -8,6 +9,7 @@ import {
   total,
 } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
+import { compileProfile } from "../src/routing/compile";
 import { exportGPX } from "../src/gpx";
 import type { Edge, Graph, Point } from "../src/routing/types";
 function fixture(
@@ -33,6 +35,9 @@ function fixture(
       stress: 0.1,
       uncertainty: 0.1,
       utility: 0.5,
+      urban: 0,
+      cyclingNetwork: 0,
+      reward: 0,
       bridge: false,
       tunnel: false,
       name: "",
@@ -76,7 +81,7 @@ describe("routing invariants", () => {
     };
     const result = route(
       g,
-      { anchors: [points[0], points[2]], profile: "gravel" },
+      { anchors: [points[0], points[2]], profile: GRAVEL },
       "corridor",
       f,
     );
@@ -99,7 +104,7 @@ describe("routing invariants", () => {
     expect(
       route(
         g,
-        { anchors: [g.nodes[0].p, g.nodes[3].p], profile: "gravel" },
+        { anchors: [g.nodes[0].p, g.nodes[3].p], profile: GRAVEL },
         "reference",
       ).status,
     ).toBe("no-path");
@@ -110,11 +115,10 @@ describe("routing invariants", () => {
       [1, 2],
     ]);
     expect(
-      route(g, { anchors: [p[2], p[0]], profile: "road" }, "reference").status,
+      route(g, { anchors: [p[2], p[0]], profile: ROAD }, "reference").status,
     ).toBe("no-path");
     expect(
-      route(g, { anchors: [p[0], [7, 47]], profile: "road" }, "reference")
-        .status,
+      route(g, { anchors: [p[0], [7, 47]], profile: ROAD }, "reference").status,
     ).toBe("outside-coverage");
   });
   it("routes through a valid tile boundary", () => {
@@ -122,11 +126,7 @@ describe("routing invariants", () => {
       [0, 1],
       [1, 2],
     ]);
-    const r = route(
-      g,
-      { anchors: [p[0], p[2]], profile: "gravel" },
-      "corridor",
-    );
+    const r = route(g, { anchors: [p[0], p[2]], profile: GRAVEL }, "corridor");
     expect(r.status).toBe("ok");
     expect(r.metrics.tiles).toBe(2);
   });
@@ -148,7 +148,7 @@ describe("routing invariants", () => {
             [6.115, 46.1],
             [6.105, 46.1],
           ],
-          profile: "road",
+          profile: ROAD,
         },
         "reference",
       ).status,
@@ -162,7 +162,7 @@ describe("routing invariants", () => {
             [6.115, 46.1],
             [6.105, 46.1],
           ],
-          profile: "road",
+          profile: ROAD,
         },
         "reference",
       ).status,
@@ -178,7 +178,7 @@ describe("routing invariants", () => {
     g.restrictions = [{ ways: ["a", "b"], via: 1, only: false }];
     const r = route(
       g,
-      { anchors: [p[0], p[1], p[2]], profile: "road" },
+      { anchors: [p[0], p[1], p[2]], profile: ROAD },
       "reference",
     );
     expect(r.status).toBe("ok");
@@ -196,8 +196,7 @@ describe("routing invariants", () => {
     );
     g.restrictions = [{ ways: ["a", "via", "b"], only: false }];
     expect(
-      route(g, { anchors: [p[0], p[3]], profile: "gravel" }, "reference")
-        .status,
+      route(g, { anchors: [p[0], p[3]], profile: GRAVEL }, "reference").status,
     ).toBe("no-path");
   });
   it("allows continued travel within an only-turn via way", () => {
@@ -212,8 +211,7 @@ describe("routing invariants", () => {
     );
     g.restrictions = [{ ways: ["a", "via", "b"], only: true }];
     expect(
-      route(g, { anchors: [p[0], p[3]], profile: "gravel" }, "reference")
-        .status,
+      route(g, { anchors: [p[0], p[3]], profile: GRAVEL }, "reference").status,
     ).toBe("ok");
   });
   it("does not reinterpret no_u_turn as a ban on straight travel", () => {
@@ -224,16 +222,14 @@ describe("routing invariants", () => {
     ]);
     g.restrictions = [{ ways: ["a", "a"], via: 1, only: false, uTurn: true }];
     expect(
-      route(g, { anchors: [p[0], p[2]], profile: "road" }, "reference").status,
+      route(g, { anchors: [p[0], p[2]], profile: ROAD }, "reference").status,
     ).toBe("ok");
   });
   it("never makes an attraction cost negative", () => {
     const e = fixture(p, [[0, 1]]).edges[0];
     for (const strength of [0, 0.5, 1, 10])
       expect(
-        total(
-          scoreEdge(e, "gravel", { point: p[1], radiusM: 10000, strength }),
-        ),
+        total(scoreEdge(e, GRAVEL, { point: p[1], radiusM: 10000, strength })),
       ).toBeGreaterThan(0);
   });
   it("scores uphill and downhill differently; keeps missing elevation unknown", () => {
@@ -243,12 +239,12 @@ describe("routing invariants", () => {
     ]);
     g.edges[0].grades = [[1000, 0.1]];
     g.edges[1].grades = [[1000, -0.1]];
-    expect(scoreEdge(g.edges[0], "touring").slope).toBeGreaterThan(
-      scoreEdge(g.edges[1], "touring").slope,
+    expect(scoreEdge(g.edges[0], TOURING).slope).toBeGreaterThan(
+      scoreEdge(g.edges[1], TOURING).slope,
     );
     g.edges[0].grades = null;
     expect(
-      route(g, { anchors: [p[0], p[1]], profile: "road" }, "reference").ascentM,
+      route(g, { anchors: [p[0], p[1]], profile: ROAD }, "reference").ascentM,
     ).toBeNull();
   });
   it("prefers a flat valley detour to a steep ridge shortcut (spec §32 golden test)", () => {
@@ -268,7 +264,7 @@ describe("routing invariants", () => {
     g.edges[1].grades = [[700, 0]];
     g.edges[2].length = 700;
     g.edges[2].grades = [[700, 0]];
-    for (const profile of ["road", "gravel", "touring"] as const) {
+    for (const profile of [ROAD, GRAVEL, TOURING]) {
       const r = route(
         g,
         { anchors: [points[0], points[1]], profile },
@@ -279,26 +275,39 @@ describe("routing invariants", () => {
       expect(r.distanceM).toBeCloseTo(1400, 0);
     }
   });
-  it("penalizes steep grades non-linearly per spec's severity bands", () => {
+  it("prices grade non-linearly, and only past what the rider is comfortable with", () => {
     const grade = (g: number): [number, number][] => [[1000, g]];
     const base = fixture(p, [[0, 1]]).edges[0];
-    for (const profile of ["road", "gravel", "touring"] as const) {
-      const e = { ...base, length: 1000, grades: grade(0.02) };
-      expect(scoreEdge(e, profile).slope / 1000).toBeLessThan(0.02);
-    }
-    for (const profile of ["road", "gravel", "touring"] as const) {
-      const e = { ...base, length: 1000, grades: grade(0.08) };
-      expect(scoreEdge(e, profile).slope / 1000).toBeGreaterThan(0.4);
-    }
-    for (const profile of ["road", "gravel", "touring"] as const) {
-      const e = { ...base, length: 1000, grades: grade(0.12) };
-      expect(scoreEdge(e, profile).slope / 1000).toBeGreaterThan(1.0);
+    for (const profile of [ROAD, GRAVEL, TOURING]) {
+      const at = (g: number) =>
+        scoreEdge({ ...base, length: 1000, grades: grade(g) }, profile).slope /
+        1000;
+      const comfortable =
+        compileProfile(profile).capability.uphill_grade.comfortable_until;
+      // Climbing always costs something — lifting the bike takes energy whether or not
+      // the gradient is comfortable — and below comfort that cost is purely linear.
+      const easy = at(comfortable * 0.5),
+        easier = at(comfortable * 0.9);
+      expect(easy).toBeGreaterThan(0);
+      expect(easier / easy).toBeCloseTo(1.8, 1);
+      // Past it the ramp is quartic, so each step up costs far more than the last.
+      const a = at(comfortable * 1.3),
+        b = at(comfortable * 1.6),
+        c = at(comfortable * 1.9);
+      expect(a).toBeGreaterThan(0);
+      expect(b - a).toBeGreaterThan(0);
+      expect(c - b).toBeGreaterThan(b - a);
     }
   });
   it("makes road and gravel profiles respond differently to surface", () => {
     const e: Edge = { ...fixture(p, [[0, 1]]).edges[0], surface: "gravel" };
-    expect(scoreEdge(e, "road").surface).toBeGreaterThan(
-      scoreEdge(e, "gravel").surface,
+    // A road bike pays for the surface in two ways: it is past what 28 mm tires are
+    // comfortable on, and the profile asked to avoid unpaved ground in the first place.
+    expect(scoreEdge(e, ROAD).roughness).toBeGreaterThan(
+      scoreEdge(e, GRAVEL).roughness,
+    );
+    expect(total(scoreEdge(e, ROAD))).toBeGreaterThan(
+      total(scoreEdge(e, GRAVEL)),
     );
   });
   it("reports budget exhaustion rather than no path", () => {
@@ -309,7 +318,7 @@ describe("routing invariants", () => {
     expect(
       route(
         g,
-        { anchors: [p[0], p[2]], profile: "road", maxSettled: 1 },
+        { anchors: [p[0], p[2]], profile: ROAD, maxSettled: 1 },
         "reference",
       ).status,
     ).toBe("budget-exceeded");
@@ -318,7 +327,7 @@ describe("routing invariants", () => {
     const known = exportGPX(
       route(
         fixture(p, [[0, 1]]),
-        { anchors: [p[0], p[1]], profile: "road" },
+        { anchors: [p[0], p[1]], profile: ROAD },
         "reference",
       ),
       "Named route",
@@ -332,7 +341,7 @@ describe("routing invariants", () => {
     const unknown = exportGPX(
       route(
         fixture(p, [[0, 1, undefined, { grades: null }]]),
-        { anchors: [p[0], p[1]], profile: "road" },
+        { anchors: [p[0], p[1]], profile: ROAD },
         "reference",
       ),
     );
@@ -364,8 +373,8 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
     ]).edges[0];
 
   it("makes a technical section cheaper when a reward is reachable ahead", () => {
-    expect(total(scoreEdge(technicalUphill(1), "scenic"))).toBeLessThan(
-      total(scoreEdge(technicalUphill(0), "scenic")),
+    expect(total(scoreEdge(technicalUphill(1), TRAIL))).toBeLessThan(
+      total(scoreEdge(technicalUphill(0), TRAIL)),
     );
   });
 
@@ -383,32 +392,42 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       ]);
       g.edges[0].length = 100;
       g.edges[0].grades = [[100, 0.1]];
+      // A real technical shortcut is unsurfaced; a paved way carrying an MTB grade is a
+      // tagging oddity and tells us nothing about how the two profiles differ.
+      g.edges[0].surface = "ground";
       g.edges[0].tags = { "mtb:scale": "1" };
       g.edges[0].reward = 1;
-      g.edges[1].length = 450;
-      g.edges[1].grades = [[450, 0]];
-      g.edges[2].length = 450;
-      g.edges[2].grades = [[450, 0]];
+      g.edges[1].length = 80;
+      g.edges[1].grades = [[80, 0]];
+      g.edges[2].length = 80;
+      g.edges[2].grades = [[80, 0]];
       return g;
     };
     const scenic = route(
       build(),
-      { anchors: [points[0], points[1]], profile: "scenic" },
+      { anchors: [points[0], points[1]], profile: TRAIL },
       "reference",
     );
     expect(scenic.status).toBe("ok");
     expect(scenic.edgeIds).toEqual([0]);
     const gravel = route(
       build(),
-      { anchors: [points[0], points[1]], profile: "gravel" },
+      { anchors: [points[0], points[1]], profile: GRAVEL },
       "reference",
     );
     expect(gravel.status).toBe("ok");
-    // mtb:scale-tagged shortcut is ineligible for gravel — takes the flat detour instead.
+    // The shortcut used to be *ineligible* for gravel, which is how a preference could
+    // delete a connection. It is available now and simply priced higher, so a gravel
+    // rider walks round a 160 m alternative rather than being told there is no way.
     expect(gravel.edgeIds).toEqual([1, 2]);
+    const rate = (profile: typeof GRAVEL, id: number) => {
+      const e = build().edges[id];
+      return total(scoreEdge(e, profile)) / e.length;
+    };
+    expect(rate(GRAVEL, 0)).toBeGreaterThan(rate(TRAIL, 0));
   });
 
-  it("costs an uphill technical section far more than the same-scale downhill", () => {
+  it("costs an uphill technical section more than the same-scale downhill", () => {
     const uphill = fixture(p, [
       [0, 1, "a", { tags: { "mtb:scale:uphill": "2" }, grades: [[1000, 0.1]] }],
     ]).edges[0];
@@ -420,12 +439,22 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
         { tags: { "mtb:scale:downhill": "2" }, grades: [[1000, -0.1]] },
       ],
     ]).edges[0];
-    const up = total(scoreEdge(uphill, "scenic"));
-    const down = total(scoreEdge(downhill, "scenic"));
-    expect(up).toBeGreaterThan(down * 5);
+    // Judged against a rider who is not out looking for technical ground, so this is the
+    // capability model's directional thresholds talking rather than a taste for it.
+    for (const profile of [GRAVEL, TOURING]) {
+      expect(scoreEdge(uphill, profile).technical, profile.id).toBeGreaterThan(
+        scoreEdge(downhill, profile).technical,
+      );
+      expect(total(scoreEdge(uphill, profile)), profile.id).toBeGreaterThan(
+        total(scoreEdge(downhill, profile)),
+      );
+    }
   });
 
-  it("is a true no-op for gravel/road/touring: reward, junction, and mtb tags don't change cost", () => {
+  it("lets every profile respond to reward, junction and technical tags", () => {
+    // The old model gated these behind coefficients that most profiles left at zero, so
+    // a scenic viewpoint or an MTB grade was literally invisible to the gravel preset.
+    // Every profile reads every signal now; what differs is what it makes of them.
     const base = fixture(p, [[0, 1]]).edges[0];
     const decorated: Edge = {
       ...base,
@@ -433,22 +462,35 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       junction: 1,
       tags: { "mtb:scale:uphill": "3", "mtb:scale:downhill": "3" },
     };
-    for (const profile of ["gravel", "road", "touring"] as const) {
-      expect(scoreEdge(decorated, profile)).toEqual(scoreEdge(base, profile));
+    for (const profile of [GRAVEL, ROAD, TOURING, TRAIL]) {
+      expect(total(scoreEdge(decorated, profile))).not.toBeCloseTo(
+        total(scoreEdge(base, profile)),
+        6,
+      );
     }
   });
 
-  it("allows mtb:scale up to 3 for scenic but not gravel/touring; excludes scale 5 for all", () => {
+  it("prices mtb:scale by capability instead of excluding it", () => {
+    // This used to be an eligibility test: scale 3 deleted the edge for gravel and
+    // touring, scale 5 for everyone, and a profile could therefore return "no-path".
+    // Difficulty is a cost now, so the ordering survives and the exclusions do not.
     const mk = (scale: string): Edge => ({
       ...fixture(p, [[0, 1]]).edges[0],
       highway: "path",
       tags: { "mtb:scale": scale },
     });
-    expect(eligible(mk("3"), "scenic")).toBe(true);
-    expect(eligible(mk("3"), "gravel")).toBe(false);
-    expect(eligible(mk("3"), "touring")).toBe(false);
-    expect(eligible(mk("5"), "scenic")).toBe(false);
-    expect(eligible(mk("5"), "gravel")).toBe(false);
+    for (const scale of ["3", "5"])
+      for (const profile of [TRAIL, GRAVEL, TOURING])
+        expect(eligible(mk(scale), profile)).toBe(true);
+
+    for (const profile of [TRAIL, GRAVEL, TOURING])
+      expect(total(scoreEdge(mk("5"), profile))).toBeGreaterThan(
+        total(scoreEdge(mk("3"), profile)),
+      );
+    // A trail bike and rider are less put off by the same ground than a loaded tourer.
+    expect(total(scoreEdge(mk("3"), TRAIL))).toBeLessThan(
+      total(scoreEdge(mk("3"), TOURING)),
+    );
   });
 });
 
@@ -479,7 +521,7 @@ describe("review regressions", () => {
           [6.115, 46.1],
           [6.105, 46.1],
         ],
-        profile: "road",
+        profile: ROAD,
       },
       "reference",
     );
@@ -507,23 +549,20 @@ describe("review regressions", () => {
     expect(
       route(
         g,
-        { anchors: [points[0], points[1], points[6]], profile: "road" },
+        { anchors: [points[0], points[1], points[6]], profile: ROAD },
         "reference",
       ).status,
     ).toBe("no-path");
     expect(
       route(
         g,
-        { anchors: [points[0], points[2], points[5]], profile: "road" },
+        { anchors: [points[0], points[2], points[5]], profile: ROAD },
         "reference",
       ).status,
     ).toBe("ok");
     expect(
-      route(
-        g,
-        { anchors: [points[7], points[6]], profile: "road" },
-        "reference",
-      ).status,
+      route(g, { anchors: [points[7], points[6]], profile: ROAD }, "reference")
+        .status,
     ).toBe("ok");
   });
   it("enforces distinct-way and via-way U-turn sequences without immediate reversal", () => {
@@ -534,11 +573,11 @@ describe("review regressions", () => {
     ]);
     g.restrictions = [{ ways: ["a", "b"], via: 1, only: false, uTurn: true }];
     expect(
-      route(g, { anchors: [p[0], p[2]], profile: "road" }, "reference").status,
+      route(g, { anchors: [p[0], p[2]], profile: ROAD }, "reference").status,
     ).toBe("no-path");
     g.restrictions = [{ ways: ["a", "b", "c"], only: false, uTurn: true }];
     expect(
-      route(g, { anchors: [p[0], p[3]], profile: "road" }, "reference").status,
+      route(g, { anchors: [p[0], p[3]], profile: ROAD }, "reference").status,
     ).toBe("no-path");
   });
 });
@@ -588,7 +627,7 @@ it("reports a disconnected later waypoint before spending the search budget", ()
   ]);
   const r = route(
     g,
-    { anchors: points.slice(0, 3), profile: "gravel", maxSettled: 1 },
+    { anchors: points.slice(0, 3), profile: GRAVEL, maxSettled: 1 },
     "reference",
   );
   expect(r.status).toBe("no-path");
@@ -624,7 +663,7 @@ it("does not multiply loop states because of an unrelated long restriction", () 
   ];
   const r = route(
     g,
-    { anchors: [points[0], points[9]], profile: "gravel", maxSettled: 40 },
+    { anchors: [points[0], points[9]], profile: GRAVEL, maxSettled: 40 },
     "reference",
   );
   expect(r.status).toBe("ok");

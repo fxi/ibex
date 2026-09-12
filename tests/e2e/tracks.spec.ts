@@ -18,10 +18,14 @@ test("independent tracks persist, require explicit computation, and export only 
     .click();
   await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Touring", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Loaded touring", exact: true })
+    .click();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-card").first()).toContainText("Gravel");
-  await expect(page.locator(".track-card").nth(1)).toContainText("Touring");
+  await expect(page.locator(".track-card").nth(1)).toContainText(
+    "Loaded touring",
+  );
   await expect(page.locator(".track-card").nth(1)).toContainText(
     "Needs computation",
   );
@@ -79,7 +83,10 @@ test("migrates the previous single plan once without overwriting later tracks", 
   });
   await expect(page.locator(".save-status")).toHaveText("Saved");
   await page.reload();
-  await expect(page.locator(".track-card")).toContainText("Road");
+  // The anchors survive the migration; the old sparse profile does not, because its
+  // meaning lived in a master file that no longer exists. The track restarts on the
+  // default profile rather than on a guess.
+  await expect(page.locator(".track-card")).toContainText("Gravel 40 mm");
   await expect(page.locator(".track-card")).toContainText("2 waypoints");
   await page.getByRole("button", { name: "New track", exact: true }).click();
   await expect(page.locator(".save-status")).toHaveText("Saved");

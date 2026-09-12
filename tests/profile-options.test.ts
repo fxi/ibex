@@ -8,18 +8,12 @@ import {
 } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
 import type { Edge, Graph, Point } from "../src/routing/types";
-import type { UserProfile } from "../src/routing/profiles";
+import { GRAVEL, withPermissions, withPreferences } from "./helpers";
 const points: Point[] = [
   [6.1, 46.1],
   [6.101, 46.1],
   [6.102, 46.1],
 ];
-const profile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
-  version: 1,
-  name: "Options",
-  bike: "gravel",
-  ...overrides,
-});
 function edge(from: number, to: number, overrides: Partial<Edge> = {}): Edge {
   const length = distance(points[from], points[to]);
   return {
@@ -54,21 +48,33 @@ function graph(edges: Edge[]): Graph {
     nodes: points.map((p, id) => ({ id, p, elevation: 400 })),
   };
 }
-it("prefers a rural detour when countryside attraction is enabled", () => {
+it("prefers a rural detour when built-up surroundings are avoided", () => {
   const urban = edge(0, 2, { id: 0, way: "urban", urban: 1 });
-  const rural = edge(0, 2, { id: 1, way: "rural", length: urban.length * 1.5 });
+  const rural = edge(0, 2, { id: 1, way: "rural", length: urban.length * 1.4 });
   const g = graph([urban, rural]),
     anchors = [points[0], points[2]];
   expect(
-    route(g, { anchors, profile: profile() }, "reference").edgeIds,
+    route(
+      g,
+      {
+        anchors,
+        profile: withPreferences(GRAVEL, {
+          urbanity: "prefer",
+          detour: "strongly_avoid",
+        }),
+      },
+      "reference",
+    ).edgeIds,
   ).toEqual([0]);
   const r = route(
     g,
-    { anchors, profile: profile({ attraction: { countryside: 100 } }) },
+    {
+      anchors,
+      profile: withPreferences(GRAVEL, { urbanity: "strongly_avoid" }),
+    },
     "reference",
   );
   expect(r.edgeIds).toEqual([1]);
-  expect(r.components.countryside).toBe(0);
 });
 it("prefers a mapped cycling network without forbidding other connectors", () => {
   const shortcut = edge(0, 2, { id: 0, way: "plain" });
@@ -78,7 +84,9 @@ it("prefers a mapped cycling network without forbidding other connectors", () =>
     cyclingNetwork: 1,
     length: shortcut.length * 1.5,
   });
-  const p = profile({ attraction: { cycling_network: 100 } });
+  const p = withPreferences(GRAVEL, {
+    cycle_infrastructure: "strongly_prefer",
+  });
   const r = route(
     graph([shortcut, network]),
     { anchors: [points[0], points[2]], profile: p },
@@ -87,32 +95,32 @@ it("prefers a mapped cycling network without forbidding other connectors", () =>
   expect(r.edgeIds).toEqual([1]);
   expect(eligible(shortcut, p)).toBe(true);
 });
-it("requires both stair and carrying permission even on the road preset", () => {
+it("prices stairs as carrying, and refusing them makes them a last resort", () => {
   const steps = edge(0, 1, {
     highway: "steps",
     surface: "unknown",
     grades: null,
   });
-  expect(eligible(steps, profile({ access: { steps: true } }))).toBe(false);
-  expect(eligible(steps, profile({ access: { hike_a_bike: true } }))).toBe(
-    false,
-  );
-  const p = profile({
-    bike: "road",
-    access: { steps: true, hike_a_bike: true },
-    capabilities: { max_grade_up: 15 },
-  });
-  expect(eligible(steps, p)).toBe(true);
+  const allowed = withPermissions(GRAVEL, { stairs: true, push: true });
+  const refused = withPermissions(GRAVEL, { stairs: false, push: false });
+  // Stairs are never removed for a preference: a rider can always carry the bike, and a
+  // profile that would rather not is told so in the price.
+  expect(eligible(steps, allowed)).toBe(true);
+  expect(eligible(steps, refused)).toBe(true);
   const r = route(
     graph([steps]),
-    { anchors: points.slice(0, 2), profile: p },
+    { anchors: points.slice(0, 2), profile: allowed },
     "reference",
   );
   expect(r.status).toBe("ok");
   expect(r.hikeABikeM).toBeCloseTo(steps.length);
   expect(r.components.walking).toBeGreaterThan(steps.length);
-  expect(eligible({ ...steps, tags: { bicycle: "no" } }, p)).toBe(false);
-  expect(eligible({ ...steps, tags: { foot: "no" } }, p)).toBe(false);
+  expect(scoreEdge(steps, refused).walking).toBeGreaterThan(
+    scoreEdge(steps, allowed).walking,
+  );
+  // The law still applies.
+  expect(eligible({ ...steps, tags: { bicycle: "no" } }, allowed)).toBe(false);
+  expect(eligible({ ...steps, tags: { foot: "no" } }, allowed)).toBe(false);
 });
 it("prices ferry travel and boards once across service segments and waypoints", () => {
   const first = edge(0, 1, {
@@ -129,13 +137,12 @@ it("prices ferry travel and boards once across service segments and waypoints", 
     ferrySeconds: 300,
     ferryService: "f1",
   });
-  const p = profile({
-    bike: "road",
-    access: { ferry: true },
-    capabilities: { max_grade_up: 0, max_grade_down: 0 },
-  });
+  const p = withPermissions(GRAVEL, { ferry: true });
   expect(eligible(first, p)).toBe(true);
-  expect(eligible(first, profile())).toBe(false);
+  // A ferry is a mode choice, not a difficulty: refusing it really does remove the link.
+  expect(eligible(first, withPermissions(GRAVEL, { ferry: false }))).toBe(
+    false,
+  );
   expect(eligible({ ...first, tags: { bicycle: "no" } }, p)).toBe(false);
   expect(scoreEdge(first, p).slope).toBe(0);
   const result = route(

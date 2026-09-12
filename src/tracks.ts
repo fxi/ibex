@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { preference, savePreference } from "./offline/store";
-import {
-  profileSchema,
-  resolveProfile,
-  type ProfileInput,
-  type UserProfile,
-} from "./routing/profiles";
+import { parseProfile, profileSchema, type Profile } from "./routing/profiles";
+import { defaultProfile } from "./models";
 import type { Point, RouteResult } from "./routing/types";
 import { emptyComponents } from "./routing/engine";
 
@@ -22,7 +18,7 @@ export type Track = {
   color: string;
   visible: boolean;
   anchors: Point[];
-  profile: UserProfile;
+  profile: Profile;
   revision: number;
   resultRevision?: number;
   result?: RouteResult;
@@ -43,15 +39,23 @@ const colors = [
   "#e0399b",
   "#6b7bff",
 ];
-export function modelSnapshot(profile: ProfileInput): UserProfile {
-  return structuredClone(resolveProfile(profile));
+/**
+ * A track keeps its own copy of the profile that routed it, so editing a model later does
+ * not silently change a finished track. Nothing is resolved here any more — a profile is
+ * already complete — this is only the copy.
+ */
+export function modelSnapshot(profile: Profile): Profile {
+  return parseProfile(structuredClone(profile));
 }
 export function trackId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (n) =>
     n.toString(16).padStart(2, "0"),
   ).join("");
 }
-export function newTrack(index = 0, profile: ProfileInput = "gravel"): Track {
+export function newTrack(
+  index = 0,
+  profile: Profile = defaultProfile(),
+): Track {
   return {
     id: trackId(),
     kind: "planned",
@@ -100,7 +104,13 @@ export function importedTrack(
     edgeIds: [],
     surfaceM: {},
     uncertainM: 0,
-    metrics: { durationMs: 0, explored: 0, expansions: 0, tiles: 0, loadedBytes: 0 },
+    metrics: {
+      durationMs: 0,
+      explored: 0,
+      expansions: 0,
+      tiles: 0,
+      loadedBytes: 0,
+    },
   } as unknown as RouteResult;
   return {
     id: trackId(),
@@ -109,7 +119,7 @@ export function importedTrack(
     color: colors[index % colors.length],
     visible: true,
     anchors: [],
-    profile: modelSnapshot("gravel"),
+    profile: defaultProfile(),
     revision: 0,
     resultRevision: 0,
     result,
@@ -165,14 +175,13 @@ export function restoreCollection(value: unknown): TrackCollection {
 export async function loadTracks(): Promise<TrackCollection> {
   const saved = await preference<unknown>("ibex-tracks");
   if (saved !== undefined) return restoreCollection(saved);
-  const old = await preference<{ anchors: Point[]; profile: ProfileInput }>(
-    "plan",
-  );
+  // Anchors from an older collection are still meaningful; its profile is not, so the
+  // track restarts on the default one.
+  const old = await preference<{ anchors: Point[] }>("plan");
   const track = newTrack();
-  if (old)
+  if (old?.anchors)
     Object.assign(track, {
       anchors: z.array(point).max(12).parse(old.anchors),
-      profile: modelSnapshot(old.profile),
     });
   const collection: TrackCollection = {
     version: 1,

@@ -1,0 +1,38 @@
+{
+  "format_version": 2,
+  "id": "touring_45",
+  "name": "Loaded touring",
+  "description": "A heavy bike on a long day: gentle gradients, predictable surfaces, few surprises.",
+  "setup": {
+    "preset": "touring_45 / steady",
+    "bike": {
+      "tire_mm": 45,
+      "mass_kg": 15,
+      "lowest_gear_ratio": 0.6,
+      "suspension": "none",
+      "load_kg": 18
+    },
+    "rider": {
+      "mass_kg": 75,
+      "sustained_w_per_kg": 2.5,
+      "tech_skill": 0.45,
+      "descend_confidence": 0.5
+    }
+  },
+  "preferences": {
+    "detour": "neutral",
+    "traffic_stress": "strongly_avoid",
+    "unpaved": "neutral",
+    "roughness": "avoid",
+    "technicality": "strongly_avoid",
+    "climbing": "avoid",
+    "scenic": "prefer",
+    "urbanity": "avoid",
+    "cycle_infrastructure": "strongly_prefer"
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": false,
+    "push": true
+  }
+}
