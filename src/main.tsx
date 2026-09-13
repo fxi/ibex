@@ -141,6 +141,19 @@ function App() {
   return (
     <main>
       <MapView
+        editable={tab === "tracks"}
+        onInclude={(index, point) => {
+          if (
+            !active ||
+            active.kind !== "planned" ||
+            active.anchors.length >= 12
+          )
+            return;
+          const anchors = [...active.anchors];
+          anchors.splice(index, 0, point);
+          tracks.edit({ anchors });
+          routing.compute();
+        }}
         anchors={active?.anchors ?? []}
         comparison={
           routing.comparison &&
@@ -163,6 +176,10 @@ function App() {
         }}
         onPoint={(point) => {
           if (tab !== "tracks" || !active) return;
+          if (active.anchors.length >= 12) {
+            setError("A track supports up to 12 waypoints.");
+            return;
+          }
           if (insertAt !== undefined) {
             const anchors = [...active.anchors];
             anchors.splice(insertAt, 0, point);
@@ -171,12 +188,13 @@ function App() {
             tracks.edit({ anchors: [...active.anchors, point] });
           else setError("A track supports up to 12 waypoints.");
         }}
-        onMove={(i, p) =>
-          active &&
+        onMove={(i, p) => {
+          if (!active) return;
           tracks.edit({
             anchors: active.anchors.map((old, j) => (i === j ? p : old)),
-          })
-        }
+          });
+          routing.compute();
+        }}
       />
       <header className="brand">
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
@@ -200,7 +218,9 @@ function App() {
               ? navigator.geolocation.getCurrentPosition(
                   (p) => fit([[p.coords.longitude, p.coords.latitude]]),
                   () =>
-                    setError("Location unavailable. Check location permissions."),
+                    setError(
+                      "Location unavailable. Check location permissions.",
+                    ),
                 )
               : setError("Location is unavailable in this browser.")
           }

@@ -1,4 +1,5 @@
 import { selectedRoute } from "../routing/selection";
+import { insertionIndex, nearestPosition } from "./routeEditing";
 import { MarkerLayer } from "./markers";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
@@ -41,6 +42,8 @@ export function MapView({
   history,
   onPoint,
   onMove,
+  onInclude,
+  editable,
   onMenu,
   onCamera,
   onCell,
@@ -63,6 +66,8 @@ export function MapView({
   history: boolean;
   onPoint: (p: Point) => void;
   onMove: (i: number, p: Point) => void;
+  onInclude: (index: number, point: Point) => void;
+  editable: boolean;
   /** Right-click or long-press on waypoint `i`, in viewport coordinates. */
   onMenu: (i: number, x: number, y: number) => void;
   /** Camera orientation, so the compass control can point north. */
@@ -74,9 +79,17 @@ export function MapView({
     map = useRef<maplibregl.Map | undefined>(undefined),
     markers = useRef<MarkerLayer | undefined>(undefined);
   const [mapError, setMapError] = useState("");
-  const handlers = useRef({ onPoint, onMove, onMenu, onCamera, onCell });
-  handlers.current = { onPoint, onMove, onMenu, onCamera, onCell };
+  const handlers = useRef({
+    onPoint,
+    onMove,
+    onMenu,
+    onCamera,
+    onCell,
+    onInclude,
+  });
+  handlers.current = { onPoint, onMove, onMenu, onCamera, onCell, onInclude };
   const snapshot = useRef({
+    editable,
     anchors,
     comparison,
     partial,
@@ -87,6 +100,7 @@ export function MapView({
     cells,
   });
   snapshot.current = {
+    editable,
     anchors,
     comparison,
     partial,
@@ -121,7 +135,10 @@ export function MapView({
     // Zoom, locate and compass are rendered as app buttons instead, so every map
     // control shares one size and shape.
     const reportCamera = () =>
-      handlers.current.onCamera({ bearing: m.getBearing(), pitch: m.getPitch() });
+      handlers.current.onCamera({
+        bearing: m.getBearing(),
+        pitch: m.getPitch(),
+      });
     m.on("rotate", reportCamera);
     m.on("pitch", reportCamera);
     // A click on the grid selects an area; the layer handler runs first and marks the
@@ -134,10 +151,118 @@ export function MapView({
         true;
       handlers.current.onCell(id);
     });
+    let suppressClickUntil = 0;
     m.on("click", (e) => {
+      if (Date.now() < suppressClickUntil) return;
       if ((e.originalEvent as Event & { _cellHandled?: boolean })._cellHandled)
         return;
       handlers.current.onPoint([e.lngLat.lng, e.lngLat.lat]);
+    });
+    const handleElement = document.createElement("div");
+    handleElement.className = "route-drag-handle";
+    handleElement.title = "Drag to reshape route";
+    handleElement.setAttribute("aria-label", "Drag to reshape route");
+    const handle = new maplibregl.Marker({
+      element: handleElement,
+      draggable: true,
+    });
+    let dragging = false;
+    let handleIndex = 1;
+    let contextPopup: maplibregl.Popup | undefined;
+    const locate = (point: maplibregl.Point) => {
+      const s = snapshot.current;
+      const track = s.tracks.find((t) => t.id === s.activeId);
+      if (
+        !s.editable ||
+        track?.kind !== "planned" ||
+        !track.visible ||
+        track.resultRevision !== track.revision ||
+        track.result?.status !== "ok" ||
+        s.anchors.length < 2
+      )
+        return;
+      const project = (p: Point): Point => {
+        const q = m.project(p);
+        return [q.x, q.y];
+      };
+      const line = track.result.geometry.map(project);
+      const nearest = nearestPosition(line, [point.x, point.y]);
+      return {
+        ...nearest,
+        index: insertionIndex(line, s.anchors.map(project), nearest.position),
+      };
+    };
+    m.on("mousemove", (e) => {
+      if (dragging || e.originalEvent.buttons) return;
+      const hit = locate(e.point);
+      if (!hit || hit.distance > 12 || snapshot.current.anchors.length >= 12) {
+        handle.remove();
+        return;
+      }
+      handleIndex = hit.index;
+      handle.setLngLat(m.unproject(hit.point));
+      if (!handleElement.isConnected) handle.addTo(m);
+    });
+    handle.on("dragstart", () => {
+      dragging = true;
+      contextPopup?.remove();
+    });
+    handle.on("dragend", () => {
+      dragging = false;
+      suppressClickUntil = Date.now() + 400;
+      const p = handle.getLngLat();
+      handle.remove();
+      handlers.current.onInclude(handleIndex, [p.lng, p.lat]);
+    });
+    const openInclude = (point: maplibregl.Point) => {
+      const hit = locate(point);
+      if (!hit) return;
+      handle.remove();
+      contextPopup?.remove();
+      const location = m.unproject(point);
+      const button = document.createElement("button");
+      button.textContent = "Include in route";
+      button.disabled = snapshot.current.anchors.length >= 12;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        contextPopup?.remove();
+        handlers.current.onInclude(hit.index, [location.lng, location.lat]);
+      });
+      contextPopup = new maplibregl.Popup({ closeButton: false })
+        .setLngLat(location)
+        .setDOMContent(button)
+        .addTo(m);
+    };
+    m.on("contextmenu", (e) => {
+      e.preventDefault();
+      openInclude(e.point);
+    });
+    let pressTimer: ReturnType<typeof setTimeout> | undefined;
+    let pressPoint: maplibregl.Point | undefined;
+    let longPressed = false;
+    const cancelPress = () => clearTimeout(pressTimer);
+    m.on("touchstart", (e) => {
+      cancelPress();
+      longPressed = false;
+      if (e.points.length !== 1) return;
+      pressPoint = e.point;
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        suppressClickUntil = Date.now() + 1000;
+        openInclude(e.point);
+      }, 500);
+    });
+    m.on("touchmove", (e) => {
+      if (e.points.length !== 1 || !pressPoint || e.point.dist(pressPoint) > 8)
+        cancelPress();
+    });
+    m.on("touchend", () => {
+      cancelPress();
+      if (longPressed) suppressClickUntil = Date.now() + 1000;
+    });
+    m.on("touchcancel", cancelPress);
+    m.on("movestart", () => {
+      if (!dragging) handle.remove();
     });
     // Culling depends on the viewport, so the grid is rebuilt when the camera settles.
     m.on("moveend", () => update());
@@ -168,13 +293,7 @@ export function MapView({
     window.addEventListener("online", changeConnection);
     window.addEventListener("offline", changeConnection);
     m.on("style.load", () => {
-      for (const id of [
-        "cells",
-        "field",
-        "corridor",
-        "reference",
-        "route",
-      ])
+      for (const id of ["cells", "field", "corridor", "reference", "route"])
         m.addSource(id, { type: "geojson", data: empty });
       // Grid cells come from one source with data-driven paint, so a state change is a
       // setData call rather than a layer rebuild. No symbol layer: labelling needs
@@ -264,15 +383,7 @@ export function MapView({
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-color": CENTER_COLOR,
-          "line-width": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            5,
-            8,
-            14,
-            14,
-          ],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 5, 8, 14, 14],
           "line-opacity": ["case", ["get", "stale"], 0.4, 0.9],
         },
       });
@@ -325,6 +436,8 @@ export function MapView({
       update();
     });
     function update() {
+      if (!dragging) handle.remove();
+      contextPopup?.remove();
       if (!m.getSource("route")) return;
       const s = snapshot.current;
       const route = selectedRoute(s.comparison, s.partial);
@@ -433,6 +546,9 @@ export function MapView({
     m.on("cyclatractor-update", update);
     return () => {
       disposed = true;
+      cancelPress();
+      handle.remove();
+      contextPopup?.remove();
       window.removeEventListener("online", changeConnection);
       window.removeEventListener("offline", changeConnection);
       markers.current?.destroy();
@@ -454,6 +570,7 @@ export function MapView({
   useEffect(() => {
     map.current?.fire("cyclatractor-update");
   }, [
+    editable,
     anchors,
     comparison,
     partial,

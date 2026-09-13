@@ -1388,3 +1388,14 @@ button.link {
   margin: 3px 0 0;
   line-height: 1.45;
 }
+
+.route-drag-handle {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #2f7df6;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 6px #0006;
+  cursor: grab;
+}
+.route-drag-handle:active { cursor: grabbing; }
