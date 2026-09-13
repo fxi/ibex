@@ -198,6 +198,47 @@ describe("preferences reach the cost", () => {
     expect(rate(trunk)).toBeGreaterThan(rate(signed) * 1.3);
   });
 
+  it("keeps a rider who strongly avoids traffic off a primary road, whatever the budget", () => {
+    // Machilly: route 23 runs along Route de Léman and Route de Couty, a signed tertiary,
+    // beside 1.1 km of Route du Pays de la Côte. With traffic `strongly_avoid` and
+    // network `strongly_prefer`, the primary still won — the preference factor is capped
+    // by the detour budget, so it priced at 1.99 against 1.01 and the extra kilometre of
+    // the signed line was not worth it. The hazard now sits outside that cap.
+    const rider = parseProfile({
+      ...ROAD,
+      preferences: {
+        ...ROAD.preferences,
+        detour: "strongly_prefer",
+        traffic_stress: "strongly_avoid",
+        cycle_infrastructure: "strongly_prefer",
+      },
+    });
+    const primary = edge({
+      highway: "primary",
+      surface: "paved",
+      stress: 0.95,
+      cyclingNetwork: 0,
+      tags: { smoothness: "excellent" },
+    });
+    const signed = edge({
+      highway: "tertiary",
+      surface: "paved",
+      stress: 0.55,
+      cyclingNetwork: 1,
+      tags: { smoothness: "good" },
+    });
+    const rate = (e: Edge, p = rider) => total(scoreEdge(e, p)) / e.length;
+    const budget = compileProfile(rider).detour.budget_ratio;
+    expect(scoreEdge(primary, rider).traffic).toBeGreaterThan(0);
+    expect(rate(primary)).toBeGreaterThan(rate(signed) * budget * 1.25);
+
+    const indifferent = withPreferences(rider, { traffic_stress: "neutral" });
+    expect(scoreEdge(primary, indifferent).traffic).toBe(0);
+    expect(scoreEdge(signed, rider).traffic).toBeLessThan(
+      scoreEdge(primary, rider).traffic / 3,
+    );
+  });
+
   it("never produces a zero or negative cost, whatever is stacked on it", () => {
     const lovely = edge({
       stress: 0,

@@ -23,7 +23,7 @@ import {
 import { cellBBox, parseCellId } from "../src/geo/grid";
 import { route } from "../src/routing/engine";
 import { compileProfile } from "../src/routing/compile";
-import { GRAVEL, WANDERER } from "./helpers";
+import { GRAVEL, ROAD, WANDERER, withPreferences } from "./helpers";
 import { validateEdge, validateNode } from "../src/offline/validate";
 import type { Installed } from "../src/offline/store";
 import { COST_MODEL_VERSION, type Point } from "../src/routing/types";
@@ -271,6 +271,56 @@ describe.skipIf(!present)("generated release", () => {
         expect(result.distanceM).toBeLessThan(
           direct.distanceM * compileProfile(WANDERER).detour.budget_ratio,
         );
+      },
+      120_000,
+    );
+
+    /**
+     * Geneva to Saxel on a 28 mm road bike that strongly avoids traffic, unpaved ground,
+     * roughness and technicality. The ride that sets the standard follows signed route 23
+     * through Route de Couty on tarmac. A traffic hazard that charged every tertiary sent
+     * the router over the Voirons instead, onto 4.9 km of untagged track above Lucinges.
+     */
+    it.skipIf(!hasCells)(
+      "keeps a traffic-shy road bike to tarmac and the signed route on the way to Saxel",
+      async () => {
+        const trip: Point[] = [
+          [6.1967, 46.1971],
+          [6.3965, 46.2433],
+        ];
+        const { packs, reader } = installedFor(ids);
+        const provider = new CellGraphProvider(
+          packs,
+          catalogue!.release,
+          catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
+          reader,
+        );
+        await provider.open();
+        const graph = await provider.load(searchArea(trip));
+        const profile = withPreferences(ROAD, {
+          detour: "prefer",
+          traffic_stress: "strongly_avoid",
+          unpaved: "strongly_avoid",
+          roughness: "strongly_avoid",
+          technicality: "strongly_avoid",
+          climbing: "neutral",
+          scenic: "neutral",
+          urbanity: "neutral",
+          cycle_infrastructure: "prefer",
+        });
+        const result = route(graph, { anchors: trip, profile }, "reference");
+        expect(result.status).toBe("ok");
+        const byId = new Map(graph.edges.map((e) => [e.id, e]));
+        const metres = (test: (e: (typeof graph.edges)[number]) => boolean) =>
+          result.edgeIds.reduce((sum, id) => {
+            const e = byId.get(id);
+            return e && test(e) ? sum + e.length : sum;
+          }, 0);
+        expect(metres((e) => ["track", "path"].includes(e.highway))).toBeLessThan(200);
+        expect(
+          metres((e) => ["primary", "secondary"].includes(e.highway)),
+        ).toBeLessThan(100);
+        expect(metres((e) => e.name === "Route de Couty")).toBeGreaterThan(500);
       },
       120_000,
     );

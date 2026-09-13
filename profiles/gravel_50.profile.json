@@ -1,0 +1,38 @@
+{
+  "format_version": 2,
+  "id": "gravel_50",
+  "name": "Gravel 50mm",
+  "description": "Gravel profile with chunky tires",
+  "setup": {
+    "preset": "custom",
+    "bike": {
+      "tire_mm": 50,
+      "mass_kg": 11.5,
+      "lowest_gear_ratio": 1,
+      "suspension": "none",
+      "load_kg": 3
+    },
+    "rider": {
+      "mass_kg": 80,
+      "sustained_w_per_kg": 3.2,
+      "tech_skill": 0.7,
+      "descend_confidence": 0.7
+    }
+  },
+  "preferences": {
+    "detour": "prefer",
+    "traffic_stress": "strongly_avoid",
+    "unpaved": "prefer",
+    "roughness": "avoid",
+    "technicality": "avoid",
+    "climbing": "neutral",
+    "scenic": "strongly_prefer",
+    "urbanity": "strongly_avoid",
+    "cycle_infrastructure": "prefer"
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": true,
+    "push": false
+  }
+}

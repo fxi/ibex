@@ -114,12 +114,12 @@ export const PREFERENCE_FIELDS: {
   {
     key: "detour",
     label: "Detour",
-    hint: "How much further you will ride for everything below. This is the one knob that decides whether the route wanders at all.",
+    hint: "How much further you will ride for everything below. This decides how far the route wanders for a better line; only avoiding traffic can push it further.",
   },
   {
     key: "traffic_stress",
     label: "Traffic",
-    hint: "Estimated from road class and cycle infrastructure in the pack, not from live traffic.",
+    hint: "Estimated from road class and cycle infrastructure in the pack, not from live traffic. Avoiding it keeps you off main roads even at a small detour.",
   },
   {
     key: "unpaved",

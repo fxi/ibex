@@ -186,6 +186,40 @@ export const ENGINE = {
    * much a rider minds it is `CLIMB_AVERSION`.
    */
   climb_effort: 5,
+  /**
+   * Added per unit of squared excess traffic stress past `traffic_from`, scaled by how
+   * strongly the rider avoids it.
+   *
+   * Traffic is also a preference, but a preference lives inside the detour budget, and
+   * that budget caps how much worse than its own length any way can ever be. With detour
+   * at `strongly_prefer` a lorry route cost at most 2x, and in practice about 1.6x once
+   * "avoid unpaved / roughness / technicality" had credited its smooth tarmac — while the
+   * signed tertiary beside it sat at 1.0x. Route 23 past Machilly lost to 1.1 km of Route
+   * du Pays de la Côte by 2%. Being alongside lorries is a hazard, not a taste, so it is
+   * charged here, outside the budget.
+   */
+  traffic: 2,
+  /**
+   * Stress below which traffic is left to the preference alone: a tertiary.
+   *
+   * The first version charged everything above an ordinary way, which put +0.4 on every
+   * tertiary — and in Haute-Savoie the quiet departmental roads riders actually choose are
+   * tertiaries. An unmapped track came out cheaper than tarmac, and a road rider bound
+   * for Saxel was sent over the Voirons on gravel.
+   */
+  traffic_from: 0.55,
+  /**
+   * What a signed cycle route multiplies road-class stress by. Stress is read off road
+   * class alone, which cannot tell the signed departmental road from the lorry route
+   * beside it; a signed route is one someone chose for bikes.
+   */
+  network_calming: 0.6,
+  /**
+   * The share of the unpaved penalty charged when the surface is not mapped, for a rider
+   * who avoids unpaved ground. Never a reward: silence is not evidence of gravel. But it is
+   * not tarmac either, and a `tracktype=grade2` with no `surface` priced like asphalt.
+   */
+  unpaved_guess_share: 0.7,
   /** Added per unit of `edge.uncertainty` — unsurveyed ways are a gamble, not a dislike. */
   uncertainty: 0.25,
   /**

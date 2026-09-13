@@ -1,6 +1,12 @@
 import type { Profile } from "./profiles";
 import { toCompiled, type CompiledProfile } from "./compile";
-import { ENGINE, NET_SCALE, REWARD_SHARE, type SignalKey } from "./vocabulary";
+import {
+  ENGINE,
+  NET_SCALE,
+  REWARD_SHARE,
+  STRENGTH,
+  type SignalKey,
+} from "./vocabulary";
 import { exceedance } from "./capability";
 import { edgeSignals, type Signals } from "./signals";
 import { eligible, isFerry, rideClass, traversalSegments } from "./eligibility";
@@ -20,6 +26,7 @@ export const HARD_TERMS = [
   "slope",
   "technical",
   "roughness",
+  "traffic",
   "uncertainty",
   "network",
 ] as const;
@@ -32,6 +39,7 @@ export const emptyComponents = (): Components => ({
   slope: 0,
   technical: 0,
   roughness: 0,
+  traffic: 0,
   uncertainty: 0,
   network: 0,
   junction: 0,
@@ -109,6 +117,26 @@ export function deviation(value: number, reference: number): number {
 type Rate = { net: number; hard: number; terms: Record<HardTerm, number> };
 
 /**
+ * The hazard of riding in traffic busier than a quiet departmental road, for a rider who
+ * avoids it. Zero for anyone neutral or keen, and for any way at or below
+ * `ENGINE.traffic_from`.
+ */
+export function trafficHazard(stress: number, p: CompiledProfile): number {
+  const w = p.weights.traffic_stress;
+  if (w.sign >= 0) return 0;
+  const from = ENGINE.traffic_from;
+  const excess = Math.max(0, (stress - from) / (1 - from));
+  return ENGINE.traffic * Math.abs(STRENGTH[w.level]) * excess * excess;
+}
+
+/** Traffic stress as ridden: road class, calmed where a cycle route is signed. */
+export function effectiveStress(edge: Edge): number {
+  return edge.cyclingNetwork
+    ? edge.stress * ENGINE.network_calming
+    : edge.stress;
+}
+
+/**
  * Score one grade run: how well it matches the rider's preferences, and how far past
  * their capability it is.
  */
@@ -123,7 +151,7 @@ function riddenRate(
   const technical = down ? s.technicalDown : s.technicalUp;
 
   const value: Record<SignalKey, number> = {
-    traffic_stress: edge.stress,
+    traffic_stress: effectiveStress(edge),
     unpaved: s.unpaved,
     roughness: s.roughness,
     technicality: technical,
@@ -136,13 +164,17 @@ function riddenRate(
     weight = 0;
   for (const key of Object.keys(value) as SignalKey[]) {
     const w = p.weights[key];
-    // Never reward a guess: with no `surface` tag, "unpaved" is read off the road
-    // hierarchy and is not evidence of the gravel the rider came for.
-    if (key === "unpaved" && !s.surfaceKnown) continue;
     if (w.weight === 0) continue;
     // Positive is worse than an ordinary way in the direction this rider cares about,
     // negative is better. Only the bad side counts in full.
-    const badness = -w.sign * deviation(value[key], w.reference);
+    let badness = -w.sign * deviation(value[key], w.reference);
+    if (key === "unpaved" && !s.surfaceKnown) {
+      // Never reward a guess: with no `surface` tag, "unpaved" is read off the road
+      // hierarchy and is not evidence of the gravel the rider came for. Nor is silence
+      // tarmac, so a rider avoiding unpaved ground pays a share of the likely penalty.
+      if (w.sign >= 0 || badness <= 0) continue;
+      badness *= ENGINE.unpaved_guess_share;
+    }
     sum += w.weight * (badness > 0 ? badness : badness * REWARD_SHARE);
     weight += w.weight;
   }
@@ -164,6 +196,7 @@ function riddenRate(
       exceedance(technical, down ? k.technical_down : k.technical_up),
     roughness:
       ENGINE.threshold_rate * exceedance(s.roughness, k.surface_roughness),
+    traffic: trafficHazard(effectiveStress(edge), p),
     uncertainty: ENGINE.uncertainty * edge.uncertainty,
     network: ENGINE.off_network * (1 - edge.utility),
   };
@@ -248,6 +281,7 @@ export function scoreEdge(
     slope: 0,
     technical: 0,
     roughness: 0,
+    traffic: 0,
     uncertainty: 0,
     network: 0,
   };
@@ -320,6 +354,7 @@ export const total = (c: Components) =>
   c.slope +
   c.technical +
   c.roughness +
+  c.traffic +
   c.uncertainty +
   c.network +
   c.junction +

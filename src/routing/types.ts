@@ -71,6 +71,8 @@ export type Components = {
   slope: number;
   technical: number;
   roughness: number;
+  /** Traffic above ordinary, for a rider who avoids it. A hazard, so outside the budget. */
+  traffic: number;
   /** Not a matter of taste: unsurveyed ground, and severed or dead-end fragments. */
   uncertainty: number;
   network: number;

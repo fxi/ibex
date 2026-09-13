@@ -1,10 +1,10 @@
 {
   "format_version": 2,
   "id": "road_28",
-  "name": "Road 28 mm",
+  "name": "Road 28",
   "description": "Sealed surfaces and steady progress, still preferring the quieter of two roads.",
   "setup": {
-    "preset": "road_28 / expert",
+    "preset": "custom",
     "bike": {
       "tire_mm": 28,
       "mass_kg": 8.5,
@@ -13,22 +13,22 @@
       "load_kg": 1
     },
     "rider": {
-      "mass_kg": 75,
+      "mass_kg": 80,
       "sustained_w_per_kg": 3.2,
       "tech_skill": 0.7,
       "descend_confidence": 0.7
     }
   },
   "preferences": {
-    "detour": "avoid",
+    "detour": "prefer",
     "traffic_stress": "avoid",
     "unpaved": "strongly_avoid",
     "roughness": "strongly_avoid",
     "technicality": "strongly_avoid",
-    "climbing": "neutral",
-    "scenic": "neutral",
-    "urbanity": "neutral",
-    "cycle_infrastructure": "prefer"
+    "climbing": "prefer",
+    "scenic": "strongly_prefer",
+    "urbanity": "avoid",
+    "cycle_infrastructure": "strongly_prefer"
   },
   "permissions": {
     "ferry": true,

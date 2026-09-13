@@ -67,23 +67,31 @@ describe("detour actually detours", () => {
     // The contract. The old model could not do this at all: every reward was a capped
     // discount on the penalties and distance was always charged in full, so the cheapest
     // possible edge still cost its own length and no detour could ever pay for itself.
+    let improved = 0;
     for (const [i, anchors] of pairs.entries()) {
-      const scores = LEVELS.map((detour) => {
+      const routes = LEVELS.map((detour) => {
         const r = route(
           graph,
           { profile: withPreferences(GRAVEL, { detour }), anchors },
           "reference",
         );
         expect(r.status, `pair ${i} / ${detour}`).toBe("ok");
-        return quality(r.edgeIds);
+        return r.edgeIds;
       });
+      const scores = routes.map(quality);
       for (let n = 1; n < scores.length; n++)
         expect(
           scores[n],
           `pair ${i}: ${LEVELS[n]} chose a worse line than ${LEVELS[n - 1]}`,
         ).toBeLessThanOrEqual(scores[n - 1] + 1e-9);
+      // A pair whose tightest budget already rides the line the loosest one would has
+      // nothing left to buy — traffic avoidance, which is not budgeted, can get it there
+      // on its own. Anything else must actually improve.
+      if (routes[0].join() === routes.at(-1)!.join()) continue;
       expect(scores.at(-1), `pair ${i} never improved`).toBeLessThan(scores[0]);
+      improved++;
     }
+    expect(improved, "no pair improved as the budget opened").toBeGreaterThan(0);
   });
 
   it("spends real distance on it", () => {

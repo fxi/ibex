@@ -76,7 +76,15 @@ Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
   also widens the search corridor, because a route that long has to be reachable. This is
   the knob that decides whether the app wanders at all.
 - `traffic_stress` — estimated from road class and cycle infrastructure in the pack, not
-  from live traffic.
+  from live traffic. Avoiding it does two things: it scores ways like every other
+  preference, and it charges stress above a tertiary as a hazard outside the detour
+  budget (`ENGINE.traffic`), so a rider who strongly avoids traffic is kept off primary
+  and secondary roads even with `detour` at `avoid`. A signed cycle route calms the
+  road-class estimate (`ENGINE.network_calming`), since class alone cannot tell the quiet
+  signed departmental road from the lorry route beside it.
+- Unpaved ground with no mapped `surface` is never rewarded, but a rider who avoids
+  unpaved pays a share of the likely penalty (`ENGINE.unpaved_guess_share`): an untagged
+  `tracktype=grade2` otherwise priced like asphalt for a 28 mm tyre.
 - `unpaved` — gravel, track and dirt, where the surface is actually mapped. An unsurveyed
   way is never *rewarded* as unpaved; guessing would hand out credit for silence.
 - `roughness` — how broken the surface is, from `surface`, `smoothness` and `tracktype`.
@@ -123,7 +131,21 @@ cost = length × (1 + hard) × budget_ratio ** tanh(net / NET_SCALE)
 `net` is the weighted mean of how well the way matches the preferences you actually
 expressed — `neutral` contributes nothing and does not dilute the rest. `hard` carries
 what is not a matter of taste: being past your capability, unsurveyed ground, severed
-fragments, and the effort of climbing. A way you like costs **less than its own length**,
+fragments, the effort of climbing, and — for a rider who avoids it — traffic above an
+ordinary way:
+
+```
+excess  = max(0, (stress − traffic_from) / (1 − traffic_from))
+traffic = ENGINE.traffic × |strength| × excess²
+```
+
+`traffic_from` is a tertiary's stress, so at `strongly_avoid` a primary road pays about
+1.6 on its rate, a secondary 0.6, and a tertiary nothing. It sits in `hard` because the
+preference factor is capped by the detour budget: before it existed, a stress-0.95
+primary cost at most `budget_ratio` times its length, and signed route 23 at Machilly
+lost to 1.1 km of Route du Pays de la Côte by 2%. A first version started at an ordinary
+way instead and charged every tertiary 0.4 — which are the quiet roads riders here
+choose — and sent a road rider to Saxel over the Voirons on unmapped gravel. A way you like costs **less than its own length**,
 which is what lets a detour pay for itself; the old model charged full distance and only
 ever discounted the penalties on top of it, so the cheapest possible edge still cost its
 own length and no scenic line could ever beat a shorter plain one.
