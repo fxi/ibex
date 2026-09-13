@@ -38,7 +38,7 @@ Run:
 
 ```sh
 node --import tsx scripts/gen_coudry_fixture.ts
-node --import tsx scripts/audit_coudry.ts tests/fixtures/coudry-graph.json.gz data/fillinges_casino_annemasse_optimal_gravel.gpx
+node --import tsx scripts/audit_coudry.ts tests/fixtures/coudry-graph.json.gz data/tracks/reference/fillinges_casino_annemasse_optimal_gravel.gpx
 ```
 
 On release `g4-20260909-p5-20d228e2`, using Gravel 50 mm and the supplied endpoints:

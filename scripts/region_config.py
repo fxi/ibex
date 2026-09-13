@@ -1,6 +1,6 @@
 """Single definition of the published release: grid window, source halo, and inputs.
 
-Replaces the BBOX constant that was duplicated across fetch_osm.py and prepare_tracks.py.
+Replaces the BBOX constant once duplicated across the Overpass fetcher and prepare_tracks.py.
 Every script derives its geometry from here so a window change is one edit.
 """
 
@@ -17,8 +17,9 @@ FIELD_ZOOM = 15
 # Terrarium DEM zoom: 6.6 m/px at this latitude, up from zoom 12's 13.2 m/px.
 TERRAIN_ZOOM = 13
 
-# Inclusive zoom-9 tile window, best-centred 4x4 block around Geneva (216.7 x 217.2 km).
-WINDOW = (263, 180, 266, 183)
+# Inclusive zoom-9 window from Geneva to Toulon, including the Rhône valley
+# and the French Alps through Briançon and Nice (40 cells).
+WINDOW = (262, 180, 266, 187)
 
 # The source graph is built with a halo so junctions on a cell edge keep their neighbours
 # and the bounded post-passes (utility 1 km, reward 2,347 m) are exact for published cells.
@@ -28,6 +29,10 @@ HALO_KM = 5.0
 EXTRACTS = (
     "europe/france/rhone-alpes",
     "europe/france/franche-comte",
+    "europe/france/bourgogne",
+    "europe/france/auvergne",
+    "europe/france/provence-alpes-cote-d-azur",
+    "europe/france/languedoc-roussillon",
     "europe/switzerland",
     "europe/italy/nord-ovest",
 )

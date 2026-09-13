@@ -1,16 +1,19 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
-import type { Graph, RouteRequest } from "../src/routing/types";
+import type { Point, RouteRequest } from "../src/routing/types";
+import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
 import { loadProfile } from "./profile";
 const wanderer = await loadProfile("wanderer");
-const graph: Graph = JSON.parse(
-  await fs.readFile("data/build/geneva/graph.json", "utf8"),
+const anchors: Point[] = [
+  [6.151, 46.201],
+  [6.171, 46.119],
+];
+const graph = await loadReleaseGraph(
+  process.argv[2] ?? DEFAULT_RELEASE,
+  anchors,
 );
 const request: RouteRequest = {
-  anchors: [
-    [6.151, 46.201],
-    [6.171, 46.119],
-  ],
+  anchors,
   profile: await loadProfile("gravel_40"),
 };
 const experiments = [

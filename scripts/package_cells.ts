@@ -76,7 +76,12 @@ const sources = cells
   )
   .sort()
   .join("|");
-// Cell extracts carry no provenance of their own, so fall back to the release clip.
+// Prefer the cells' provenance; a custom build must not inherit the date of an
+// unrelated release clip at the default path. Older builds need the fallback.
+const cellTimestamps = cells
+  .map((c) => c.manifest.osmTimestamp as string | undefined)
+  .filter((date): date is string => !!date && date !== "unknown")
+  .sort();
 let releaseStamp = "";
 try {
   releaseStamp =
@@ -86,11 +91,8 @@ try {
   releaseStamp = "";
 }
 const osmTimestamp =
+  cellTimestamps[0] ||
   releaseStamp ||
-  (cells[0].manifest.osmTimestamp &&
-  cells[0].manifest.osmTimestamp !== "unknown"
-    ? cells[0].manifest.osmTimestamp
-    : "") ||
   "unknown";
 const edition = osmTimestamp.slice(0, 10).replace(/-/g, "");
 const release = `g${COST_MODEL_VERSION}-${edition}-p${PREPROCESSOR_VERSION}-${shortHash(sources)}`;

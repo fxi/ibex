@@ -11,7 +11,7 @@ The main runtime is a Vite/React/TypeScript app. Important existing areas are:
 - `src/offline/store.ts`: IndexedDB/OPFS pack storage, manifest validation, checksums, resumable installation, removal, and storage checks.
 - `src/workers/route.worker.ts`: current single-pack graph loading and corridor/reference routing.
 - `src/workers/data.worker.ts`: pack installation and removal worker.
-- `scripts/fetch_osm.py`, `scripts/build_region.py`, and `scripts/package_region.ts`: source extraction, graph construction, and pack packaging.
+- `scripts/fetch_osm.py`, `scripts/build_region.py`, and `scripts/package_region.ts`: source extraction, graph construction, and pack packaging. (Since replaced by the grid pipeline in `docs/release-pipeline.md`; `fetch_osm.py` and `package_region.ts` are removed.)
 - `public/packs/test`: small checked-in fixture used by browser tests. Generated Geneva artifacts are under ignored `data/build` and `public/packs/geneva` paths.
 
 The current manifest schema is version 1 and describes one pack with an id, version, geographic bbox, cost-model version, attribution, and checksummed files. Current graph chunks are gzip-compressed JSON despite their `.bin` extension; they are a compatibility format and should remain readable while the new format is introduced. The application uses IndexedDB database `cyclatractor-v1`, with OPFS preferred when available.

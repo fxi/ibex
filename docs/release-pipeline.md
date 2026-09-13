@@ -20,6 +20,35 @@ VITE_CATALOGUE_URL=/cyclatractor/packs/geneva-grid/catalogue.json npm run dev
 `scripts/region_config.py` is the single definition of the window, halo, and zooms. Nothing
 else hardcodes a bbox.
 
+## Geneva–Toulon coverage
+
+The default window is now z9, x 262–266 / y 180–187: 40 cells covering
+4.21875–7.734375° E and 43.068888–47.040182° N. It includes the Rhône valley
+through Lyon, Valence, Avignon and Arles, and the Alps through Grenoble,
+Briançon and Nice, with Marseille and Toulon on the southern edge.
+The source extracts include Bourgogne, Auvergne, Provence-Alpes-Côte d’Azur
+and Languedoc-Roussillon in addition to the original four extracts.
+
+For an isolated rebuild that preserves the previous build and packs until validation:
+
+```sh
+uv run scripts/fetch_extracts.py --directory data/pbf/geneva-toulon
+uv run scripts/clip_region.py --directory data/pbf/geneva-toulon --output data/pbf/geneva-toulon/release.osm.pbf
+uv run scripts/fetch_extracts.py --directory data/pbf/geneva-toulon --prune   # frees ~2.8 GB
+uv run scripts/global_splits.py --input data/pbf/geneva-toulon/release.osm.pbf --output data/derived/geneva-toulon/split-nodes.bin
+uv run scripts/extract_cells.py --input data/pbf/geneva-toulon/release.osm.pbf --directory data/pbf/geneva-toulon/cells
+uv run scripts/build_cells.py --extracts data/pbf/geneva-toulon/cells --output data/build/geneva-toulon/cells --split-nodes data/derived/geneva-toulon/split-nodes.bin --jobs 3
+node --max-old-space-size=8000 --import tsx scripts/package_cells.ts data/build/geneva-toulon/cells data/build/geneva-toulon/packs
+uv run scripts/publish_release.py --release data/build/geneva-toulon/packs
+node --import tsx scripts/verify_release.ts data/build/geneva-toulon/packs
+rm -r data/pbf/geneva-toulon/cells   # once both checks pass
+```
+
+`publish_release.py --release` verifies local checksums without uploading; `verify_release.ts`
+decodes every block and routes Marseille→Toulon across a seam. All neighbouring cells
+must be rebuilt together using the new release-wide split nodes; do not combine old
+Geneva packs with newly built southern packs. Elevation sampling remains enabled.
+
 ## Why each stage exists
 
 **`fetch_extracts.py`** replaces the Overpass query. The enlarged window returns multiple GB

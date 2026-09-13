@@ -199,14 +199,11 @@ of acceptance today.
 
 ## Build pipeline
 
-```
-scripts/fetch_osm.py       Overpass → data/osm-profiles-v4.json   (296 MB for 58x55 km)
-scripts/build_region.py    → data/build/geneva/{graph.json, basemap.json, manifest.json}
-scripts/package_region.ts  → public/packs/geneva/{graph-*.bin, index.bin, attribution.json,
-                                                 basemap.pmtiles, manifest.json}
-```
+The current grid pipeline is described in [release-pipeline.md](release-pipeline.md). The
+notes below record the pre-grid single-region pipeline (Overpass → `build_region.py` →
+`package_region.ts`), whose scripts and data have since been removed.
 
-`BBOX = [5.80, 45.95, 6.55, 46.45]` is duplicated in `scripts/fetch_osm.py` and
+In that pipeline `BBOX = [5.80, 45.95, 6.55, 46.45]` was duplicated in the Overpass fetcher and
 `scripts/prepare_tracks.py`; `build_region.py` imports it from the latter and **clips every
 edge to it**, which is what truncates the network at the region edge. `id: "geneva"` and
 `name: "Geneva basin"` are hardcoded.

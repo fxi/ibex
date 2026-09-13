@@ -10,6 +10,7 @@ import heapq
 import io
 import json
 import math
+import tempfile
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -218,9 +219,15 @@ def terrain_samples(points, cache, enabled, zoom=TERRAIN_ZOOM):
             )
             response.raise_for_status()
             Image.open(io.BytesIO(response.content)).verify()
-            temporary = path.with_suffix(".partial")
-            temporary.write_bytes(response.content)
-            temporary.replace(path)
+            # Adjacent cell processes share this cache and may fetch the same
+            # tile at once. Each writer needs its own temporary file.
+            with tempfile.NamedTemporaryFile(dir=cache, suffix=".partial", delete=False) as handle:
+                temporary = Path(handle.name)
+                handle.write(response.content)
+            try:
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
             return key, path
         except (httpx.HTTPError, OSError):
             return key, None
@@ -693,10 +700,21 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
                 f"{counts['haloOvershootKm']:.2f} km past its bounds with no global "
                 f"split-node set; run global_splits.py first"
             )
-        if counts["haloOvershootKm"] > 200:
+        # Scheduled ferries legitimately run hundreds of km (Marseille to Tangier, Corsica),
+        # so only road edges are held to the broken-extract cap.
+        road_overshoot = max(
+            (
+                max(bounds[0] - p[0], p[0] - bounds[2], bounds[1] - p[1], p[1] - bounds[3])
+                for edge in owned
+                if edge["highway"] != "ferry"
+                for p in edge["geometry"]
+            ),
+            default=0.0,
+        ) * 111.32
+        if road_overshoot > 200:
             raise ValueError(
                 f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns an edge reaching "
-                f"{counts['haloOvershootKm']:.2f} km past its bounds; the extract is wrong"
+                f"{road_overshoot:.2f} km past its bounds; the extract is wrong"
             )
         edges = owned
         node_ids = {id for edge in edges for id in (edge["from"], edge["to"])}
@@ -823,7 +841,7 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
         "osmTimestamp": osm_timestamp,
         "costModelVersion": 4,
         "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": PREPROCESSOR_VERSION, "layers": source_layers},
-        "terrainSource": "Mapterhorn Terrarium z12" if terrain else None,
+        "terrainSource": f"Mapterhorn Terrarium z{TERRAIN_ZOOM}" if terrain else None,
         "terrainCoverage": round(
             sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3
         ),
@@ -844,8 +862,9 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default="data/osm-profiles-v4.json")
-    parser.add_argument("--output", default="data/build/geneva")
+    # Normally invoked per cell by build_cells.py; the pre-grid default paths are gone.
+    parser.add_argument("--input", required=True, help="Cell extract (.osm.pbf)")
+    parser.add_argument("--output", required=True, help="Cell build directory")
     parser.add_argument("--no-terrain", action="store_true")
     parser.add_argument(
         "--split-nodes",

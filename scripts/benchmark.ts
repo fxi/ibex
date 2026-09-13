@@ -1,10 +1,8 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
-import type { Graph, Point } from "../src/routing/types";
+import type { Point } from "../src/routing/types";
+import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
 import { loadProfile } from "./profile";
-const graph: Graph = JSON.parse(
-  await fs.readFile("data/build/geneva/graph.json", "utf8"),
-);
 const scenarios: { name: string; anchors: Point[] }[] = [
   {
     name: "geneva-saleve",
@@ -28,6 +26,11 @@ const scenarios: { name: string; anchors: Point[] }[] = [
     ],
   },
 ];
+// Scenarios span two cells; merge the release's packs around all of them.
+const graph = await loadReleaseGraph(
+  process.argv[2] ?? DEFAULT_RELEASE,
+  scenarios.flatMap((s) => s.anchors),
+);
 const report = [];
 for (const scenario of scenarios)
   for (const id of ["gravel_40", "road_28", "touring_45"]) {

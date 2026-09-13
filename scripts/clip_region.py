@@ -1,7 +1,7 @@
 """Clip the Geofabrik extracts down to one filtered release pbf.
 
-The tag selection below is a direct translation of the Overpass query this replaces (see
-fetch_osm.py, kept for the legacy pack). Every stage is skipped when its output is already
+The tag selection below is a direct translation of the Overpass query this replaced (the
+removed fetch_osm.py; see git history). Every stage is skipped when its output is already
 present and its inputs are unchanged, and intermediates are deleted as soon as the next
 stage consumes them, because the release only has a few GB of disk to work in.
 """

@@ -1,6 +1,6 @@
 # Ibex
 
-The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, selectable offline map areas, and editable routing models. The first release focuses on the Geneva basin; the map can be browsed worldwide.
+The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, selectable offline map areas, and editable routing models. The data-build window covers Geneva to Toulon, including the Rhône valley and the French Alps; the map can be browsed worldwide.
 
 - **Tracks:** create or duplicate tracks, assign independent models, edit numbered waypoints, show/hide routes, and export GPX. Each draft is saved locally. Use the row’s menu for track actions and **Edit track** for waypoints, color, attractions, elevation, and diagnostics.
 - **Data:** select the zoom-9 map areas you need, inspect coverage and download size, resume interrupted downloads, or remove installed data. Each area is an independently downloadable cell; routes cross freely between installed neighbours.
@@ -60,7 +60,7 @@ node --import tsx scripts/benchmark.ts
 
 Use `--limit 0` to audit every prepared portion. Matching reports distinguish spatial confidence from restriction-aware sequence validity. Repeated/overlapping portions and portions of the same activity share a calibration/evaluation group. `Ride` is unspecified cycling; it is not automatically a road-bike label. Personalization is disabled in this baseline.
 
-The cached OSM response, its hash and timestamp make the build reproducible. Use a new output path to request another snapshot; the fetcher rejects caches created by older queries. If the upstream data is older than a cached base, run `uv run scripts/merge_osm_profiles.py` and build from `data/osm-profiles-v4-merged.json` to retain newer roads. Terrain tiles and upstream attribution are cached under `data/terrain`. Graph tiles retain stable OSM node IDs; nearby geometry is never treated as connectivity.
+Checksum-verified Geofabrik extracts and cached, input-stamped stages make the build reproducible; see [the release pipeline](docs/release-pipeline.md) and `data/README.md` for the data layout. Terrain tiles and upstream attribution are cached under `data/terrain`. Graph tiles retain stable OSM node IDs; nearby geometry is never treated as connectivity.
 
 ## Pack format and storage
 

@@ -74,7 +74,9 @@ def restriction_checker(rules):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=80)
-    parser.add_argument("--graph", default="data/build/geneva/graph.json")
+    parser.add_argument(
+        "--graph", default="data/build/geneva-toulon/cells/9-264-181/graph.json"
+    )
     parser.add_argument("--tracks", default="data/derived/tracks.geojson")
     args = parser.parse_args()
     graph = json.loads(Path(args.graph).read_bytes())
