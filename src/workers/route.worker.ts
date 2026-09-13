@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { toCompiled } from "../routing/compile";
+import { explore } from "../routing/exploration";
 import type { Installed } from "../offline/store";
 import {
   validateAnchors,
@@ -99,7 +100,12 @@ async function compare(
   const fieldView = fieldViewOf(field);
   let corridor: RouteResult | undefined;
   let explored = 0;
-  for (const [expansion, radius] of [2, 5, 12, Infinity].entries()) {
+  const initialRadius = toCompiled(request.profile).detour.corridor_cells;
+  for (const [expansion, radius] of [
+    initialRadius,
+    initialRadius * 2.5,
+    Infinity,
+  ].entries()) {
     self.postMessage({
       id,
       type: "progress",
@@ -139,7 +145,14 @@ async function compare(
   reference.metrics.loadedBytes = loadedBytes;
   reference.metrics.durationMs = performance.now() - referenceStart;
   Object.assign(reference.metrics, extras);
-  return { fieldView, reference, corridor: corridor! };
+  self.postMessage({
+    id,
+    type: "progress",
+    label: "Looking for scenic detours…",
+  });
+  const exploration = explore(graph, request, reference);
+  Object.assign(exploration.metrics, extras, { loadedBytes });
+  return { fieldView, reference, corridor: corridor!, exploration };
 }
 
 function postComparison(
@@ -148,6 +161,7 @@ function postComparison(
     fieldView: FieldView;
     reference: RouteResult;
     corridor: RouteResult;
+    exploration?: RouteResult;
   },
 ) {
   const { reference, corridor } = value;

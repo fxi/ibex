@@ -126,6 +126,13 @@ export type RouteResult = {
   geometry: Point[];
   anchors: Point[];
   cost: number;
+  /** Route-level destination value; travel cost remains separately inspectable. */
+  experience?: {
+    score: number;
+    scenicBonus: number;
+    destination?: Point;
+    candidates: number;
+  };
   components: Components;
   distanceM: number;
   hikeABikeM: number;
@@ -150,6 +157,7 @@ export type RouteResult = {
   corridor?: Point[][];
 };
 export type Comparison = {
+  exploration?: RouteResult;
   reference: RouteResult;
   corridor: RouteResult;
   relativeCost: number | null;

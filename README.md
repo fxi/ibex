@@ -101,11 +101,17 @@ Browser regression tests require `npm run build:test`. It builds an isolated tes
 
 ## Routing profiles and data updates
 
+Profiles that prefer both detouring and scenery now compare the usual route with
+up to eight scenic destination detours. The selected result drives the map and GPX
+export; travel cost and the destination bonus remain separate in diagnostics.
+See [the scenic-detour experiment](docs/scenic-detours.md) for the Coudry audit,
+search limits, and a proposed ride-data calibration phase. No pack rebuild is needed.
+
 Road accepts paved surfaces and ordinary streets/cycleways with unspecified surfaces. It excludes unpaved tracks and undocumented hiking paths. Gravel accepts roads, usable tracks, and paths documented as paved, gravel/compacted, or MTB difficulty 0. Technical MTB paths, mountain hiking trails, very poor surfaces and grade-4/5 tracks are excluded. These are conservative defaults, not a certification of conditions on the ground.
 
 Eligibility applies before waypoint snapping and search. A waypoint with no suitable connection within 250 m produces an explicit failure rather than routing over an unsuitable path. The original Geneva → Voirons example ends on an off-road path: it works for Gravel; Road requires a road-access endpoint, such as [6.3642228, 46.231931] on Route des Voirons.
 
-The map, route statistics, and GPX export use the cheaper successful full-graph/corridor result. The corridor remains an experimental candidate, not an automatic final choice. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs and pre-grid region packs are removed on start-up; save the areas you need after refreshing the app.
+The map, route statistics, and GPX export use the scenic exploration result when available, otherwise the cheaper successful full-graph/corridor result. Exploration compares destination value as well as travel cost; the full-graph baseline remains available in diagnostics. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs and pre-grid region packs are removed on start-up; save the areas you need after refreshing the app.
 
 Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
 

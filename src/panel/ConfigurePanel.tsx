@@ -310,11 +310,20 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
           (shownComparison ? (
             <>
               <p>
-                Cost difference:{" "}
+                Corridor cost difference:{" "}
                 {shownComparison.relativeCost === null
                   ? "unavailable"
                   : `${(shownComparison.relativeCost * 100).toFixed(1)}%`}
               </p>
+              {shownComparison.exploration?.experience && (
+                <p>
+                  Scenic detours:{" "}
+                  {shownComparison.exploration.experience.candidates} checked
+                  {shownComparison.exploration.experience.scenicBonus > 0
+                    ? " · scenic destination included"
+                    : " · original route retained"}
+                </p>
+              )}
               <p>
                 Full graph: {shownComparison.reference.metrics.explored}{" "}
                 explored · Corridor: {shownComparison.corridor.metrics.explored}{" "}
