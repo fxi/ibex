@@ -67,12 +67,20 @@ export const SIGNAL_KEYS = PREFERENCE_KEYS.filter(
 export const CLIMB_AVERSION = (strength: number) => 1 - 0.6 * strength;
 
 /**
- * How far a rider will go out of their way for everything else.
+ * How much the line matters against the distance.
  *
- * `budget_ratio` is the honest reading of each word: at `prefer`, a perfect line is worth
- * riding 1.5x the direct distance for. `rate_floor` is its reciprocal, and it is what
- * makes that true — see `scoreEdge`. `corridor_cells` widens the search enough that a
- * route that long is actually reachable; at 700 m per cell, 8 cells is 5.6 km of slack.
+ * `budget_ratio` is how many metres of an ideal way are worth one metre of an ordinary
+ * one, and — both sides of the preference factor being symmetric — how many metres of
+ * an ordinary way one metre of the worst way costs. At `prefer` the rider will ride 2.5 km
+ * of the gravel they came for rather than 1 km of village road. `rate_floor` is its
+ * reciprocal; see `scoreEdge`. `corridor_cells` widens the search enough that a route
+ * that long is actually reachable; at 700 m per cell, 10 cells is 7 km of slack.
+ *
+ * The first calibration (1.5 at `prefer`, 2 at `strongly_prefer`) read "detour" as a
+ * tolerance on the shortest path. On the Geneva release that capped the gap between the
+ * best 5% of ways and the median at about 1.4x, so a rider who strongly avoided built-up
+ * areas still went through Clos de Loëx rather than take the tracks along the Foron four
+ * minutes away. At the exploring end the shortest path is not the goal; the line is.
  */
 export const DETOUR: Record<
   Level,
@@ -83,13 +91,13 @@ export const DETOUR: Record<
     rate_floor: 1 / 1.05,
     corridor_cells: 2,
   },
-  avoid: { budget_ratio: 1.15, rate_floor: 1 / 1.15, corridor_cells: 3 },
-  neutral: { budget_ratio: 1.25, rate_floor: 1 / 1.25, corridor_cells: 5 },
-  prefer: { budget_ratio: 1.5, rate_floor: 1 / 1.5, corridor_cells: 8 },
+  avoid: { budget_ratio: 1.2, rate_floor: 1 / 1.2, corridor_cells: 3 },
+  neutral: { budget_ratio: 1.5, rate_floor: 1 / 1.5, corridor_cells: 6 },
+  prefer: { budget_ratio: 2.5, rate_floor: 1 / 2.5, corridor_cells: 10 },
   strongly_prefer: {
-    budget_ratio: 2.0,
-    rate_floor: 1 / 2.0,
-    corridor_cells: 13,
+    budget_ratio: 4,
+    rate_floor: 1 / 4,
+    corridor_cells: 16,
   },
 };
 
@@ -127,11 +135,16 @@ export const REFERENCE: Record<SignalKey, number> = {
  * Only relative values matter: the weighted mean is normalized, so these decide which
  * preference wins an argument, not how far the router will go overall. That is `detour`.
  */
+/**
+ * The ground under the wheel outweighs the view from it: once preferred virtues were
+ * credited in full, forest cover alone paid for 965 m of `mtb:scale=2` on the Sauget
+ * crossing for a gravel rider who avoids technical ground, more than the trail bike took.
+ */
 export const IMPORTANCE: Record<SignalKey, number> = {
   traffic_stress: 1.4,
   unpaved: 1,
-  roughness: 1,
-  technicality: 1,
+  roughness: 1.5,
+  technicality: 2,
   scenic: 1.2,
   urbanity: 0.9,
   cycle_infrastructure: 0.7,
@@ -169,7 +182,11 @@ export const NET_SCALE = 0.25;
  * three units of reward for being unremarkable — which buried the single traffic penalty
  * it had honestly earned and priced a truck route below a signed cycle route.
  *
- * So: charged in full for what is wrong with it, credited modestly for what is right.
+ * So: charged in full for what is wrong with it, credited modestly for lacking what the
+ * rider avoids. What the rider *prefers* — gravel, forest, a signed route — is a virtue,
+ * not an absence, and is credited in full. Discounting that too made every preferred
+ * thing an option rather than the goal: a gravel rider's best tracks sat at 1.2x their
+ * length on the Geneva release, against a floor of 0.67.
  */
 export const REWARD_SHARE = 0.35;
 
@@ -222,6 +239,11 @@ export const ENGINE = {
   unpaved_guess_share: 0.7,
   /** Added per unit of `edge.uncertainty` — unsurveyed ways are a gamble, not a dislike. */
   uncertainty: 0.25,
+  /**
+   * The share of preference credit an off-street way earns when neither `surface` nor
+   * `tracktype` describes its ground. Penalties still count in full. See `riddenRate`.
+   */
+  unsurveyed_credit: 0.4,
   /**
    * Added per unit of `1 - edge.utility`, the reach of low-stress road within a kilometre.
    *

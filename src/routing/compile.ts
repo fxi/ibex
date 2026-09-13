@@ -50,6 +50,15 @@ export type CompiledProfile = {
 export function compileProfile(profile: Profile): CompiledProfile {
   const detourLevel = profile.preferences.detour;
   const detour = DETOUR[detourLevel];
+  const capability = deriveCapability(profile.setup);
+  // What counts as rough depends on what is underneath you. Against the global reference,
+  // "avoid roughness" charged a 50 mm tyre for every gravel road and grade3 track — the
+  // very ground its "prefer unpaved" was asking for — and priced them above the tarmac
+  // beside them. Ordinary for this bike is whatever it rides comfortably.
+  const reference = (key: SignalKey) =>
+    key === "roughness"
+      ? Math.max(REFERENCE[key], capability.surface_roughness.comfortable_until)
+      : REFERENCE[key];
   const weights = Object.fromEntries(
     SIGNAL_KEYS.map((key) => {
       const level = profile.preferences[key];
@@ -60,7 +69,7 @@ export function compileProfile(profile: Profile): CompiledProfile {
           level,
           weight: Math.abs(strength) * IMPORTANCE[key],
           sign: Math.sign(strength),
-          reference: REFERENCE[key],
+          reference: reference(key),
         }),
       ];
     }),

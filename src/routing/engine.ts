@@ -8,8 +8,9 @@ import {
   type SignalKey,
 } from "./vocabulary";
 import { exceedance } from "./capability";
-import { edgeSignals, type Signals } from "./signals";
+import { edgeSignals, scenicValue, type Signals } from "./signals";
 import { eligible, isFerry, rideClass, traversalSegments } from "./eligibility";
+import { isStreet } from "./tagging";
 import type {
   Attraction,
   Components,
@@ -155,18 +156,26 @@ function riddenRate(
     unpaved: s.unpaved,
     roughness: s.roughness,
     technicality: technical,
-    scenic: edge.reward ?? 0,
+    scenic: scenicValue(edge),
     urbanity: edge.urban ?? 0,
     cycle_infrastructure: edge.cyclingNetwork ?? 0,
   };
 
+  // Off the street network, a way whose ground nobody described is a gamble, and the
+  // forest around it says nothing about whether it can be ridden. Its defects are
+  // charged in full, but its virtues are only partly believed: full scenic credit
+  // made a bare `mtb:scale=1` footpath through a wood the cheapest way on a gravel
+  // route near Arthaz — and unrideable when ridden.
+  const trust =
+    s.surfaceKnown || isStreet(edge) ? 1 : ENGINE.unsurveyed_credit;
   let sum = 0,
     weight = 0;
   for (const key of Object.keys(value) as SignalKey[]) {
     const w = p.weights[key];
     if (w.weight === 0) continue;
     // Positive is worse than an ordinary way in the direction this rider cares about,
-    // negative is better. Only the bad side counts in full.
+    // negative is better. A virtue the rider asked for counts in full; merely lacking
+    // a defect they avoid is discounted by `REWARD_SHARE`.
     let badness = -w.sign * deviation(value[key], w.reference);
     if (key === "unpaved" && !s.surfaceKnown) {
       // Never reward a guess: with no `surface` tag, "unpaved" is read off the road
@@ -175,7 +184,11 @@ function riddenRate(
       if (w.sign >= 0 || badness <= 0) continue;
       badness *= ENGINE.unpaved_guess_share;
     }
-    sum += w.weight * (badness > 0 ? badness : badness * REWARD_SHARE);
+    sum +=
+      w.weight *
+      (badness > 0
+        ? badness
+        : badness * (w.sign > 0 ? 1 : REWARD_SHARE) * trust);
     weight += w.weight;
   }
 

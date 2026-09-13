@@ -12,7 +12,7 @@ import fs from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { eligible } from "../src/routing/eligibility";
 import { scoreEdge, total } from "../src/routing/engine";
-import { edgeSignals } from "../src/routing/signals";
+import { edgeSignals, scenicValue } from "../src/routing/signals";
 import { REFERENCE } from "../src/routing/vocabulary";
 import type { Graph } from "../src/routing/types";
 import { loadProfile } from "./profile";
@@ -53,7 +53,7 @@ for (const e of edges) {
   columns.unpaved.push(s.unpaved);
   columns.roughness.push(s.roughness);
   columns.technicality.push(Math.max(s.technicalUp, s.technicalDown));
-  columns.scenic.push(e.reward ?? 0);
+  columns.scenic.push(scenicValue(e));
   columns.urbanity.push(e.urban ?? 0);
   columns.cycle_infrastructure.push(e.cyclingNetwork ?? 0);
   rates.push(total(scoreEdge(e, profile)) / e.length);
@@ -76,5 +76,5 @@ console.log(
   `\nrate per metre          ${fmt(r.p05)} ${fmt(r.p25)} ${fmt(r.p50)} ${fmt(r.p75)} ${fmt(r.p95)}`,
 );
 console.log(
-  `floor for this profile  ${fmt(1 / Number(process.env.BUDGET ?? 1.5))}  (the rate an ideal way would reach; real ways sit above it, since\n                        REWARD_SHARE credits virtues at a third of what defects cost)`,
+  `floor for this profile  ${fmt(1 / Number(process.env.BUDGET ?? 2.5))}  (the rate an ideal way would reach; real ways sit above it, since\n                        no way is ideal on every signal, and lacking an avoided defect is\n                        credited at REWARD_SHARE)`,
 );

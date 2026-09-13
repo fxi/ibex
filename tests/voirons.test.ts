@@ -28,9 +28,11 @@ it("routes the Sauget crossing for every profile, by a line that suits each", ()
     const r = route(graph, { profile, anchors }, "reference");
     expect(r.status, profile.id).toBe("ok");
     // These two points are 190 m apart and every way across is a long way round. That is
-    // the real answer here; the old failure was that gravel got no answer at all.
+    // the real answer here; the old failure was that gravel got no answer at all. The
+    // wanderer, keenest to explore, rides about 6.8 km: it trades 1.6 km of paths nobody
+    // described for mapped ground and dirt paths, and climbs less doing it.
     expect(r.distanceM, profile.id).toBeGreaterThan(2500);
-    expect(r.distanceM, profile.id).toBeLessThan(6500);
+    expect(r.distanceM, profile.id).toBeLessThan(8000);
   }
 
   const byId = new Map(graph.edges.map((e) => [e.id, e]));

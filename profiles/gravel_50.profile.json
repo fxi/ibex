@@ -15,16 +15,16 @@
     "rider": {
       "mass_kg": 80,
       "sustained_w_per_kg": 3.2,
-      "tech_skill": 0.7,
-      "descend_confidence": 0.7
+      "tech_skill": 0.8,
+      "descend_confidence": 0.9
     }
   },
   "preferences": {
-    "detour": "prefer",
+    "detour": "strongly_prefer",
     "traffic_stress": "strongly_avoid",
-    "unpaved": "prefer",
+    "unpaved": "strongly_prefer",
     "roughness": "avoid",
-    "technicality": "avoid",
+    "technicality": "neutral",
     "climbing": "neutral",
     "scenic": "strongly_prefer",
     "urbanity": "strongly_avoid",

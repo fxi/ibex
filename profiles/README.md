@@ -71,10 +71,12 @@ Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
 (`REFERENCE` in `src/routing/vocabulary.ts`), so a preference both penalises and rewards:
 "strongly avoid traffic" makes a main road expensive *and* makes the quiet lane cheap.
 
-- `detour` — how much further you will ride for everything below. `prefer` means you will
-  accept roughly 1.5× the direct distance for a better line; `strongly_prefer`, 2×. It
-  also widens the search corridor, because a route that long has to be reachable. This is
-  the knob that decides whether the app wanders at all.
+- `detour` — how much the line matters against the distance. It is the price ratio between
+  an ideal way and an ordinary one: at `prefer` 2.5 km of the ground you asked for costs
+  the same as 1 km of ordinary road, at `strongly_prefer` 4 km, at `neutral` 1.5 km. It is
+  not a cap on route length — a route is as long as the good line it follows — and it also
+  widens the search corridor so that line is reachable. This is the knob that decides
+  whether the app explores or commutes.
 - `traffic_stress` — estimated from road class and cycle infrastructure in the pack, not
   from live traffic. Avoiding it does two things: it scores ways like every other
   preference, and it charges stress above a tertiary as a hazard outside the detour
@@ -85,16 +87,29 @@ Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
 - Unpaved ground with no mapped `surface` is never rewarded, but a rider who avoids
   unpaved pays a share of the likely penalty (`ENGINE.unpaved_guess_share`): an untagged
   `tracktype=grade2` otherwise priced like asphalt for a 28 mm tyre.
-- `unpaved` — gravel, track and dirt, where the surface is actually mapped. An unsurveyed
-  way is never *rewarded* as unpaved; guessing would hand out credit for silence.
-- `roughness` — how broken the surface is, from `surface`, `smoothness` and `tracktype`.
+- `unpaved` — gravel, track and dirt, where the ground is actually described: a `surface`
+  tag, or `tracktype` grade2–5. An unsurveyed way is never *rewarded* as unpaved; guessing
+  would hand out credit for silence, and a barely tagged path should not beat a mapped
+  gravel track.
+- `roughness` — how broken the surface is, from `surface`, `smoothness` and `tracktype`,
+  judged against what this bike rides comfortably (`surface_roughness.comfortable_until`
+  from `setup`). "Avoid roughness" on 50 mm tyres does not mean avoid gravel roads.
 - `technicality` — mapped MTB and hiking difficulty, judged separately uphill and down.
 - `climbing` — whether height gain is the point or the price. Unlike the others this
   scales a cost that already exists (`ENGINE.climb_effort`, 5 equivalent metres per metre
   climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×.
-- `scenic` — proximity to viewpoints, peaks, forest and good ground, decayed backwards
-  along the direction of travel. It selects between lines; it does not invent landmarks or
-  promise a particular detour length.
+- `scenic` — the better of proximity to viewpoints, peaks, forest and good ground (decayed
+  backwards along the direction of travel) and the way's own forest cover and gravel
+  quality. Proximity alone rated every road beside a wood like the path through it. It
+  selects between lines; it does not invent landmarks or promise a particular detour
+  length. Castles and other historic sites are not in the pack yet.
+
+A preference you *prefer* is credited in full where a way has it. Merely lacking something
+you *avoid* is credited at `REWARD_SHARE`, so a smooth main road cannot collect a reward
+for every defect it does not have. Off the street network, a way whose ground neither
+`surface` nor `tracktype` describes earns only `ENGINE.unsurveyed_credit` of any credit —
+the forest around a bare footpath says nothing about whether it can be ridden — while
+its defects are charged in full.
 - `urbanity` — how built-up the surroundings are, from land use and settlement density. A
   quiet residential street has low traffic stress and high urbanity.
 - `cycle_infrastructure` — membership of mapped cycle and MTB route relations.

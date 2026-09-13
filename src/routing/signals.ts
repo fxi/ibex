@@ -167,16 +167,25 @@ export function edgeSignals(edge: Edge): Signals {
       unknownPath,
     );
 
-  const known = edge.surface !== "unknown" && edge.surface !== undefined;
-  const unpaved = known
+  const tagged = edge.surface !== "unknown" && edge.surface !== undefined;
+  // `tracktype` grade2 and worse describes the ground itself — gravel, earth, grass — so
+  // it is evidence of unpaved ground as much as `surface` is. grade1 is "solid", which
+  // is as often asphalt as compacted gravel, and stays a guess. Around Geneva most farm
+  // and forest tracks carry a tracktype and no surface, and without this none of them
+  // could ever earn the credit a gravel rider is looking for.
+  const graded = !tagged && UNPAVED_TRACKTYPES.has(tags.tracktype ?? "");
+  const known = tagged || graded;
+  const unpaved = tagged
     ? PAVED_SURFACES.has(edge.surface)
       ? 0
       : 1
-    : isStreet(edge)
-      ? 0.1
-      : edge.highway === "track"
-        ? 0.8
-        : 0.7;
+    : graded
+      ? 1
+      : isStreet(edge)
+        ? 0.1
+        : edge.highway === "track"
+          ? 0.8
+          : 0.7;
 
   return {
     roughness,
@@ -187,3 +196,18 @@ export function edgeSignals(edge: Edge): Signals {
     curvature: curvature(edge.geometry, edge.length),
   };
 }
+
+const UNPAVED_TRACKTYPES = new Set(["grade2", "grade3", "grade4", "grade5"]);
+
+/**
+ * How good the surroundings of a way are, 0 to 1.
+ *
+ * `reward` is decayed distance to the nearest attractor ahead, which is right for
+ * discounting a hard section with something good after it, and wrong on its own for
+ * telling lines apart: with forest a 0.5-strength source, every road within a few hundred
+ * metres of a wood reads about the same as the path through it. The way's own forest
+ * cover and gravel quality say what riding *this* line is like, so the better of the
+ * three is used.
+ */
+export const scenicValue = (edge: Edge): number =>
+  Math.max(edge.reward ?? 0, edge.forest ?? 0, edge.quality ?? 0);

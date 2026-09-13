@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GRAVEL, ROAD, TOURING, TRAIL } from "./helpers";
+import { GRAVEL, ROAD, TOURING, TRAIL, withPreferences } from "./helpers";
 import {
   distance,
   Heap,
@@ -79,9 +79,14 @@ describe("routing invariants", () => {
       costs: Array(width * height).fill(1),
       paths: [Array.from({ length: b - a + 1 }, (_, i) => a + i)],
     };
+    // The crossing sits 10 cells off the straight line. A rider who prefers detours opens
+    // a corridor that wide from the start, so pin a narrower one: this is about expansion.
     const result = route(
       g,
-      { anchors: [points[0], points[2]], profile: GRAVEL },
+      {
+        anchors: [points[0], points[2]],
+        profile: withPreferences(GRAVEL, { detour: "neutral" }),
+      },
       "corridor",
       f,
     );
@@ -393,9 +398,11 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       g.edges[0].length = 100;
       g.edges[0].grades = [[100, 0.1]];
       // A real technical shortcut is unsurfaced; a paved way carrying an MTB grade is a
-      // tagging oddity and tells us nothing about how the two profiles differ.
+      // tagging oddity and tells us nothing about how the two profiles differ. Scale 2,
+      // not 1: 100 m of easy singletrack past a viewpoint is a fair choice for an expert
+      // on 40 mm tyres, and the point here is ground the gravel bike is not built for.
       g.edges[0].surface = "ground";
-      g.edges[0].tags = { "mtb:scale": "1" };
+      g.edges[0].tags = { "mtb:scale": "2" };
       g.edges[0].reward = 1;
       g.edges[1].length = 80;
       g.edges[1].grades = [[80, 0]];
