@@ -147,75 +147,106 @@ const intersect = (a: BBox, b: BBox): BBox => [
 ];
 
 /**
+ * One leg's comparison. `exploration` always holds the route chosen for the leg, so legs
+ * joined through it carry each leg's own choice.
+ */
+export type LegComparison = Comparison & {
+  fieldView: FieldView;
+  exploration: RouteResult;
+};
+
+/** Route leg `leg` (one-based) of `request.anchors`, over the area of its two waypoints. */
+export async function routeLeg(
+  source: LegGraphSource,
+  request: RouteRequest,
+  leg: number,
+  coverage: BBox,
+  progress: (label: string) => void = () => {},
+): Promise<LegComparison> {
+  const legs = request.anchors.length - 1;
+  const prefix = legs > 1 ? `Leg ${leg} of ${legs} · ` : "";
+  const anchors: Point[] = [request.anchors[leg - 1], request.anchors[leg]];
+  const area = searchArea(anchors);
+  source.retain?.(area);
+  progress(`${prefix}Loading map data…`);
+  const loaded = await source.load(area);
+  // The corridor field is laid over the graph bbox; keep it to the leg, not the region.
+  const graph: Graph = {
+    ...loaded,
+    bbox: bboxIntersects(loaded.bbox, area)
+      ? intersect(loaded.bbox, area)
+      : loaded.bbox,
+  };
+  const value = compareOn(graph, { ...request, anchors }, coverage, (label) =>
+    progress(prefix + label),
+  );
+  // A search that ran out of graph next to uninstalled coverage is missing data, not a
+  // disconnected network.
+  if (value.reference.status === "no-path") {
+    const needed = source.missing(area);
+    if (needed.length)
+      for (const r of [value.reference, value.corridor, value.exploration]) {
+        r.status = "missing-cells";
+        r.missingCells = needed;
+      }
+  }
+  return { ...value, exploration: selectedRoute(value)! };
+}
+
+/** Join leg comparisons, first to last, into the comparison for the whole route. */
+export function joinComparison(
+  legs: LegComparison[],
+  anchors: Point[],
+): Comparison {
+  const reference = joinLegs(
+    legs.map((c) => c.reference),
+    anchors,
+  );
+  const corridor = joinLegs(
+    legs.map((c) => c.corridor),
+    anchors,
+  );
+  return {
+    fieldView: {
+      type: "FeatureCollection",
+      features: legs.flatMap((c) => c.fieldView.features),
+    },
+    reference,
+    corridor,
+    exploration: joinLegs(
+      legs.map((c) => c.exploration),
+      anchors,
+    ),
+    relativeCost: relativeCost(reference, corridor),
+  };
+}
+
+/**
  * Route every leg in order and join them. Legs run one at a time and each leg's graph is
- * released before the next is loaded, so peak memory is that of the largest leg.
+ * released before the next is loaded, so peak memory is that of the largest leg. A leg
+ * `cached` supplies is not routed again; `onLeg` sees every leg that was.
  */
 export async function routeLegs(
   source: LegGraphSource,
   request: RouteRequest,
   coverage: BBox,
   progress: (label: string) => void = () => {},
+  hooks: {
+    cached?: (leg: number) => LegComparison | undefined;
+    onLeg?: (leg: number, value: LegComparison) => void;
+  } = {},
 ): Promise<Comparison> {
-  const legs = request.anchors.length - 1;
-  const done: (Comparison & { fieldView: FieldView })[] = [];
-  const started = performance.now();
-  for (let leg = 1; leg <= legs; leg++) {
-    const prefix = legs > 1 ? `Leg ${leg} of ${legs} · ` : "";
-    const anchors: Point[] = [request.anchors[leg - 1], request.anchors[leg]];
-    const area = searchArea(anchors);
-    source.retain?.(area);
-    progress(`${prefix}Loading map data…`);
-    const loaded = await source.load(area);
-    // The corridor field is laid over the graph bbox; keep it to the leg, not the region.
-    const graph: Graph = {
-      ...loaded,
-      bbox: bboxIntersects(loaded.bbox, area)
-        ? intersect(loaded.bbox, area)
-        : loaded.bbox,
-    };
-    const value = compareOn(graph, { ...request, anchors }, coverage, (label) =>
-      progress(prefix + label),
-    );
-    // A search that ran out of graph next to uninstalled coverage is missing data, not a
-    // disconnected network.
-    if (value.reference.status === "no-path") {
-      const needed = source.missing(area);
-      if (needed.length)
-        for (const r of [value.reference, value.corridor, value.exploration!]) {
-          r.status = "missing-cells";
-          r.missingCells = needed;
-        }
+  const done: LegComparison[] = [];
+  for (let leg = 1; leg < request.anchors.length; leg++) {
+    let value = hooks.cached?.(leg);
+    if (!value) {
+      value = await routeLeg(source, request, leg, coverage, progress);
+      hooks.onLeg?.(leg, value);
     }
     done.push(value);
-    const selected = selectedRoute(value);
-    if (selected?.status !== "ok") break;
+    if (value.exploration.status !== "ok") break;
   }
-  const reference = joinLegs(
-    done.map((c) => c.reference),
-    request.anchors,
-  );
-  const corridor = joinLegs(
-    done.map((c) => c.corridor),
-    request.anchors,
-  );
-  // Each leg's choice is made against that leg's own reference, then the choices joined:
-  // `exploration` is what `selectedRoute` returns first, so it carries the per-leg picks.
-  const exploration = joinLegs(
-    done.map((c) => selectedRoute(c)!),
-    request.anchors,
-  );
-  for (const r of [reference, corridor, exploration])
-    r.metrics.durationMs = performance.now() - started;
-  return {
-    fieldView: {
-      type: "FeatureCollection",
-      features: done.flatMap((c) => c.fieldView?.features ?? []),
-    },
-    reference,
-    corridor,
-    exploration,
-    relativeCost: relativeCost(reference, corridor),
-  };
+  return joinComparison(done, request.anchors);
 }
 
 /**

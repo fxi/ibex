@@ -1,5 +1,8 @@
 import { test, expect, saveMapData } from "./fixtures";
 
+// An edit reroutes only the legs it touched, and the status says how many it kept.
+const routeReady = /^Route ready( · \d+ of \d+ legs reused)?$/;
+
 test("route handle and include action insert intermediate waypoints", async ({
   page,
 }) => {
@@ -10,7 +13,7 @@ test("route handle and include action insert intermediate waypoints", async ({
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
+  await expect(page.getByText(routeReady)).toBeVisible();
   const before = await page.locator(".anchor-marker-wrap").count();
   const point = await page.locator(".map").evaluate(async (element) => {
     const map = (element as HTMLElement & { _map: any })._map;
@@ -35,13 +38,16 @@ test("route handle and include action insert intermediate waypoints", async ({
   await page.mouse.move(point.x + 20, point.y + 10, { steps: 5 });
   await page.mouse.up();
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 1);
-  await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
+  await expect(page.getByText(routeReady)).toBeVisible();
   await page.mouse.click(point.x - 40, point.y - 20, { button: "right" });
   await page
     .getByRole("button", { name: "Include in route", exact: true })
     .click();
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 2);
-  await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
+  // Including a point splits one of the two legs; the other is reused, not rerouted.
+  await expect(
+    page.getByText("Route ready · 1 of 3 legs reused", { exact: true }),
+  ).toBeVisible();
   const canvas = page.locator(".map canvas");
   const touch = { identifier: 0, clientX: point.x - 60, clientY: point.y - 30 };
   await canvas.dispatchEvent("touchstart", {

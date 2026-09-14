@@ -7,7 +7,7 @@ import {
   validateNode,
 } from "../offline/validate";
 import { emptyComponents } from "../routing/engine";
-import { relativeCost, routeLegs } from "../routing/legs";
+import { relativeCost, routeLeg, type LegGraphSource } from "../routing/legs";
 import { CellGraphProvider, searchArea } from "../routing/provider";
 import type { BBox } from "../geo/grid";
 import type { Comparison, Point, RouteResult } from "../routing/types";
@@ -63,6 +63,8 @@ type CellInput = {
   packs: Installed[];
   published?: { id: string; bbox: BBox }[];
   request: RouteRequest;
+  /** One-based legs to route; the caller already holds the rest. Every leg when absent. */
+  legs?: number[];
 };
 
 async function routeCells(data: CellInput) {
@@ -107,29 +109,33 @@ async function routeCells(data: CellInput) {
     return;
   }
 
-  const value = await routeLegs(
-    {
-      async load(bbox) {
-        const graph = await provider.load(bbox);
-        for (const node of graph.nodes) validateNode(node);
-        for (const edge of graph.edges) validateEdge(edge);
-        return graph;
-      },
-      missing: (bbox) => provider.missing(bbox),
-      retain: (bbox) => provider.retain(bbox),
+  const source: LegGraphSource = {
+    async load(bbox) {
+      const graph = await provider.load(bbox);
+      for (const node of graph.nodes) validateNode(node);
+      for (const edge of graph.edges) validateEdge(edge);
+      return graph;
     },
-    request,
-    coverage,
-    (label) => self.postMessage({ id, type: "progress", label }),
-  );
-  const extras = {
-    loadedBytes: provider.stats.storedBytes,
-    blocks: provider.stats.blocks,
-    cells: provider.stats.cells,
+    missing: (bbox) => provider.missing(bbox),
+    retain: (bbox) => provider.retain(bbox),
   };
-  for (const r of [value.reference, value.corridor, value.exploration])
-    if (r) Object.assign(r.metrics, extras);
-  postComparison(id, value);
+  const legs = data.legs ?? request.anchors.slice(1).map((_, i) => i + 1);
+  // Each leg is posted as it finishes, so its work survives a cancel or a later edit.
+  for (const leg of legs) {
+    const value = await routeLeg(source, request, leg, coverage, (label) =>
+      self.postMessage({ id, type: "progress", label }),
+    );
+    const extras = {
+      loadedBytes: provider.stats.storedBytes,
+      blocks: provider.stats.blocks,
+      cells: provider.stats.cells,
+    };
+    for (const r of [value.reference, value.corridor, value.exploration])
+      Object.assign(r.metrics, extras);
+    self.postMessage({ id, type: "leg", leg, value });
+    if (value.exploration.status !== "ok") break;
+  }
+  self.postMessage({ id, type: "done" });
 }
 
 self.onmessage = async (event: MessageEvent<CellInput>) => {

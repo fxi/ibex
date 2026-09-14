@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { distance, emptyComponents, route } from "../src/routing/engine";
-import { compareOn, joinLegs, routeLegs } from "../src/routing/legs";
+import {
+  compareOn,
+  joinLegs,
+  routeLegs,
+  type LegComparison,
+} from "../src/routing/legs";
 import { selectedRoute } from "../src/routing/selection";
 import type {
   Graph,
@@ -100,6 +105,35 @@ describe("routing leg by leg", () => {
         .status,
     ).toBe("budget-exceeded");
     expect(comparison.reference.status).toBe("ok");
+  }, 60000);
+
+  it("routes only the legs it was not given, and joins the same route", async () => {
+    const anchors = [start, middle, end];
+    const first = new Map<number, LegComparison>();
+    await routeLegs(
+      fixture,
+      { anchors: anchors.slice(0, 2), profile },
+      graph.bbox,
+      undefined,
+      { onLeg: (leg, value) => first.set(leg, value) },
+    );
+    let loads = 0;
+    const routed: number[] = [];
+    const extended = await routeLegs(
+      { ...fixture, load: async () => (loads++, graph) },
+      { anchors, profile },
+      graph.bbox,
+      undefined,
+      {
+        cached: (leg) => first.get(leg),
+        onLeg: (leg) => routed.push(leg),
+      },
+    );
+    expect(routed).toEqual([2]);
+    expect(loads).toBe(1);
+    const fresh = await routeLegs(fixture, { anchors, profile }, graph.bbox);
+    expect(extended.exploration!.edgeIds).toEqual(fresh.exploration!.edgeIds);
+    expect(extended.exploration!.cost).toBeCloseTo(fresh.exploration!.cost, 6);
   }, 60000);
 
   it("reports the failing leg numbered across the route", () => {
