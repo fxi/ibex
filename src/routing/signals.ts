@@ -134,9 +134,18 @@ export function edgeSignals(edge: Edge): Signals {
     };
 
   const surfaceRoughness = SURFACE_ROUGHNESS[edge.surface];
+  const mtb = mtbScale(tags["mtb:scale"]);
+  // `smoothness` names a vehicle class rather than the ground, and `very_bad` ("MTB,
+  // tractor") is routinely put on any unsealed track. `mtb:scale=0` is the more specific
+  // claim — firm ground, no obstacles — so it bounds what smoothness may say. Without
+  // this the Ancienne Voie du Tram above Seyssins, `mtb:scale=0` and `tracktype=grade2`,
+  // read as broken ground and lost to the hairpin road beside it.
+  const smoothness = SMOOTHNESS_ROUGHNESS[tags.smoothness ?? ""];
   const candidates = [
     surfaceRoughness,
-    SMOOTHNESS_ROUGHNESS[tags.smoothness ?? ""],
+    smoothness !== undefined && mtb !== undefined && mtb < MTB_SCALE[1]
+      ? Math.min(smoothness, SURFACE_ROUGHNESS.gravel)
+      : smoothness,
     TRACKTYPE_ROUGHNESS[tags.tracktype ?? ""],
   ].filter((v): v is number => v !== undefined);
   // The worst credible evidence wins. `smoothness=excellent` on sand describes the
@@ -149,7 +158,6 @@ export function edgeSignals(edge: Edge): Signals {
         ? 0.35
         : 0.45;
 
-  const mtb = mtbScale(tags["mtb:scale"]);
   const sac = sacScale(tags.sac_scale);
   const unknownPath =
     ["path", "footway", "pedestrian", "bridleway"].includes(edge.highway) &&
