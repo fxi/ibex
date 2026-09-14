@@ -66,3 +66,66 @@ test("route handle and include action insert intermediate waypoints", async ({
     .click();
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 3);
 });
+
+test("Street View is offered only on a computed route", async ({ page }) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await page
+    .getByRole("button", { name: "Compute active track", exact: true })
+    .click();
+  await expect(page.getByText(routeReady)).toBeVisible();
+  // Off the Tracks tab the include action is gone, so only Street View can appear.
+  await page.getByRole("tab", { name: "Legend", exact: true }).click();
+  const point = await page.locator(".map").evaluate(async (element) => {
+    const map = (element as HTMLElement & { _map: any })._map;
+    const geometry = (await map.getSource("route").getData()).features.flatMap(
+      (f: any) => f.geometry.coordinates,
+    );
+    const p = geometry[Math.floor(geometry.length / 2)];
+    map.jumpTo({ center: p, zoom: 14 });
+    map.panBy([0, 150], { duration: 0 });
+    const q = map.project(p);
+    return { x: q.x, y: q.y };
+  });
+  await page.evaluate(() => {
+    window.open = (url) => {
+      (window as Window & { opened?: string }).opened = String(url);
+      return null;
+    };
+  });
+  const streetView = page.getByRole("button", {
+    name: "Open in Street View",
+    exact: true,
+  });
+  await page.mouse.click(point.x + 200, point.y - 120, { button: "right" });
+  await expect(streetView).toHaveCount(0);
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  await streetView.click();
+  expect(
+    await page.evaluate(() => (window as Window & { opened?: string }).opened),
+  ).toContain("map_action=pano");
+});
+
+test("the base map control switches and remembers the base map", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
+  await page.getByRole("button", { name: "Base map", exact: true }).click();
+  await page.getByRole("radio", { name: "Hybrid", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.locator(".map").evaluate((element) => {
+        const map = (element as HTMLElement & { _map: any })._map;
+        return !!map.getLayer("Satellite") && !!map.getSource("route");
+      }),
+    )
+    .toBe(true);
+  await page.reload();
+  await page.getByRole("button", { name: "Base map", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "Hybrid", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+});

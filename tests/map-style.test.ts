@@ -1,5 +1,10 @@
 import { expect, it, afterEach } from "vitest";
-import { customMapStyle, mapResourceURL } from "../src/map/style";
+import {
+  customMapStyle,
+  mapResourceURL,
+  mapStyle,
+  streetViewURL,
+} from "../src/map/style";
 import { mapTilerKey } from "../scripts/local-env";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +30,29 @@ it("always returns the bundled style and safely authenticates its resources", ()
     "https://example.com/tile?x=1",
   );
   expect(customMapStyle("").glyphs).not.toContain("test");
+});
+it("builds satellite and hybrid basemaps from the bundled style", () => {
+  expect(mapStyle("k", "outdoor")).toEqual(customMapStyle("k"));
+  const satellite = mapStyle("k", "satellite");
+  expect(satellite.layers.map((l) => l.id)).toEqual(["Satellite"]);
+  expect(satellite.sources.satellite).toMatchObject({ type: "raster" });
+  const hybrid = mapStyle("k", "hybrid");
+  expect(hybrid.layers[0].id).toBe("Satellite");
+  const ids = hybrid.layers.map((l) => l.id);
+  expect(ids).toContain("Road network");
+  expect(ids).toContain("Place labels");
+  expect(ids).not.toContain("Hillshade");
+  expect(ids).not.toContain("Contour");
+  expect(hybrid.layers.every((l) => l.type !== "fill")).toBe(true);
+  // Every layer must reference a source the style still declares.
+  for (const l of hybrid.layers)
+    if ("source" in l) expect(hybrid.sources).toHaveProperty(l.source);
+  expect(JSON.stringify(hybrid)).not.toContain("INSERT_YOUR_OWN_API_KEY");
+});
+it("opens Street View at a map point", () => {
+  const url = new URL(streetViewURL([6.2051234567, 46.19]));
+  expect(url.searchParams.get("map_action")).toBe("pano");
+  expect(url.searchParams.get("viewpoint")).toBe("46.190000,6.205123");
 });
 it("reads only the specified local dotenv file without expansion or ambient fallback", () => {
   const dir = mkdtempSync(join(tmpdir(), "cyclatractor-env-"));

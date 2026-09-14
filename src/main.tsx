@@ -11,6 +11,8 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { MapView, type MapCommand } from "./map/Map";
+import { BASEMAPS, type Basemap } from "./map/style";
+import { BasemapControl } from "./map/BasemapControl";
 import { loadModels } from "./models";
 import type { Point } from "./routing/types";
 import type { Profile } from "./routing/profiles";
@@ -23,6 +25,17 @@ import { usePanelHeight } from "./state/usePanelHeight";
 import { WaypointMenu, type WaypointMenuState } from "./map/WaypointMenu";
 import { Panel } from "./panel/Panel";
 import type { PanelContext } from "./panel/context";
+
+const BASEMAP_KEY = "ibex.basemap";
+function storedBasemap(): Basemap {
+  try {
+    const value = localStorage.getItem(BASEMAP_KEY);
+    if (BASEMAPS.some((b) => b.id === value)) return value as Basemap;
+  } catch {
+    // Storage unavailable: fall through to the default.
+  }
+  return "outdoor";
+}
 
 const catalogueURL = absoluteURL(
   import.meta.env.VITE_CATALOGUE_URL,
@@ -38,6 +51,15 @@ function App() {
   const [models, setModels] = useState<Profile[]>([]);
   const [debug, setDebug] = useState(false);
   const [history, setHistory] = useState(false);
+  const [basemap, setBasemapState] = useState<Basemap>(storedBasemap);
+  const setBasemap = (value: Basemap) => {
+    setBasemapState(value);
+    try {
+      localStorage.setItem(BASEMAP_KEY, value);
+    } catch {
+      // Private windows may refuse storage; the choice then lasts this session only.
+    }
+  };
   const [menu, setMenu] = useState<WaypointMenuState>();
   // When armed, the next map click inserts at this position instead of appending.
   const [insertAt, setInsertAt] = useState<number>();
@@ -164,6 +186,7 @@ function App() {
         }
         debug={debug}
         history={history}
+        basemap={basemap}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}
         cells={tab === "data" ? data.cells : undefined}
@@ -234,6 +257,7 @@ function App() {
         >
           <Search />
         </button>
+        <BasemapControl value={basemap} onChange={setBasemap} />
         <button aria-label="Zoom in" onClick={() => moveCamera("zoomIn")}>
           <Plus />
         </button>

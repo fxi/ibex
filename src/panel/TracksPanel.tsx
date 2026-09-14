@@ -262,38 +262,35 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     </p>
                   )}
 
-                  <div className="track-meta">
-                    <label>
-                      Name
-                      <input
-                        value={t.name}
-                        onChange={(e) =>
-                          updateTrack(t.id, (old) => ({
-                            ...old,
-                            name: e.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Colour
-                      <input
-                        type="color"
-                        aria-label="Track colour"
-                        value={t.color}
-                        onChange={(e) =>
-                          updateTrack(t.id, (old) => ({
-                            ...old,
-                            color: e.target.value,
-                          }))
-                        }
-                      />
-                    </label>
+                  <div className="track-name">
+                    <input
+                      type="color"
+                      aria-label="Track colour"
+                      value={t.color}
+                      onChange={(e) =>
+                        updateTrack(t.id, (old) => ({
+                          ...old,
+                          color: e.target.value,
+                        }))
+                      }
+                    />
+                    <input
+                      aria-label="Track name"
+                      value={t.name}
+                      onChange={(e) =>
+                        updateTrack(t.id, (old) => ({
+                          ...old,
+                          name: e.target.value,
+                        }))
+                      }
+                    />
                   </div>
 
-
-                  {t.kind === "planned" && (
-                    <div className="waypoints">
+                  {/* The coordinates are for fixing a stray point, not for reading: the map
+                      is where waypoints are edited, so the list stays folded away. */}
+                  {t.kind === "planned" && t.anchors.length > 0 && (
+                    <details className="waypoints">
+                      <summary>{`Waypoints · ${t.anchors.length}`}</summary>
                       <p className="hint">
                         Tap the map to add waypoints. Drag markers to move them;
                         long-press or right-click one to insert or remove.
@@ -316,12 +313,10 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                           </button>
                         </div>
                       ))}
-                      {t.anchors.length > 0 && (
-                        <button onClick={() => edit({ anchors: [] })}>
-                          Reset waypoints
-                        </button>
-                      )}
-                    </div>
+                      <button onClick={() => edit({ anchors: [] })}>
+                        Reset waypoints
+                      </button>
+                    </details>
                   )}
 
                   {t.result && (

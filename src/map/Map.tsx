@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import type { Comparison, Point, RouteResult } from "../routing/types";
-import { customMapStyle, mapResourceURL } from "./style";
+import { mapResourceURL, mapStyle, streetViewURL, type Basemap } from "./style";
 import type { Track } from "../tracks";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
 import {
@@ -52,7 +52,9 @@ export function MapView({
   cells,
   command,
   bottomInset,
+  basemap,
 }: {
+  basemap: Basemap;
   tracks: Track[];
   activeId?: string;
   cells?: MapCell[];
@@ -79,6 +81,7 @@ export function MapView({
     map = useRef<maplibregl.Map | undefined>(undefined),
     markers = useRef<MarkerLayer | undefined>(undefined);
   const [mapError, setMapError] = useState("");
+  const appliedBasemap = useRef(basemap);
   const handlers = useRef({
     onPoint,
     onMove,
@@ -118,7 +121,7 @@ export function MapView({
     }
     const m = new maplibregl.Map({
       container: container.current!,
-      style: customMapStyle(key),
+      style: mapStyle(key, appliedBasemap.current),
       transformRequest: (resource) => ({
         url: mapResourceURL(resource, import.meta.env.VITE_MAPTILER_API_KEY),
       }),
@@ -214,23 +217,60 @@ export function MapView({
       handle.remove();
       handlers.current.onInclude(handleIndex, [p.lng, p.lat]);
     });
+    // Street View is only offered on a computed route: elsewhere Google usually has no
+    // panorama, and the route is where a rider wants to check the way ahead.
+    const onRoute = (point: maplibregl.Point): Point | undefined => {
+      let best: { distance: number; point: Point } | undefined;
+      for (const track of snapshot.current.tracks) {
+        if (!track.visible || track.result?.status !== "ok") continue;
+        const line = track.result.geometry.map((p): Point => {
+          const q = m.project(p);
+          return [q.x, q.y];
+        });
+        const nearest = nearestPosition(line, [point.x, point.y]);
+        if (!best || nearest.distance < best.distance) best = nearest;
+      }
+      if (!best || best.distance > 16) return;
+      const snapped = m.unproject(best.point);
+      return [snapped.lng, snapped.lat];
+    };
     const openInclude = (point: maplibregl.Point) => {
       const hit = locate(point);
-      if (!hit) return;
+      const street = onRoute(point);
+      if (!hit && !street) return;
       handle.remove();
       contextPopup?.remove();
       const location = m.unproject(point);
-      const button = document.createElement("button");
-      button.textContent = "Include in route";
-      button.disabled = snapshot.current.anchors.length >= 12;
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        contextPopup?.remove();
-        handlers.current.onInclude(hit.index, [location.lng, location.lat]);
-      });
-      contextPopup = new maplibregl.Popup({ closeButton: false })
+      const menu = document.createElement("div");
+      menu.className = "map-context-menu";
+      const action = (label: string, run: () => void, disabled = false) => {
+        const button = document.createElement("button");
+        button.textContent = label;
+        button.disabled = disabled;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          contextPopup?.remove();
+          run();
+        });
+        menu.append(button);
+      };
+      if (hit)
+        action(
+          "Include in route",
+          () =>
+            handlers.current.onInclude(hit.index, [location.lng, location.lat]),
+          snapshot.current.anchors.length >= 12,
+        );
+      if (street)
+        action("Open in Street View", () =>
+          window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
+        );
+      contextPopup = new maplibregl.Popup({
+        closeButton: false,
+        className: "map-context-popup",
+      })
         .setLngLat(location)
-        .setDOMContent(button)
+        .setDOMContent(menu)
         .addTo(m);
     };
     m.on("contextmenu", (e) => {
@@ -557,6 +597,15 @@ export function MapView({
       map.current = undefined;
     };
   }, []);
+  // A full style reload drops the app's sources and layers; `style.load` adds them back.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || appliedBasemap.current === basemap) return;
+    appliedBasemap.current = basemap;
+    m.setStyle(mapStyle(import.meta.env.VITE_MAPTILER_API_KEY, basemap), {
+      diff: false,
+    });
+  }, [basemap]);
   // Markers reconcile by index; only anchors can change them, so nothing else belongs
   // in this dependency list. Recreating them on every data change dropped live drags.
   useEffect(() => {
