@@ -67,7 +67,10 @@ async function inflate(bytes: Uint8Array): Promise<Uint8Array> {
 
 export class CellGraphProvider {
   private loaded: Loaded[] = [];
-  private readonly cache = new Map<string, { nodes: Node[]; edges: Edge[] }>();
+  private readonly cache = new Map<
+    string,
+    { bbox: BBox; nodes: Node[]; edges: Edge[] }
+  >();
   readonly stats: ProviderStats = {
     cells: [],
     blocks: 0,
@@ -167,9 +170,15 @@ export class CellGraphProvider {
       block: { x: ref.x, y: ref.y },
       crc: ref.crc,
     });
-    this.cache.set(key, decoded);
+    this.cache.set(key, { bbox: ref.bbox, ...decoded });
     this.stats.blocks++;
     return decoded;
+  }
+
+  /** Forget decoded blocks outside `bbox`, so routing leg by leg keeps memory bounded. */
+  retain(bbox: BBox): void {
+    for (const [key, block] of this.cache)
+      if (!bboxIntersects(block.bbox, bbox)) this.cache.delete(key);
   }
 
   /**
