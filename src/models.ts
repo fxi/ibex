@@ -1,5 +1,9 @@
 import { preference, savePreference } from "./offline/store";
-import { parseProfile, type Profile } from "./routing/profiles";
+import {
+  parseProfile,
+  profileUuid,
+  type Profile,
+} from "./routing/profiles";
 
 /**
  * Every `*.profile.json` in `profiles/` ships with the app. There is no master file and
@@ -17,7 +21,7 @@ export const shippedProfiles = (): Profile[] =>
     .map(([, p]) => parseProfile(p));
 
 export const defaultProfile = (): Profile =>
-  shippedProfiles().find((p) => p.id === "gravel_40") ?? shippedProfiles()[0];
+  shippedProfiles().find((p) => p.id === profileUuid("gravel_50")) ?? shippedProfiles()[0];
 
 export async function loadModels(): Promise<Profile[]> {
   const value = await preference<unknown>("routing-profiles");

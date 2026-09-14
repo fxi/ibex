@@ -1,8 +1,8 @@
 {
-  "format_version": 2,
-  "id": "road_28",
-  "name": "Road 28",
-  "description": "Sealed surfaces and steady progress, still preferring the quieter of two roads.",
+  "format_version": 3,
+  "id": "cec9df92-77c1-89f4-8a12-9a1ef5f97ddc",
+  "name": "Road",
+  "description": "Calm, sealed roads only. No gravel.",
   "setup": {
     "preset": "custom",
     "bike": {
@@ -19,16 +19,22 @@
       "descend_confidence": 0.7
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "prefer",
-    "traffic_stress": "avoid",
-    "unpaved": "strongly_avoid",
-    "roughness": "strongly_avoid",
-    "technicality": "strongly_avoid",
-    "climbing": "prefer",
-    "scenic": "strongly_prefer",
-    "urbanity": "avoid",
-    "cycle_infrastructure": "strongly_prefer"
+    "climbing": "neutral",
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "strongly_avoid",
+      "surface_difficulty": "strongly_avoid",
+      "scenic": "strongly_prefer",
+      "urbanity": "avoid",
+      "cycle_infrastructure": "strongly_prefer"
+    },
+    "uphill": {},
+    "downhill": {}
   },
   "permissions": {
     "ferry": true,

@@ -21,6 +21,7 @@ Modules marked **lib** are imported by other scripts: do not rename or move them
 | | `verify_public_release.py` | Verify a live catalogue URL |
 | | `download_map_style.py` | Save the MapTiler style as `src/map/custom-style.json` |
 | Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local release's merged packs (argv[2], default `data/build/geneva-toulon/packs`) |
+| | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_coudry.ts`, `audit_profile_options.ts`, `audit_search_budget.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
 | | `compare_builds.py` | Grid vs pre-grid build regression comparison |

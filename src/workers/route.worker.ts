@@ -1,11 +1,7 @@
 /// <reference lib="webworker" />
 import { toCompiled } from "../routing/compile";
 import type { Installed } from "../offline/store";
-import {
-  validateAnchors,
-  validateEdge,
-  validateNode,
-} from "../offline/validate";
+import { validateAnchors } from "../offline/validate";
 import { emptyComponents } from "../routing/engine";
 import { relativeCost, routeLeg, type LegGraphSource } from "../routing/legs";
 import { CellGraphProvider, searchArea } from "../routing/provider";
@@ -67,17 +63,37 @@ type CellInput = {
   legs?: number[];
 };
 
+// Keep one bounded block cache and one compiled policy while the worker is idle.
+let heldProvider: { key: string; provider: CellGraphProvider } | undefined;
+let heldProfile:
+  { key: string; profile: ReturnType<typeof toCompiled> } | undefined;
+
 async function routeCells(data: CellInput) {
   const { id, packs, release } = data;
+  const profileKey = JSON.stringify(data.request.profile);
+  if (heldProfile?.key !== profileKey)
+    heldProfile = {
+      key: profileKey,
+      profile: toCompiled(data.request.profile),
+    };
   const request = {
     ...data.request,
-    profile: toCompiled(data.request.profile),
+    profile: heldProfile!.profile,
   };
   validateAnchors(request.anchors);
   self.postMessage({ id, type: "progress", label: "Preparing your profile…" });
 
-  const provider = new CellGraphProvider(packs, release, data.published ?? []);
-  await provider.open();
+  const providerKey = JSON.stringify([release, packs, data.published ?? []]);
+  if (heldProvider?.key !== providerKey) {
+    const provider = new CellGraphProvider(
+      packs,
+      release,
+      data.published ?? [],
+    );
+    await provider.open();
+    heldProvider = { key: providerKey, provider };
+  }
+  const provider = heldProvider!.provider;
   const coverage = provider.envelope();
   const empty = { type: "FeatureCollection", features: [] } as const;
   if (!coverage) {
@@ -112,8 +128,6 @@ async function routeCells(data: CellInput) {
   const source: LegGraphSource = {
     async load(bbox) {
       const graph = await provider.load(bbox);
-      for (const node of graph.nodes) validateNode(node);
-      for (const edge of graph.edges) validateEdge(edge);
       return graph;
     },
     missing: (bbox) => provider.missing(bbox),
@@ -122,12 +136,14 @@ async function routeCells(data: CellInput) {
   const legs = data.legs ?? request.anchors.slice(1).map((_, i) => i + 1);
   // Each leg is posted as it finishes, so its work survives a cancel or a later edit.
   for (const leg of legs) {
+    const beforeBytes = provider.stats.storedBytes,
+      beforeBlocks = provider.stats.blocks;
     const value = await routeLeg(source, request, leg, coverage, (label) =>
       self.postMessage({ id, type: "progress", label }),
     );
     const extras = {
-      loadedBytes: provider.stats.storedBytes,
-      blocks: provider.stats.blocks,
+      loadedBytes: provider.stats.storedBytes - beforeBytes,
+      blocks: provider.stats.blocks - beforeBlocks,
       cells: provider.stats.cells,
     };
     for (const r of [value.reference, value.corridor, value.exploration])

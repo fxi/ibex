@@ -122,6 +122,7 @@ function curvature(geometry: Point[], length: number): number {
 }
 
 export function edgeSignals(edge: Edge): Signals {
+  if (edge.semantics?.version === 1) return edge.semantics;
   const tags = edge.tags ?? {};
   if (isFerry(edge))
     return {

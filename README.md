@@ -101,17 +101,27 @@ Browser regression tests require `npm run build:test`. It builds an isolated tes
 
 ## Routing profiles and data updates
 
-Profiles that prefer both detouring and scenery now compare the usual route with
-up to eight scenic destination detours. The selected result drives the map and GPX
-export; travel cost and the destination bonus remain separate in diagnostics.
-See [the scenic-detour experiment](docs/scenic-detours.md) for the Coudry audit,
-search limits, and a proposed ride-data calibration phase. No pack rebuild is needed.
+Choose **Gravel, MTB, Road or Touring**, then your rider level and technical comfort.
+Gravel defaults to 50 mm tyres. Fitness changes climbing capability independently of handling
+and traffic tolerance. Equipment and crossing permissions remain available under a disclosure;
+older custom profiles remain readable under **Show older profiles**.
 
-Road accepts paved surfaces and ordinary streets/cycleways with unspecified surfaces. It excludes unpaved tracks and undocumented hiking paths. Gravel accepts roads, usable tracks, and paths documented as paved, gravel/compacted, or MTB difficulty 0. Technical MTB paths, mountain hiking trails, very poor surfaces and grade-4/5 tracks are excluded. These are conservative defaults, not a certification of conditions on the ground.
+Normal routing performs one A* search per leg. A relaxed directed graph supplies stronger
+lower bounds on large graphs; turn restrictions, urban turns, riding transitions and ferry
+boarding remain in the final search. Completed workers retain bounded block and cost caches
+for nearby edits. Corridor comparisons and scenic candidate sweeps require an explicit
+`diagnostics: true` request in audit code.
 
-Eligibility applies before waypoint snapping and search. A waypoint with no suitable connection within 250 m produces an explicit failure rather than routing over an unsuitable path. The original Geneva → Voirons example ends on an off-road path: it works for Gravel; Road requires a road-access endpoint, such as [6.3642228, 46.231931] on Route des Voirons.
+Versioned ride policies use additive costs: scenery can discount distance, but cannot discount
+traffic or capability penalties. Legal access still excludes a connection; difficult terrain
+and refused pushing remain expensive last resorts. Unknown elevation is never evidence that a
+bridge or tunnel is impassable. Snapping requires a suitable connection within 250 m.
 
-The map, route statistics, and GPX export use the scenic exploration result when available, otherwise the cheaper successful full-graph/corridor result. Exploration compares destination value as well as travel cost; the full-graph baseline remains available in diagnostics. Packs must carry cost model 4, urban fractions, cycling-network membership, retained access tags, and steps/ferry connections. Previously installed model-1/2/3 packs and pre-grid region packs are removed on start-up; save the areas you need after refreshing the app.
+New binary blocks contain precomputed roughness, technical difficulty, surface confidence and
+curvature. Old model-4 packs still work, deriving those facts once per loaded block. Preprocessor
+7 also extracts mapped passes and saddles as scenic sources. Published regional packs have not
+been replaced by this code change. See [the routing refactor](docs/routing-refactor.md) for
+behaviour, benchmark scope and remaining data limitations.
 
 Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
 
@@ -129,9 +139,6 @@ Public data CORS can be refreshed with `uv run scripts/publish_release.py --conf
 
 Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
 
-Routing profiles are self-contained JSON: every profile carries its own bike, rider,
-preferences and permissions, with nothing inherited from a master file. Open **Configure**
-in the app to edit, save locally, or import/export one. Preferences use a single
-five-level vocabulary, and grade and technical capability are derived from the bike and
-rider rather than hand-set. See [the profile guide](profiles/README.md) and
-[Gravel 40 mm](profiles/gravel_40.profile.json) for fields and current data limitations.
+Profiles retain bike, rider and permission data for import/export. New profiles also carry an
+explicit ride-policy version; the former preference vocabulary is used only by legacy profiles.
+See [the profile guide](profiles/README.md).

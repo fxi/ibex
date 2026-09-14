@@ -41,9 +41,9 @@ EXTRACTS = (
 LEGACY_BBOX = [5.80, 45.95, 6.55, 46.45]
 
 # Raised whenever the pipeline changes the edge data it publishes; it rides in the release
-# tag (see PREPROCESSOR_VERSION in scripts/package_cells.ts, which must match), so every
-# installed pack is retired. 6 gives bridges and tunnels a portal-to-portal grade.
-PREPROCESSOR_VERSION = 6
+# tag from each cell manifest, so incompatible generations cannot be joined.
+# 7 includes mapped mountain passes and saddles among scenic sources.
+PREPROCESSOR_VERSION = 7
 
 
 def release_cells(window=WINDOW, zoom=GRID_ZOOM):

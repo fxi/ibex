@@ -80,11 +80,17 @@ const arve: Point[] = [
 run("Arve baseline", arve, base);
 run("Arve avoiding built-up", arve, {
   ...base,
-  preferences: { ...base.preferences, urbanity: "strongly_avoid" },
+  preferences: {
+    ...base.preferences,
+    base: { ...base.preferences.base, urbanity: "strongly_avoid" },
+  },
 });
 run("Arve on cycle routes", arve, {
   ...base,
-  preferences: { ...base.preferences, cycle_infrastructure: "strongly_prefer" },
+  preferences: {
+    ...base.preferences,
+    base: { ...base.preferences.base, cycle_infrastructure: "strongly_prefer" },
+  },
 });
 const stair = graph.edges.find(
   (e) => e.highway === "steps" && e.length > 15 && eligible(e, base),

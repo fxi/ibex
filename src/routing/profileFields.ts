@@ -1,6 +1,11 @@
 import { BIKE_PRESET_IDS, RIDER_PRESET_IDS } from "./presets";
 import type { Bike, Rider } from "./profiles";
-import { PREFERENCE_KEYS, type PreferenceKey } from "./vocabulary";
+import {
+  SETTING_KEYS,
+  SIGNAL_KEYS,
+  type SettingKey,
+  type SignalKey,
+} from "./vocabulary";
 
 /**
  * What the setup form draws, and the only place a control's bounds are written twice.
@@ -106,16 +111,27 @@ export const SUSPENSION_OPTIONS: {
 export const BIKE_OPTIONS = BIKE_PRESET_IDS;
 export const RIDER_OPTIONS = RIDER_PRESET_IDS;
 
-export const PREFERENCE_FIELDS: {
-  key: PreferenceKey;
-  label: string;
-  hint: string;
-}[] = [
+type Field<K> = { key: K; label: string; hint: string };
+
+export const SETTING_FIELDS: Field<SettingKey>[] = [
   {
     key: "detour",
     label: "Detour",
     hint: "How much further you will ride for everything below. This decides how far the route wanders for a better line; only avoiding traffic can push it further.",
   },
+  {
+    key: "climbing",
+    label: "Climbing",
+    hint: "Whether height gain is the point or the price. Adds up over the whole ride.",
+  },
+  {
+    key: "direction_changes",
+    label: "Turns",
+    hint: "Changing direction at intersections takes attention. Avoiding it prefers a straight line over a zigzag through side streets.",
+  },
+];
+
+export const SIGNAL_FIELDS: Field<SignalKey>[] = [
   {
     key: "traffic_stress",
     label: "Traffic",
@@ -127,19 +143,9 @@ export const PREFERENCE_FIELDS: {
     hint: "Gravel, track and dirt, where the surface is actually mapped. Unsurveyed ways are never assumed to be gravel.",
   },
   {
-    key: "roughness",
-    label: "Roughness",
-    hint: "How broken the surface is, read from surface, smoothness and tracktype.",
-  },
-  {
-    key: "technicality",
-    label: "Technicality",
-    hint: "Mapped MTB and hiking difficulty, judged separately uphill and downhill.",
-  },
-  {
-    key: "climbing",
-    label: "Climbing",
-    hint: "Whether height gain is the point or the price.",
+    key: "surface_difficulty",
+    label: "Difficult ground",
+    hint: "The worse of how broken the surface is and its mapped MTB or hiking difficulty, judged in the direction you ride.",
   },
   {
     key: "scenic",
@@ -180,4 +186,4 @@ export const PERMISSION_FIELDS: {
   },
 ];
 
-export { PREFERENCE_KEYS };
+export { SETTING_KEYS, SIGNAL_KEYS };

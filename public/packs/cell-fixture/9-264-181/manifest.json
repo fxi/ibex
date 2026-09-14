@@ -3,7 +3,7 @@
   "format": "ibex-1",
   "id": "9-264-181",
   "name": "9/264/181",
-  "version": "9915e52c",
+  "version": "d72c1906",
   "release": "fixture-g4-0000",
   "cell": {
     "zoom": 9,
@@ -25,13 +25,13 @@
   "files": [
     {
       "path": "index.ibx",
-      "bytes": 661,
-      "sha256": "08db37f100ec6faa0fcc10bccf98538aa5f6fb34fedf4559949ef0ecca81882a"
+      "bytes": 660,
+      "sha256": "8161205ef48f22049fb682f86deb733fa96f0b58d080641027e541b2d1f5fb27"
     },
     {
       "path": "graph.ibx",
-      "bytes": 313,
-      "sha256": "23e479c706b7183f6be93b7d46bc15cfe23a9501fb99197c86568bbb4eb6a2bf"
+      "bytes": 362,
+      "sha256": "c0411e258dba2ee7ba78d29a935dd1d55bdee33bef012704cd9ef3ea39e1427f"
     }
   ]
 }

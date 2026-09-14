@@ -27,13 +27,6 @@ const output = process.argv[3] ?? "public/packs/geneva-grid";
 const BLOCK_ZOOM = 13;
 const FIELD_ZOOM = 15;
 const CELL_BYTE_LIMIT = 50_000_000;
-/**
- * Mirrors PREPROCESSOR_VERSION in scripts/region_config.py. It rides in the release tag,
- * so raising it retires every installed pack: bump it whenever the pipeline changes the
- * edge data it publishes. 6 gives bridges and tunnels a portal-to-portal grade instead of
- * none, which is what lets a grade-limited model cross them at all.
- */
-const PREPROCESSOR_VERSION = 6;
 
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -67,6 +60,13 @@ for (const id of entries) {
   cells.push({ id, manifest });
 }
 
+// Repack older builds honestly: adding cached signals does not retroactively extract
+// the mountain-pass sources introduced by preprocessor 7.
+const preprocessors = new Set(cells.map((cell) => cell.manifest.source?.preprocessorVersion));
+if (preprocessors.size !== 1 || !Number.isInteger([...preprocessors][0]))
+  throw new Error("Cells must declare one consistent source.preprocessorVersion; rebuild mixed or unversioned inputs.");
+const preprocessorVersion = [...preprocessors][0];
+
 // One generation id for the whole release. Packs from different generations cannot route
 // together, and the id is derived so it changes whenever the inputs do.
 const sources = cells
@@ -90,12 +90,9 @@ try {
 } catch {
   releaseStamp = "";
 }
-const osmTimestamp =
-  cellTimestamps[0] ||
-  releaseStamp ||
-  "unknown";
+const osmTimestamp = cellTimestamps[0] || releaseStamp || "unknown";
 const edition = osmTimestamp.slice(0, 10).replace(/-/g, "");
-const release = `g${COST_MODEL_VERSION}-${edition}-p${PREPROCESSOR_VERSION}-${shortHash(sources)}`;
+const release = `g${COST_MODEL_VERSION}-${edition}-p${preprocessorVersion}-s1-${shortHash(sources)}`;
 const tag = releaseTag(release);
 console.log(`release ${release}\n`);
 
@@ -143,7 +140,9 @@ for (const { id, manifest } of cells) {
             );
           nodes.push(node);
         }
-    const raw = encodeBlock({ x, y }, nodes, edges, strings, tag);
+    const raw = encodeBlock({ x, y }, nodes, edges, strings, tag, {
+      semantics: true,
+    });
     const stored = deflateRawSync(raw, { level: 9 });
     const bbox: [number, number, number, number] = [
       Infinity,

@@ -4,7 +4,7 @@ test.afterEach(async ({ request }) => {
     data: { offline: false },
   });
 });
-test("installs a region, restarts offline, compares routes and exports GPX", async ({
+test("installs a region, restarts offline, routes and exports GPX", async ({
   page,
   context,
   browserName,
@@ -61,9 +61,8 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   // Building a profile while offline exercises the IndexedDB write path with no network.
-  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
+  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
   await page.getByLabel("Model name").fill("Offline explorer");
-  await page.getByLabel("Profile id").fill("offline_explorer");
   const setLevel = (field: string, level: string) =>
     page
       .locator(".field", { has: page.getByText(field, { exact: true }) })
@@ -99,7 +98,7 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   await page
     .getByRole("checkbox", { name: "Show routing diagnostics on the map" })
     .check();
-  await expect(page.getByText(/Cost difference:/)).toBeVisible({
+  await expect(page.getByText(/Search:.*states explored/)).toBeVisible({
     timeout: 90000,
   });
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
@@ -108,7 +107,7 @@ test("installs a region, restarts offline, compares routes and exports GPX", asy
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page
-    .getByRole("button", { name: "Loaded touring", exact: true })
+    .getByRole("button", { name: "Road", exact: true })
     .first()
     .click();
   await page

@@ -59,8 +59,7 @@ it("makes the technical shortcut cost more than the road for a gravel rider", ()
   expect(rate(technical)).toBeGreaterThan(rate(road));
   // And a rider who came looking for exactly that ground is charged less for it.
   const seeker = withPreferences(GRAVEL, {
-    technicality: "strongly_prefer",
-    roughness: "prefer",
+    surface_difficulty: "strongly_prefer",
   });
   expect(total(scoreEdge(technical, seeker))).toBeLessThan(
     total(scoreEdge(technical, GRAVEL)),

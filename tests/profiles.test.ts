@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
+  migrateProfile,
+  newProfileId,
   parseProfile,
+  profileUuid,
   serializeProfile,
   sameProfile,
 } from "../src/routing/profiles";
 import { compileProfile } from "../src/routing/compile";
 import { eligible, traversalSegments } from "../src/routing/eligibility";
-import { scoreEdge, total } from "../src/routing/engine";
-import { LEVELS } from "../src/routing/vocabulary";
+import { route, scoreEdge, total, turnCost } from "../src/routing/engine";
+import { SETTING_KEYS, SIGNAL_KEYS } from "../src/routing/vocabulary";
 import { matchBike, matchRider, BIKE_PRESETS } from "../src/routing/presets";
-import type { Edge } from "../src/routing/types";
+import type { Edge, Graph, Point } from "../src/routing/types";
 import {
   GRAVEL,
   PROFILES,
@@ -49,8 +53,11 @@ const edge = (overrides: Partial<Edge> = {}): Edge => ({
 describe("the profile format", () => {
   it("is complete: every shipped profile parses with nothing inherited", () => {
     for (const p of PROFILES) {
-      expect(p.format_version).toBe(2);
-      expect(Object.keys(p.preferences).length).toBe(LEVELS.length + 4);
+      expect(p.format_version).toBe(3);
+      expect(Object.keys(p.settings)).toEqual([...SETTING_KEYS]);
+      expect(Object.keys(p.preferences.base).sort()).toEqual(
+        [...SIGNAL_KEYS].sort(),
+      );
       expect(p.setup.bike.tire_mm).toBeGreaterThan(0);
       expect(p.setup.rider.sustained_w_per_kg).toBeGreaterThan(0);
     }
@@ -62,16 +69,67 @@ describe("the profile format", () => {
     const { preferences, ...withoutPreferences } = GRAVEL;
     expect(preferences).toBeDefined();
     expect(() => parseProfile(withoutPreferences)).toThrow();
+    const partialBase: Record<string, string> = { ...GRAVEL.preferences.base };
+    delete partialBase.traffic_stress;
     expect(() =>
-      parseProfile({ ...GRAVEL, preferences: { detour: "prefer" } }),
+      parseProfile({
+        ...GRAVEL,
+        preferences: { ...GRAVEL.preferences, base: partialBase },
+      }),
     ).toThrow();
     expect(() =>
       parseProfile({
         ...GRAVEL,
-        preferences: { ...GRAVEL.preferences, detour: "yes" },
+        settings: { ...GRAVEL.settings, detour: "yes" },
       }),
     ).toThrow();
+    // Whole-ride settings cannot be overridden by direction.
+    expect(() =>
+      parseProfile({
+        ...GRAVEL,
+        preferences: { ...GRAVEL.preferences, uphill: { detour: "avoid" } },
+      }),
+    ).toThrow();
+    expect(() => parseProfile({ ...GRAVEL, id: "my_gravel" })).toThrow();
     expect(() => parseProfile({ ...GRAVEL, extra: true })).toThrow();
+  });
+
+  it("converts format 2 deterministically, onto the same ids as before", () => {
+    const v2 = JSON.parse(
+      readFileSync(
+        new URL("./fixtures/profiles/gravel_40.profile.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect(v2.format_version).toBe(2);
+    const v3 = parseProfile(v2);
+    expect(v3.id).toBe(profileUuid("gravel_40"));
+    expect(parseProfile(v2)).toEqual(v3);
+    expect(v3.settings).toEqual({
+      detour: v2.preferences.detour,
+      climbing: v2.preferences.climbing,
+      direction_changes: "neutral",
+    });
+    // The merge keeps whichever of roughness and technicality was stated more strongly.
+    const merged = (roughness: string, technicality: string) =>
+      parseProfile({
+        ...v2,
+        preferences: { ...v2.preferences, roughness, technicality },
+      }).preferences.base.surface_difficulty;
+    expect(merged("avoid", "neutral")).toBe("avoid");
+    expect(merged("avoid", "strongly_prefer")).toBe("strongly_prefer");
+    expect(merged("prefer", "avoid")).toBe("prefer");
+    // Already format 3: untouched.
+    expect(migrateProfile(v3)).toBe(v3);
+  });
+
+  it("gives new profiles random ids and old slugs stable ones", () => {
+    const a = newProfileId(),
+      b = newProfileId();
+    expect(a).not.toBe(b);
+    expect(() => parseProfile({ ...GRAVEL, id: a })).not.toThrow();
+    expect(profileUuid("gravel_50")).toBe(profileUuid("gravel_50"));
+    expect(profileUuid("gravel_50")).not.toBe(profileUuid("gravel_40"));
   });
 
   it("round-trips through its own serializer, key order included", () => {
@@ -79,6 +137,7 @@ describe("the profile format", () => {
       JSON.stringify({
         permissions: GRAVEL.permissions,
         preferences: GRAVEL.preferences,
+        settings: GRAVEL.settings,
         setup: GRAVEL.setup,
         description: GRAVEL.description,
         name: GRAVEL.name,
@@ -124,11 +183,14 @@ describe("preferences reach the cost", () => {
   it("moves cost in the direction the word says, for every signal", () => {
     const cases: [string, Partial<Edge>][] = [
       ["traffic_stress", { stress: 0.9 }],
-      ["roughness", { surface: "gravel" }],
+      ["surface_difficulty", { surface: "gravel" }],
       ["urbanity", { urban: 1 }],
       // Scale 2 is still ridden; past a rider capability it becomes walking, and then
       // it is the push cost talking rather than the preference.
-      ["technicality", { highway: "path", tags: { "mtb:scale": "2" } }],
+      [
+        "surface_difficulty",
+        { highway: "path", tags: { "mtb:scale": "2" } },
+      ],
     ];
     for (const [key, overrides] of cases) {
       const e = edge(overrides);
@@ -165,19 +227,14 @@ describe("preferences reach the cost", () => {
     // those credits counted in full they buried the traffic penalty it had honestly
     // earned: a stress-0.95 departmental road with lorries on it priced at 0.68 — below
     // its own length — against 0.67 for a signed cycle route one field away.
-    const road = parseProfile({
-      ...GRAVEL,
-      preferences: {
-        ...GRAVEL.preferences,
-        detour: "strongly_prefer",
-        traffic_stress: "strongly_avoid",
-        unpaved: "strongly_avoid",
-        roughness: "strongly_avoid",
-        technicality: "strongly_avoid",
-        scenic: "neutral",
-        urbanity: "neutral",
-        cycle_infrastructure: "prefer",
-      },
+    const road = withPreferences(GRAVEL, {
+      detour: "strongly_prefer",
+      traffic_stress: "strongly_avoid",
+      unpaved: "strongly_avoid",
+      surface_difficulty: "strongly_avoid",
+      scenic: "neutral",
+      urbanity: "neutral",
+      cycle_infrastructure: "prefer",
     });
     const trunk = edge({
       highway: "primary",
@@ -204,14 +261,10 @@ describe("preferences reach the cost", () => {
     // network `strongly_prefer`, the primary still won — the preference factor is capped
     // by the detour budget, so it priced at 1.99 against 1.01 and the extra kilometre of
     // the signed line was not worth it. The hazard now sits outside that cap.
-    const rider = parseProfile({
-      ...ROAD,
-      preferences: {
-        ...ROAD.preferences,
-        detour: "strongly_prefer",
-        traffic_stress: "strongly_avoid",
-        cycle_infrastructure: "strongly_prefer",
-      },
+    const rider = withPreferences(ROAD, {
+      detour: "strongly_prefer",
+      traffic_stress: "strongly_avoid",
+      cycle_infrastructure: "strongly_prefer",
     });
     const primary = edge({
       highway: "primary",
@@ -297,6 +350,84 @@ describe("preferences reach the cost", () => {
         c.attraction +
         c.clamp;
       expect(parts).toBeCloseTo(total(c), 6);
+    }
+  });
+});
+
+describe("direction changes", () => {
+  // A plus-shaped intersection at node 1, with a second route around it via node 5.
+  const points: Point[] = [
+    [6.1, 46.1],
+    [6.11, 46.1],
+    [6.12, 46.1],
+    [6.11, 46.11],
+    [6.11, 46.09],
+    [6.1, 46.11],
+  ];
+  const link = (id: number, from: number, to: number): Edge =>
+    edge({
+      id,
+      from,
+      to,
+      way: String(id),
+      highway: "residential",
+      length: Math.hypot(
+        (points[from][0] - points[to][0]) * 77000,
+        (points[from][1] - points[to][1]) * 111000,
+      ),
+      geometry: [points[from], points[to]],
+      grades: null,
+    });
+  const turning = withPreferences(GRAVEL, {
+    direction_changes: "strongly_avoid",
+  });
+
+  it("is free straight on and at a plain way split, and never a reward", () => {
+    const west = link(0, 0, 1),
+      east = link(1, 1, 2),
+      north = link(2, 1, 3);
+    const p = compileProfile(turning);
+    expect(turnCost(west, east, p, 4)).toBeCloseTo(0, 6);
+    expect(turnCost(west, north, p, 4)).toBeGreaterThan(0);
+    expect(turnCost(west, north, p, 2)).toBe(0);
+    for (const level of ["neutral", "prefer", "strongly_prefer"] as const)
+      expect(
+        turnCost(
+          west,
+          north,
+          compileProfile(withPreferences(GRAVEL, { direction_changes: level })),
+          4,
+        ),
+      ).toBe(0);
+    // A U-turn costs the most.
+    expect(turnCost(west, link(3, 1, 0), p, 4)).toBeGreaterThan(
+      turnCost(west, north, p, 4),
+    );
+  });
+
+  it("prices the same turns in the search and in the reported route", () => {
+    const g: Graph = {
+      schemaVersion: 1,
+      bbox: [5.8, 45.95, 6.55, 46.45],
+      nodes: points.map((p, id) => ({ id, p, elevation: 0 })),
+      restrictions: [],
+      edges: [
+        link(0, 0, 1),
+        link(1, 1, 2),
+        link(2, 1, 3),
+        link(3, 1, 4),
+        link(4, 0, 5),
+        link(5, 5, 3),
+      ],
+    };
+    for (const profile of [GRAVEL, turning]) {
+      const r = route(
+        g,
+        { anchors: [points[0], points[3]], profile },
+        "reference",
+      );
+      expect(r.status).toBe("ok");
+      expect(r.cost).toBeCloseTo(total(r.components), 3);
     }
   });
 });

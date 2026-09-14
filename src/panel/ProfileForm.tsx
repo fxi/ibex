@@ -2,9 +2,10 @@ import {
   BIKE_FIELDS,
   BIKE_OPTIONS,
   PERMISSION_FIELDS,
-  PREFERENCE_FIELDS,
   RIDER_FIELDS,
   RIDER_OPTIONS,
+  SETTING_FIELDS,
+  SIGNAL_FIELDS,
   SUSPENSION_OPTIONS,
   type NumberField,
 } from "../routing/profileFields";
@@ -15,7 +16,7 @@ import {
   matchRider,
   RIDER_PRESETS,
 } from "../routing/presets";
-import type { Bike, Profile } from "../routing/profiles";
+import type { Bike, Direction, Profile } from "../routing/profiles";
 import { compileProfile, describeCapability } from "../routing/compile";
 import { LEVELS, type Level } from "../routing/vocabulary";
 
@@ -49,6 +50,16 @@ export function ProfileForm({
         // claiming to be a preset it no longer matches.
         preset: describePreset(matchBike(next.bike), matchRider(next.rider)),
       },
+    });
+  };
+
+  const setOverride = (direction: Direction, key: string, value: string) => {
+    const changed: Record<string, Level> = { ...draft.preferences[direction] };
+    if (value) changed[key] = value as Level;
+    else delete changed[key];
+    onChange({
+      ...draft,
+      preferences: { ...draft.preferences, [direction]: changed },
     });
   };
 
@@ -144,17 +155,17 @@ export function ProfileForm({
       </details>
 
       <details className="profile-group" open>
-        <summary>What you want from a route</summary>
-        {PREFERENCE_FIELDS.map((f) => (
+        <summary>The whole ride</summary>
+        {SETTING_FIELDS.map((f) => (
           <div className="field" key={f.key}>
             <span className="field-label">{f.label}</span>
             <LevelPicker
               name={f.key}
-              value={draft.preferences[f.key]}
+              value={draft.settings[f.key]}
               onChange={(level) =>
                 onChange({
                   ...draft,
-                  preferences: { ...draft.preferences, [f.key]: level },
+                  settings: { ...draft.settings, [f.key]: level },
                 })
               }
             />
@@ -162,6 +173,59 @@ export function ProfileForm({
           </div>
         ))}
       </details>
+
+      <details className="profile-group" open>
+        <summary>What you want from a route</summary>
+        {SIGNAL_FIELDS.map((f) => (
+          <div className="field" key={f.key}>
+            <span className="field-label">{f.label}</span>
+            <LevelPicker
+              name={f.key}
+              value={draft.preferences.base[f.key]}
+              onChange={(level) =>
+                onChange({
+                  ...draft,
+                  preferences: {
+                    ...draft.preferences,
+                    base: { ...draft.preferences.base, [f.key]: level },
+                  },
+                })
+              }
+            />
+            <span className="field-hint">{f.hint}</span>
+          </div>
+        ))}
+      </details>
+
+      {(["uphill", "downhill"] as const).map((direction) => (
+        <details className="profile-group" key={direction}>
+          <summary>
+            {direction === "uphill" ? "On the way up" : "On the way down"}
+          </summary>
+          <p className="group-note">
+            {direction === "uphill"
+              ? "Only what changes on a climb."
+              : "Only what changes on a descent: smooth tarmac for a gravel rider, singletrack for an MTB rider."}
+          </p>
+          {SIGNAL_FIELDS.map((f) => (
+            <label className="field" key={f.key}>
+              <span className="field-label">{f.label}</span>
+              <select
+                aria-label={`${direction === "uphill" ? "Uphill" : "Downhill"} ${f.label}`}
+                value={draft.preferences[direction][f.key] ?? ""}
+                onChange={(e) => setOverride(direction, f.key, e.target.value)}
+              >
+                <option value="">Same as everywhere</option>
+                {LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {LEVEL_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </details>
+      ))}
 
       <details className="profile-group" open>
         <summary>What you allow</summary>

@@ -1,5 +1,22 @@
 # Routing profiles
 
+Three profiles ship, one sentence each. Picking one is the whole decision; everything
+below is for whoever wants to build their own.
+
+| Profile | File | Promise |
+| --- | --- | --- |
+| Gravel | `gravel_50` | Climb on quiet, easy gravel; come down on smooth, quiet roads. |
+| MTB | `trail_60` | Climb like gravel; come down on singletrack. |
+| Road | `road_28` | Calm, sealed roads only. No gravel. |
+
+`tests/rideIntent.test.ts` holds each of them to that sentence. Other profiles used by
+tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`, `bikepacking_45`)
+live in `tests/fixtures/profiles/` and do not ship.
+
+Normal routing runs one search per leg. The corridor comparison and scenic-destination
+sweep run only for explicit diagnostic requests. See
+[routing performance](../docs/routing-refactor.md).
+
 A profile is one `*.profile.json` file in this directory. It is complete: every field it
 needs is in it, nothing is inherited, and what you export is exactly what routed. Send one
 to someone and it means the same thing on their machine as on yours.
@@ -7,6 +24,16 @@ to someone and it means the same thing on their machine as on yours.
 The app bundles every `*.profile.json` here. Add a file and rebuild to ship another.
 Browser users can edit, import and export profiles in **Configure**; saved profiles live
 in IndexedDB under `routing-profiles` and shadow a shipped profile with the same `id`.
+
+Ids are UUIDs and nobody types them. A new or duplicated profile gets a random one, so two
+people's "my gravel" cannot overwrite each other or a shipped profile. Exports are named
+after the profile's name instead.
+
+Format 2 files, saved profiles and track snapshots still load: they convert on read.
+A format-2 slug becomes a fixed name-based UUID (`profileUuid` in
+`src/routing/profiles.ts`), so a track saved on `gravel_50` still matches shipped Gravel.
+The conversion is deterministic but lossy in one place: `roughness` and `technicality`
+merge into `surface_difficulty` at whichever was stated more strongly.
 
 > Profiles written for the old format (`version: 1`, a `bike` key, `attraction` /
 > `capabilities` / `access` / `costs` groups) cannot be converted. Their meaning lived in
@@ -17,21 +44,33 @@ in IndexedDB under `routing-profiles` and shadow a shipped profile with the same
 
 ```jsonc
 {
-  "format_version": 2,
-  "id": "gravel_40",                 // lowercase, digits, - and _
-  "name": "Gravel 40 mm",
+  "format_version": 3,
+  "id": "cb933404-5d12-85ed-bdb2-0591c694de3f",  // UUID, generated
+  "name": "MTB",
   "description": "…",
   "setup": {
-    "preset": "gravel_40 / expert",  // a label only — never looked up
-    "bike":  { "tire_mm": 40, "mass_kg": 11.5, "lowest_gear_ratio": 0.85,
-               "suspension": "none", "load_kg": 3 },
+    "preset": "mtb_60 / expert",     // a label only — never looked up
+    "bike":  { "tire_mm": 60, "mass_kg": 13.5, "lowest_gear_ratio": 0.52,
+               "suspension": "front", "load_kg": 2 },
     "rider": { "mass_kg": 75, "sustained_w_per_kg": 3.2,
                "tech_skill": 0.7, "descend_confidence": 0.7 }
   },
-  "preferences": { "detour": "prefer", "traffic_stress": "strongly_avoid", … },
+  "settings": { "detour": "prefer", "climbing": "neutral", "direction_changes": "neutral" },
+  "preferences": {
+    "base": { "traffic_stress": "strongly_avoid", "unpaved": "strongly_prefer",
+              "surface_difficulty": "avoid", "scenic": "prefer",
+              "urbanity": "strongly_avoid", "cycle_infrastructure": "neutral" },
+    "uphill": {},                                        // only what changes on a climb
+    "downhill": { "surface_difficulty": "strongly_prefer" } // only what changes down
+  },
   "permissions": { "ferry": true, "stairs": true, "push": true }
 }
 ```
+
+`base` must state every preference. `uphill` and `downhill` may state any subset, and
+nothing else: `detour`, `climbing` and `direction_changes` cannot be overridden by
+direction. An override equal to `base` says nothing and is dropped on save, so two
+profiles that mean the same thing serialize the same.
 
 ## Setup
 
@@ -64,12 +103,9 @@ solved for speed, so lower gearing and lighter luggage genuinely raise it. The r
 calibrated heuristics and are labelled as such in the code: there is no honest physics for
 how steep a descent a given rider will commit to. Configure shows the result in words.
 
-## Preferences
+## Settings
 
-Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
-`strongly_prefer`. Each is scored against what an ordinary way looks like
-(`REFERENCE` in `src/routing/vocabulary.ts`), so a preference both penalises and rewards:
-"strongly avoid traffic" makes a main road expensive *and* makes the quiet lane cheap.
+Whole-ride choices, one value each, in the same five-word vocabulary as preferences.
 
 - `detour` — how much the line matters against the distance. It is the price ratio between
   an ideal way and an ordinary one: at `prefer` 2.5 km of the ground you asked for costs
@@ -77,6 +113,32 @@ Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
   not a cap on route length — a route is as long as the good line it follows — and it also
   widens the search corridor so that line is reachable. This is the knob that decides
   whether the app explores or commutes.
+- `climbing` — whether height gain is the point or the price. It scales a cost that
+  already adds up over the ride (`ENGINE.climb_effort`, 5 equivalent metres per metre
+  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×.
+- `direction_changes` — the attention a change of direction takes at an intersection.
+  Only where three or more ways meet: going straight on is free, a right angle pays half,
+  a U-turn pays in full (`ENGINE.turn_meters`, 60 m at `strongly_avoid`). Hairpins inside
+  one way, a waypoint and the nodes OSM splits ways at cost nothing. `neutral` and above
+  charge nothing; turns are never rewarded, because a negative cost would break the
+  search.
+
+## Preferences
+
+Six ways a route can be good or bad, one vocabulary: `strongly_avoid`, `avoid`,
+`neutral`, `prefer`, `strongly_prefer`. Each is scored against what an ordinary way looks
+like (`REFERENCE` in `src/routing/vocabulary.ts`), so a preference both penalises and
+rewards: "strongly avoid traffic" makes a main road expensive *and* makes the quiet lane
+cheap.
+
+A grade run steeper than `ENGINE.grade_from` (2 %) uses the `uphill` or `downhill`
+overrides; flatter ground uses `base`. Overrides reach everything a preference drives,
+including the charges outside the detour budget: `downhill.unpaved: strongly_avoid`
+keeps a descent off gravel the way `base` keeps Road off it, and a traffic override moves
+the traffic hazard. This is local grade, not a sustained climb or
+descent, which is why shipped Gravel has no downhill override yet: on the Fillinges gold
+standard it pushed short descents onto tarmac and cost 20 points of coverage.
+
 - `traffic_stress` — estimated from road class and cycle infrastructure in the pack, not
   from live traffic. Avoiding it does two things: it scores ways like every other
   preference, and it charges stress above a tertiary as a hazard outside the detour
@@ -91,18 +153,25 @@ Nine knobs, one vocabulary: `strongly_avoid`, `avoid`, `neutral`, `prefer`,
   tag, or `tracktype` grade2–5. An unsurveyed way is never *rewarded* as unpaved; guessing
   would hand out credit for silence, and a barely tagged path should not beat a mapped
   gravel track.
-- `roughness` — how broken the surface is, from `surface`, `smoothness` and `tracktype`,
-  judged against what this bike rides comfortably (`surface_roughness.comfortable_until`
-  from `setup`). "Avoid roughness" on 50 mm tyres does not mean avoid gravel roads.
-- `technicality` — mapped MTB and hiking difficulty, judged separately uphill and down.
-- `climbing` — whether height gain is the point or the price. Unlike the others this
-  scales a cost that already exists (`ENGINE.climb_effort`, 5 equivalent metres per metre
-  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×.
+  A rider who `strongly_avoid`s unpaved also pays `unpavedHazard` outside the detour
+  budget, like traffic: that is what keeps Road off a shorter gravel shortcut.
+- `surface_difficulty` — how hard the ground is, one level over two signals, each against
+  its own reference: roughness (from `surface`, `smoothness` and `tracktype`, judged
+  against what this bike rides comfortably, so "avoid" on 50 mm tyres does not mean avoid
+  gravel roads) and mapped MTB or hiking difficulty in the direction of travel. Avoided,
+  both are charged: rough *and* technical is worse than either. Preferred, whichever is
+  stronger is credited, so a smooth technical path is not charged for being smooth.
+  Lacking a technical tag earns no credit — almost no way carries one, and crediting its
+  absence priced a rough gravel track below "prefer" for a rider who avoids difficulty.
+  What the bike and rider can physically handle stays two separate capabilities.
 - `scenic` — the better of proximity to viewpoints, peaks, forest and good ground (decayed
   backwards along the direction of travel) and the way's own forest cover and gravel
   quality. Proximity alone rated every road beside a wood like the path through it. It
   selects between lines; it does not invent landmarks or promise a particular detour
   length. Castles and other historic sites are not in the pack yet.
+- `urbanity` — how built-up the surroundings are, from land use and settlement density. A
+  quiet residential street has low traffic stress and high urbanity.
+- `cycle_infrastructure` — membership of mapped cycle and MTB route relations.
 
 A preference you *prefer* is credited in full where a way has it. Merely lacking something
 you *avoid* is credited at `REWARD_SHARE`, so a smooth main road cannot collect a reward
@@ -110,9 +179,6 @@ for every defect it does not have. Off the street network, a way whose ground ne
 `surface` nor `tracktype` describes earns only `ENGINE.unsurveyed_credit` of any credit —
 the forest around a bare footpath says nothing about whether it can be ridden — while
 its defects are charged in full.
-- `urbanity` — how built-up the surroundings are, from land use and settlement density. A
-  quiet residential street has low traffic stress and high urbanity.
-- `cycle_infrastructure` — membership of mapped cycle and MTB route relations.
 
 ## Permissions
 

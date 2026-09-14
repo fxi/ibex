@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { preference, savePreference } from "./offline/store";
-import { parseProfile, profileSchema, type Profile } from "./routing/profiles";
+import {
+  migrateProfile,
+  parseProfile,
+  profileSchema,
+  type Profile,
+} from "./routing/profiles";
 import { defaultProfile } from "./models";
 import type { Point, RouteResult } from "./routing/types";
 import { emptyComponents } from "./routing/engine";
@@ -145,7 +150,8 @@ const storedTrack = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   visible: z.boolean(),
   anchors: z.array(point).max(12),
-  profile: profileSchema,
+  // Tracks saved before format 3 carry a format-2 snapshot; it converts, it is not lost.
+  profile: z.preprocess(migrateProfile, profileSchema),
   revision: z.number().int().nonnegative(),
   resultRevision: z.number().int().optional(),
   packVersion: z.string().optional(),

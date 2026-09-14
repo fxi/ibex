@@ -333,6 +333,8 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
         and (
             e.get("tags", {}).get("tourism") == "viewpoint"
             or e.get("tags", {}).get("natural") == "peak"
+            or e.get("tags", {}).get("natural") == "saddle"
+            or e.get("tags", {}).get("mountain_pass") == "yes"
         )
     ]
     vp_index = viewpoint_index(viewpoints)
@@ -767,13 +769,15 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
                 }
             )
         if element["type"] == "node" and (
-            tags.get("tourism") == "viewpoint" or tags.get("natural") == "peak"
+            tags.get("tourism") == "viewpoint" or tags.get("natural") in {"peak", "saddle"}
+            or tags.get("mountain_pass") == "yes"
         ):
             features.append(
                 {
                     "type": "Feature",
                     "properties": {
-                        "kind": "peak" if tags.get("natural") == "peak" else "viewpoint",
+                        "kind": ("pass" if tags.get("natural") == "saddle" or tags.get("mountain_pass") == "yes"
+                                 else "peak" if tags.get("natural") == "peak" else "viewpoint"),
                         "name": tags.get("name", ""),
                     },
                     "geometry": {

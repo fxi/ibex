@@ -161,5 +161,8 @@ export function eligible(
   if (!isStreet(edge) && !RIDEABLE_HIGHWAYS.has(edge.highway)) return false;
   // Surfaces tagged `impassable` are not a preference anyone can hold.
   if (tags.smoothness === "impassable") return false;
+  // Terrain can only make this edge illegal when walking is forbidden. Otherwise
+  // ride versus walk belongs to scoring; do not allocate grade runs for every edge.
+  if (!footBarred(edge)) return true;
   return traversalSegments(edge, p).every((s) => s.mode !== "blocked");
 }

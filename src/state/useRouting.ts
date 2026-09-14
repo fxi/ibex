@@ -19,8 +19,8 @@ export type RoutingState = ReturnType<typeof useRouting>;
 const legs = new LegCache<LegComparison>();
 
 /**
- * Owns route computation. The worker is created per run and terminated on completion or
- * cancel, so a stale result can never land on a track the user has since edited: every
+ * Owns route computation. An idle worker retains bounded decoded data between edits;
+ * cancelling active work terminates it. A stale result cannot land on an edited track: every
  * message is checked against the generation, track id and revision it was started for.
  *
  * Only legs missing from the cache are sent to the worker. Legs are cached as they arrive,
@@ -51,11 +51,15 @@ export function useRouting({
   }>();
   const routeWorker = useRef<Worker | undefined>(undefined);
   const generation = useRef(0);
+  const running = useRef(false);
 
   function cancel() {
     generation.current++;
-    routeWorker.current?.terminate();
-    routeWorker.current = undefined;
+    if (running.current) {
+      routeWorker.current?.terminate();
+      routeWorker.current = undefined;
+    }
+    running.current = false;
     setBusy(false);
   }
 
@@ -128,6 +132,7 @@ export function useRouting({
                 : "No route connects these waypoints under this model. Review terrain and access limits.",
         );
       setBusy(false);
+      running.current = false;
     };
 
     setError("");
@@ -136,8 +141,9 @@ export function useRouting({
       return;
     }
 
-    const worker = new RoutingWorker();
+    const worker = routeWorker.current ?? new RoutingWorker();
     routeWorker.current = worker;
+    running.current = true;
     setBusy(true);
     setStatus("Preparing local data…");
     worker.onmessage = ({ data }) => {
@@ -147,12 +153,13 @@ export function useRouting({
         if (data.value.exploration.status === "ok")
           legs.set(keys[data.leg - 1], data.value);
       }
+      // Even for a track no longer on screen, the worker is idle again and keeps its cache.
+      if (data.type === "done") running.current = false;
       if (!current_()) return;
       if (data.type === "progress") setStatus(data.label);
       if (data.type === "result") {
         // Refused before any leg ran: a waypoint off the installed data.
         finish(data.comparison);
-        worker.terminate();
       }
       if (data.type === "done") {
         const value = assembleLegs(keys, request.anchors, legs, routed);
@@ -161,12 +168,14 @@ export function useRouting({
           setError("Routing stopped before every leg was routed.");
           setBusy(false);
         }
-        worker.terminate();
+        running.current = false;
       }
       if (data.type === "error") {
         setError(data.error);
         setBusy(false);
         worker.terminate();
+        routeWorker.current = undefined;
+        running.current = false;
       }
     };
     worker.onerror = (e) => {
@@ -174,6 +183,8 @@ export function useRouting({
         setError(`Routing stopped. ${e.message || "Try a shorter route."}`);
         setBusy(false);
         worker.terminate();
+        routeWorker.current = undefined;
+        running.current = false;
       }
     };
     worker.postMessage({

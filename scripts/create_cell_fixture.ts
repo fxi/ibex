@@ -102,7 +102,9 @@ for (const [key, list] of grouped) {
   const [x, y] = key.split("/").map(Number);
   const used = new Set(list.flatMap((e) => [e.from, e.to]));
   const table = nodes.filter((n) => used.has(n.id));
-  const raw = encodeBlock({ x, y }, table, list, strings, tag);
+  const raw = encodeBlock({ x, y }, table, list, strings, tag, {
+    semantics: true,
+  });
   const stored = deflateRawSync(raw, { level: 9 });
   blocks.push({
     x,

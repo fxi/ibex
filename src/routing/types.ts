@@ -6,6 +6,8 @@ export const COST_MODEL_VERSION = 4;
 export type Point = [number, number];
 export type Node = { id: number; p: Point; elevation: number | null };
 export type Edge = {
+  /** Packager-derived facts, independent of rider policy. Older packs derive these locally. */
+  semantics?: import("./signals").Signals & { version: 1 };
   id: number;
   from: number;
   to: number;
@@ -51,6 +53,10 @@ export type RouteRequest = {
   profile: Profile | CompiledProfile;
   attraction?: Attraction;
   maxSettled?: number;
+  /** Expensive corridor/reference/scenic comparisons, only for explicit audits. */
+  diagnostics?: boolean;
+  /** Dijkstra remains available as a correctness oracle for the accelerated query. */
+  search?: "astar" | "dijkstra";
 };
 /**
  * A cost, broken down so a route can be explained.
@@ -146,7 +152,10 @@ export type RouteResult = {
   uncertainM: number;
   metrics: {
     durationMs: number;
+    loadMs?: number;
     explored: number;
+    /** Relaxed node states used to prepare the search lower bound. */
+    preparedStates?: number;
     expansions: number;
     tiles: number;
     loadedBytes: number;

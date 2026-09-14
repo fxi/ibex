@@ -5,7 +5,7 @@ import {
   NET_SCALE,
   REWARD_SHARE,
   STRENGTH,
-  type SignalKey,
+  type ScoredKey,
 } from "./vocabulary";
 import { exceedance } from "./capability";
 import { edgeSignals, scenicValue, type Signals } from "./signals";
@@ -122,8 +122,12 @@ type Rate = { net: number; hard: number; terms: Record<HardTerm, number> };
  * avoids it. Zero for anyone neutral or keen, and for any way at or below
  * `ENGINE.traffic_from`.
  */
-export function trafficHazard(stress: number, p: CompiledProfile): number {
-  const w = p.weights.traffic_stress;
+export function trafficHazard(
+  stress: number,
+  p: CompiledProfile,
+  weights: CompiledProfile["weights"] = p.weights,
+): number {
+  const w = weights.traffic_stress;
   if (w.sign >= 0) return 0;
   const from = ENGINE.traffic_from;
   const excess = Math.max(0, (stress - from) / (1 - from));
@@ -135,6 +139,68 @@ export function effectiveStress(edge: Edge): number {
   return edge.cyclingNetwork
     ? edge.stress * ENGINE.network_calming
     : edge.stress;
+}
+
+/**
+ * Unpaved ground, for a rider who strongly avoids it: a road bike on gravel.
+ *
+ * The preference alone is capped by the detour budget, and compacted gravel sits below a
+ * 28 mm tyre's roughness threshold, so neither kept a road route off a gravel shortcut.
+ * Like traffic it is charged outside the budget. Still finite, so nothing becomes
+ * unreachable. An untagged street is assumed sealed; an untagged track is not.
+ */
+export function unpavedHazard(
+  edge: Edge,
+  s: Signals,
+  p: CompiledProfile,
+  weights: CompiledProfile["weights"] = p.weights,
+): number {
+  // Directional: `downhill.unpaved: strongly_avoid` has to reach this charge too, or an
+  // override could only move the capped preference and never keep a descent off gravel.
+  if (weights.unpaved.level !== "strongly_avoid") return 0;
+  if (s.surfaceKnown) return ENGINE.unpaved_hazard * s.unpaved;
+  return isStreet(edge)
+    ? 0
+    : ENGINE.unpaved_hazard * ENGINE.unpaved_guess_share * s.unpaved;
+}
+
+/**
+ * The attention a change of direction takes at an intersection, for a rider who avoids
+ * it. Zero going straight, at a node where fewer than three ways meet (a way split, a
+ * waypoint, a hairpin inside one way), across a ferry, or for anyone neutral or keen:
+ * a negative cost would break the search, so turns are never rewarded.
+ */
+export function turnCost(
+  previous: Edge | undefined,
+  edge: Edge,
+  p: CompiledProfile,
+  degree: number,
+): number {
+  const strength = STRENGTH[p.directionChanges];
+  if (!previous || strength >= 0 || degree < 3) return 0;
+  if (isFerry(previous) || isFerry(edge)) return 0;
+  const a = previous.geometry.at(-2)!,
+    b = previous.geometry.at(-1)!,
+    c = edge.geometry[1] ?? edge.geometry.at(-1)!;
+  const k = Math.cos((b[1] * Math.PI) / 180);
+  const ux = (b[0] - a[0]) * k,
+    uy = b[1] - a[1],
+    vx = (c[0] - b[0]) * k,
+    vy = c[1] - b[1];
+  const norm = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+  if (!norm) return 0;
+  const cos = Math.max(-1, Math.min(1, (ux * vx + uy * vy) / norm));
+  return ENGINE.turn_meters * -strength * ((1 - cos) / 2);
+}
+
+/** Physical cycle infrastructure remains distinguishable from signed route membership. */
+export function cycleInfrastructure(edge: Edge): number {
+  return Math.max(
+    edge.cyclingNetwork ?? 0,
+    edge.highway === "cycleway" || edge.tags?.bicycle === "designated"
+      ? 0.8
+      : 0,
+  );
 }
 
 /**
@@ -151,7 +217,15 @@ function riddenRate(
   const down = grade !== null && grade < 0;
   const technical = down ? s.technicalDown : s.technicalUp;
 
-  const value: Record<SignalKey, number> = {
+  // Past a false flat, the profile's uphill or downhill preferences take over: the same
+  // rider can want good gravel on the way up and smooth tarmac, or singletrack, down.
+  const weights =
+    grade !== null && grade > ENGINE.grade_from
+      ? p.uphillWeights
+      : grade !== null && grade < -ENGINE.grade_from
+        ? p.downhillWeights
+        : p.weights;
+  const value: Record<ScoredKey, number> = {
     traffic_stress: effectiveStress(edge),
     unpaved: s.unpaved,
     roughness: s.roughness,
@@ -166,17 +240,45 @@ function riddenRate(
   // charged in full, but its virtues are only partly believed: full scenic credit
   // made a bare `mtb:scale=1` footpath through a wood the cheapest way on a gravel
   // route near Arthaz — and unrideable when ridden.
-  const trust =
-    s.surfaceKnown || isStreet(edge) ? 1 : ENGINE.unsurveyed_credit;
+  const trust = s.surfaceKnown || isStreet(edge) ? 1 : ENGINE.unsurveyed_credit;
   let sum = 0,
     weight = 0;
-  for (const key of Object.keys(value) as SignalKey[]) {
-    const w = p.weights[key];
+  for (const key of Object.keys(value) as ScoredKey[]) {
+    // Roughness and technicality share one `surface_difficulty` level but combine by
+    // direction. Avoiding it, both defects are charged: rough *and* technical is worse
+    // than either, and taking only the larger halved the penalty on a gravel bike's
+    // `mtb:scale=2` dirt shortcut. Preferring it, either one is the ground asked for, so
+    // the further from its own reference is credited — scored separately, a smooth but
+    // technical path was charged for being smooth.
+    if (key === "technicality" && weights.technicality.sign > 0) continue;
+    let w = weights[key];
     if (w.weight === 0) continue;
+    let d = deviation(value[key], w.reference);
+    if (key === "roughness" && w.sign > 0) {
+      const dt = deviation(value.technicality, weights.technicality.reference);
+      if (dt > d) {
+        d = dt;
+        w = weights.technicality;
+      }
+    }
     // Positive is worse than an ordinary way in the direction this rider cares about,
     // negative is better. A virtue the rider asked for counts in full; merely lacking
     // a defect they avoid is discounted by `REWARD_SHARE`.
-    let badness = -w.sign * deviation(value[key], w.reference);
+    let badness = -w.sign * d;
+    // Avoiding difficult ground, a smooth surface is no virtue on a technical path. The
+    // reverse is left alone: most gravel carries no technical tag, and withholding that
+    // credit would recalibrate every rough track.
+    if (
+      key === "roughness" &&
+      w.sign < 0 &&
+      badness <= 0 &&
+      deviation(value.technicality, weights.technicality.reference) > 0
+    )
+      continue;
+    // Nor is lacking a technical tag a virtue. Almost no way carries one, so its absence
+    // sits a full unit below the reference and, credited, outweighed real roughness:
+    // "avoid difficult ground" priced a rough gravel track below "prefer" it.
+    if (key === "technicality" && badness <= 0) continue;
     if (key === "unpaved" && !s.surfaceKnown) {
       // Never reward a guess: with no `surface` tag, "unpaved" is read off the road
       // hierarchy and is not evidence of the gravel the rider came for. Nor is silence
@@ -208,8 +310,9 @@ function riddenRate(
       ENGINE.threshold_rate *
       exceedance(technical, down ? k.technical_down : k.technical_up),
     roughness:
-      ENGINE.threshold_rate * exceedance(s.roughness, k.surface_roughness),
-    traffic: trafficHazard(effectiveStress(edge), p),
+      ENGINE.threshold_rate * exceedance(s.roughness, k.surface_roughness) +
+      unpavedHazard(edge, s, p, weights),
+    traffic: trafficHazard(effectiveStress(edge), p, weights),
     uncertainty: ENGINE.uncertainty * edge.uncertainty,
     network: ENGINE.off_network * (1 - edge.utility),
   };
@@ -246,17 +349,23 @@ function riddenRate(
  * profile, both immutable for the length of a route, so one pass and a lookup is the
  * same answer for a fraction of the work.
  */
+const profileCosts = new WeakMap<CompiledProfile, WeakMap<Edge, Components>>();
 export function costCache(
   profile: Profile | CompiledProfile,
   attraction?: Attraction,
 ) {
   const p = toCompiled(profile);
-  const cache = new Map<number, Components>();
+  // Edge objects survive block reuse; ids alone are unsafe for waypoint splits.
+  let cache = !attraction ? profileCosts.get(p) : undefined;
+  if (!cache) {
+    cache = new WeakMap<Edge, Components>();
+    if (!attraction) profileCosts.set(p, cache);
+  }
   return (edge: Edge): Components => {
-    const hit = cache.get(edge.id);
+    const hit = cache.get(edge);
     if (hit) return hit;
     const value = scoreEdge(edge, p, attraction);
-    cache.set(edge.id, value);
+    cache.set(edge, value);
     return value;
   };
 }
@@ -337,7 +446,7 @@ export function scoreEdge(
   for (const key of HARD_TERMS) c[key] = terms[key];
 
   // Nothing is ever unroutable, so the whole edge is capped rather than any one term.
-  const priced = raw * preference;
+  const priced = raw + c.preference;
   c.clamp = Math.min(priced, l * ENGINE.rate_max) - priced;
 
   c.junction = (edge.junction ?? 0) * ENGINE.junction_meters;
@@ -509,6 +618,7 @@ export function snapAnchors(
           ...edge,
           id: nextEdge++,
           to: id,
+          junction: 0,
           length: edge.length * ratio,
           geometry: [...geom.slice(0, index), best.point],
           grades: splitGrades(0, edge.length * ratio),
@@ -871,12 +981,26 @@ export function route(
     list.push(edge);
     adjacency.set(edge.from, list);
   }
-  const reverse = new Map<number, number[]>();
+  const reverse = new Map<number, Edge[]>();
   for (const edge of graph.edges) {
     const origins = reverse.get(edge.to) ?? [];
-    origins.push(edge.from);
+    origins.push(edge);
     reverse.set(edge.to, origins);
   }
+  // Distinct neighbours of a node, for `turnCost`: three or more is a real intersection.
+  const degrees = new Map<number, number>();
+  const degree = (node: number) => {
+    let d = degrees.get(node);
+    if (d === undefined) {
+      d = new Set([
+        ...(adjacency.get(node) ?? []).map((e) => e.to),
+        ...(reverse.get(node) ?? []).map((e) => e.from),
+      ]).size;
+      degrees.set(node, d);
+    }
+    return d;
+  };
+  const turnProfile = toCompiled(request.profile);
   const reachability = new Map<number, Set<number>>();
   const canReach = snap.nodes.map((target, leg) => {
     if (leg === 0) return new Set<number>();
@@ -885,7 +1009,8 @@ export function route(
     const seen = new Set([target]),
       queue = [target];
     for (let i = 0; i < queue.length; i++) {
-      for (const origin of reverse.get(queue[i]) ?? []) {
+      for (const edge of reverse.get(queue[i]) ?? []) {
+        const origin = edge.from;
         if (seen.has(origin)) continue;
         seen.add(origin);
         queue.push(origin);
@@ -948,6 +1073,90 @@ export function route(
       ? [fixedRadius]
       : [corridor, corridor * 2.5, Infinity]
     : [Infinity];
+  // A fixed projection gives a true Euclidean metric. Bound every graph edge against
+  // its endpoint chord, including rounded lengths, then apply the minimum cost rate.
+  // Unlike the corridor this cannot exclude a better route outside a guessed area.
+  const longitudeScale = Math.cos((snap.points[0][1] * Math.PI) / 180);
+  const positions = new Map(graph.nodes.map((node) => [node.id, node.p]));
+  const chord = (a: Point, b: Point) =>
+    ((6371000 * Math.PI) / 180) *
+    Math.hypot((a[0] - b[0]) * longitudeScale, a[1] - b[1]);
+  let lengthScale = 1;
+  if (request.search !== "dijkstra")
+    for (const edge of graph.edges) {
+      const from = positions.get(edge.from),
+        to = positions.get(edge.to);
+      if (!from || !to) {
+        lengthScale = 0;
+        break;
+      }
+      const d = chord(from, to);
+      const gradedLength =
+        edge.grades?.reduce((sum, [length]) => sum + length, 0) ?? edge.length;
+      if (d > 0)
+        lengthScale = Math.min(
+          lengthScale,
+          Math.min(edge.length, gradedLength) / d,
+        );
+    }
+  const floor =
+    Math.min(1, toCompiled(request.profile).detour.rate_floor) *
+    (request.attraction ? 0.35 : 1) *
+    lengthScale *
+    0.999999;
+  const remaining = new Float64Array(snap.nodes.length);
+  for (let i = snap.nodes.length - 2; i >= 0; i--)
+    remaining[i] =
+      remaining[i + 1] + chord(snap.points[i], snap.points[i + 1]) * floor;
+  const estimates = snap.nodes.map(() => new Map<number, number>());
+  // A relaxed node graph ignores turn restrictions and transition charges, so its
+  // distances are valid lower bounds for the richer search. Stop at the source; nodes
+  // not settled yet are at least as far away as the frontier. This is especially
+  // effective where a cheap geometric estimate cannot see a mountain or river barrier.
+  const potential = new Map<number, number>();
+  let frontier = 0;
+  if (
+    request.search !== "dijkstra" &&
+    snap.nodes.length === 2 &&
+    graph.edges.length > 10000
+  ) {
+    const pending = new Map<number, number>([[snap.nodes[1], 0]]);
+    const heap = new Heap<number>();
+    heap.push(0, snap.nodes[1]);
+    const limit = Math.min(
+      100000,
+      Math.floor((request.maxSettled ?? 1500000) / 4),
+    );
+    while (heap.size && potential.size < limit) {
+      const item = heap.pop()!;
+      if (item.key !== pending.get(item.value) || potential.has(item.value))
+        continue;
+      potential.set(item.value, item.key);
+      frontier = item.key;
+      if (item.value === snap.nodes[0]) break;
+      for (const edge of reverse.get(item.value) ?? []) {
+        const next = item.key + total(cost_(edge));
+        if (next < (pending.get(edge.from) ?? Infinity)) {
+          pending.set(edge.from, next);
+          heap.push(next, edge.from);
+        }
+      }
+    }
+    result.metrics.preparedStates = potential.size;
+  }
+  const estimate = (node: number, leg: number) => {
+    if (request.search === "dijkstra" || leg >= snap.nodes.length) return 0;
+    const cache = estimates[leg];
+    const hit = cache.get(node);
+    if (hit !== undefined) return hit;
+    const point = positions.get(node);
+    const geometric = point
+      ? chord(point, snap.points[leg]) * floor + remaining[leg]
+      : 0;
+    const h = Math.max(geometric, potential.get(node) ?? frontier);
+    cache.set(node, h);
+    return h;
+  };
   for (const radius of radii) {
     const allowed =
       f && Number.isFinite(radius) ? corridorCells(f, radius) : undefined;
@@ -960,13 +1169,17 @@ export function route(
     const key = keyOf(initial);
     states.set(key, initial);
     cost.set(key, 0);
-    q.push(0, key);
+    q.push(estimate(initial.node, initial.leg), key);
     let final: string | undefined;
     while (q.size) {
       const item = q.pop()!;
-      if (item.key !== cost.get(item.value)) continue;
       const state = states.get(item.value)!;
-      if (++result.metrics.explored > (request.maxSettled ?? 1500000)) {
+      const settledCost = cost.get(item.value)!;
+      if (item.key !== settledCost + estimate(state.node, state.leg)) continue;
+      if (
+        ++result.metrics.explored + (result.metrics.preparedStates ?? 0) >
+        (request.maxSettled ?? 1500000)
+      ) {
         result.status = "budget-exceeded";
         result.metrics.tiles = tiles.size;
         return finish();
@@ -1006,13 +1219,15 @@ export function route(
         };
         const nextKey = keyOf(next),
           newCost =
-            item.key +
+            settledCost +
             total(cost_(edge)) +
+            // The state key carries the arrival node, so the previous edge is known.
+            turnCost(state.edge, edge, turnProfile, degree(state.node)) +
             ferryBoardingCost(edge, state.edge, request.profile);
         if (newCost < (cost.get(nextKey) ?? Infinity)) {
           cost.set(nextKey, newCost);
           states.set(nextKey, next);
-          q.push(newCost, nextKey);
+          q.push(newCost + estimate(next.node, next.leg), nextKey);
         }
       }
     }
@@ -1054,6 +1269,12 @@ export function route(
           .filter((s) => s.mode === "walk")
           .reduce((sum, s) => sum + s.length, 0);
         const c = { ...cost_(edge) };
+        c.junction += turnCost(
+          previousEdge,
+          edge,
+          turnProfile,
+          degree(edge.from),
+        );
         c.ferry += ferryBoardingCost(edge, previousEdge, request.profile);
         previousEdge = edge;
         for (const k of Object.keys(c) as (keyof Components)[])

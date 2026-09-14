@@ -1,8 +1,8 @@
 {
-  "format_version": 2,
-  "id": "gravel_50",
-  "name": "Gravel 50mm",
-  "description": "Gravel profile with chunky tires",
+  "format_version": 3,
+  "id": "2f1ba3ed-9e47-8ebe-ac72-d2ccadbe268f",
+  "name": "Gravel",
+  "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense.",
   "setup": {
     "preset": "custom",
     "bike": {
@@ -19,16 +19,22 @@
       "descend_confidence": 0.9
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "strongly_prefer",
-    "traffic_stress": "strongly_avoid",
-    "unpaved": "strongly_prefer",
-    "roughness": "avoid",
-    "technicality": "neutral",
     "climbing": "neutral",
-    "scenic": "strongly_prefer",
-    "urbanity": "strongly_avoid",
-    "cycle_infrastructure": "prefer"
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "strongly_prefer",
+      "surface_difficulty": "avoid",
+      "scenic": "strongly_prefer",
+      "urbanity": "strongly_avoid",
+      "cycle_infrastructure": "prefer"
+    },
+    "uphill": {},
+    "downhill": {}
   },
   "permissions": {
     "ferry": true,

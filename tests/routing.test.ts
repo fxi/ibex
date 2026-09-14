@@ -410,9 +410,12 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       g.edges[2].grades = [[80, 0]];
       return g;
     };
+    // A rider out looking for difficult ground. Shipped MTB climbs like gravel now and
+    // avoids it uphill, so it is not the profile this mechanism is about.
+    const seeker = withPreferences(TRAIL, { surface_difficulty: "prefer" });
     const scenic = route(
       build(),
-      { anchors: [points[0], points[1]], profile: TRAIL },
+      { anchors: [points[0], points[1]], profile: seeker },
       "reference",
     );
     expect(scenic.status).toBe("ok");
@@ -431,7 +434,7 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       const e = build().edges[id];
       return total(scoreEdge(e, profile)) / e.length;
     };
-    expect(rate(GRAVEL, 0)).toBeGreaterThan(rate(TRAIL, 0));
+    expect(rate(GRAVEL, 0)).toBeGreaterThan(rate(seeker, 0));
   });
 
   it("costs an uphill technical section more than the same-scale downhill", () => {

@@ -23,7 +23,7 @@ import {
 } from "./types";
 
 /** Bump when leg routing changes in a way the key cannot see. */
-const LEG_FORMAT = 1;
+const LEG_FORMAT = 2;
 
 /** Installed data a leg can read: the release and the version of every cell under its area. */
 export function legData(
@@ -44,7 +44,10 @@ export function legData(
 }
 
 export function legKey(
-  request: Pick<RouteRequest, "profile" | "attraction" | "maxSettled">,
+  request: Pick<
+    RouteRequest,
+    "profile" | "attraction" | "maxSettled" | "diagnostics" | "search"
+  >,
   from: Point,
   to: Point,
   data: string,
@@ -57,6 +60,8 @@ export function legKey(
     toCompiled(request.profile),
     request.attraction ?? null,
     request.maxSettled ?? null,
+    request.diagnostics ?? false,
+    request.search ?? "astar",
     data,
   ]);
 }

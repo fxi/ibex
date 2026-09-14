@@ -26,24 +26,24 @@ test("creates, edits, persists and deletes a custom profile", async ({
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
 
   // Shipped profiles are read-only, so editing one starts from a copy.
-  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
+  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
   const name = page.getByLabel("Model name");
   await expect(name).toHaveValue(/copy/i);
   await name.fill("My mountain bike");
-  await page.getByLabel("Profile id").fill("my_mountain_bike");
 
   // Every control shows its own value — there is nothing inherited to reveal.
   await setLevel(page, "Climbing", "Prefer ++");
-  // Shipped gravel already permits pushing, so turning it off is the real state change.
-  await page.getByLabel("Pushing", { exact: true }).uncheck();
+  // Shipped gravel does not permit pushing, so turning it on is the real state change.
+  await page.getByLabel("Pushing", { exact: true }).check();
 
   await showJSON(page);
   expect(JSON.parse(await editorJSON(page).inputValue())).toMatchObject({
-    format_version: 2,
-    id: "my_mountain_bike",
+    format_version: 3,
+    // Generated, never typed: a duplicate cannot collide with the profile it came from.
+    id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/),
     name: "My mountain bike",
-    preferences: { climbing: "strongly_prefer" },
-    permissions: { push: false },
+    settings: { climbing: "strongly_prefer" },
+    permissions: { push: true },
   });
 
   await page.getByRole("button", { name: "Save and use" }).click();
@@ -81,7 +81,7 @@ test("creates, edits, persists and deletes a custom profile", async ({
 test("shows what the bike and rider add up to", async ({ page }) => {
   await page.goto("./");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
+  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
 
   // The readout is the answer to "inheritance doesn't show values": the setup feeds a
   // model, and the model says out loud what it concluded.
@@ -95,7 +95,8 @@ test("shows what the bike and rider add up to", async ({ page }) => {
   await showJSON(page);
   const json = JSON.parse(await editorJSON(page).inputValue());
   expect(json.setup.bike.tire_mm).toBe(60);
-  expect(json.setup.preset).toBe("mtb_60 / expert");
+  // The label follows the numbers: the bike is now a preset, the rider may not be.
+  expect(json.setup.preset).toMatch(/^(mtb_60 \/ \w+|custom)$/);
 });
 
 test("imports and exports a complete profile", async ({ page }) => {
@@ -103,8 +104,8 @@ test("imports and exports a complete profile", async ({ page }) => {
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
 
   // Export first, so the file under test is one the app itself produced.
-  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
-  await page.getByLabel("Profile id").fill("exported");
+  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page.getByLabel("Model name").fill("Exported");
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON" }).click();
   const download = await downloadEvent;
@@ -116,7 +117,8 @@ test("imports and exports a complete profile", async ({ page }) => {
 
   // The whole point of the format: what comes out is complete and self-contained, so it
   // can go straight back in without a master file to resolve it against.
-  expect(Object.keys(exported.preferences)).toHaveLength(9);
+  expect(Object.keys(exported.settings)).toHaveLength(3);
+  expect(Object.keys(exported.preferences.base)).toHaveLength(6);
   expect(exported.setup.bike.lowest_gear_ratio).toBeGreaterThan(0);
 
   await page.getByRole("button", { name: "Cancel" }).click();
@@ -135,7 +137,7 @@ test("imports and exports a complete profile", async ({ page }) => {
 test("reports an invalid profile instead of saving it", async ({ page }) => {
   await page.goto("./");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Duplicate Gravel 40 mm" }).click();
+  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
   await showJSON(page);
   // A partial profile is rejected rather than filled in from somewhere else — which is
   // exactly what the old format did, and why a shared file meant nothing on its own.

@@ -31,28 +31,53 @@ export const STRENGTH: Record<Level, number> = {
   strongly_prefer: 1,
 };
 
-export const PREFERENCE_KEYS = [
-  "detour",
+/**
+ * Whole-ride settings: one value for the ride, never changed by direction. `detour` sets
+ * the budget, `climbing` scales the climbing cost (see `CLIMB_AVERSION`), and
+ * `direction_changes` prices turning at intersections.
+ */
+export const SETTING_KEYS = ["detour", "climbing", "direction_changes"] as const;
+export type SettingKey = (typeof SETTING_KEYS)[number];
+
+/**
+ * Preferences that score a way against a reference. A profile states all of them for
+ * `base`, and may override any of them `uphill` or `downhill`.
+ *
+ * `surface_difficulty` is one idea for a rider — how hard the ground is — read as the
+ * worse of surface roughness and mapped technical difficulty in the direction of travel.
+ * What the bike and rider can physically handle stays two separate capabilities.
+ */
+export const SIGNAL_KEYS = [
   "traffic_stress",
   "unpaved",
-  "roughness",
-  "technicality",
-  "climbing",
+  "surface_difficulty",
   "scenic",
   "urbanity",
   "cycle_infrastructure",
 ] as const;
-export type PreferenceKey = (typeof PREFERENCE_KEYS)[number];
+export type SignalKey = (typeof SIGNAL_KEYS)[number];
 
-/** Preferences that steer terrain choice. `detour` is global and handled separately. */
 /**
- * Preferences that score a way against a reference. `detour` is global, and `climbing`
- * acts directly on the climbing cost instead — see `CLIMB_AVERSION`.
+ * What the engine actually scores. `surface_difficulty` is one level for the rider but
+ * two signals underneath, each against its own reference: avoided, both are charged;
+ * preferred, the stronger of the two is credited (see `riddenRate`). A single merged
+ * value measured against a tyre's roughness comfort let technical difficulty barely
+ * register, and a gravel bike took an `mtb:scale=2` shortcut it used to avoid.
  */
-export type SignalKey = Exclude<PreferenceKey, "detour" | "climbing">;
-export const SIGNAL_KEYS = PREFERENCE_KEYS.filter(
-  (k): k is SignalKey => k !== "detour" && k !== "climbing",
-);
+export const SCORED_KEYS = [
+  "traffic_stress",
+  "unpaved",
+  "roughness",
+  "technicality",
+  "scenic",
+  "urbanity",
+  "cycle_infrastructure",
+] as const;
+export type ScoredKey = (typeof SCORED_KEYS)[number];
+
+/** The profile preference that sets a scored signal's level. */
+export const levelKey = (key: ScoredKey): SignalKey =>
+  key === "roughness" || key === "technicality" ? "surface_difficulty" : key;
 
 /**
  * What `climbing` multiplies the climbing effort by, from `strongly_avoid` to
@@ -116,7 +141,7 @@ export const DETOUR: Record<
  * anything apart. These should be re-measured when the builder changes how a signal is
  * derived.
  */
-export const REFERENCE: Record<SignalKey, number> = {
+export const REFERENCE: Record<ScoredKey, number> = {
   traffic_stress: 0.18,
   unpaved: 0.35,
   roughness: 0.18,
@@ -140,7 +165,7 @@ export const REFERENCE: Record<SignalKey, number> = {
  * credited in full, forest cover alone paid for 965 m of `mtb:scale=2` on the Sauget
  * crossing for a gravel rider who avoids technical ground, more than the trail bike took.
  */
-export const IMPORTANCE: Record<SignalKey, number> = {
+export const IMPORTANCE: Record<ScoredKey, number> = {
   traffic_stress: 1.4,
   unpaved: 1,
   roughness: 1.5,
@@ -237,6 +262,24 @@ export const ENGINE = {
    * not tarmac either, and a `tracktype=grade2` with no `surface` priced like asphalt.
    */
   unpaved_guess_share: 0.7,
+  /**
+   * Added per unit of unpaved evidence for a rider who strongly avoids unpaved ground.
+   * See `unpavedHazard`: a road bike stays off gravel even when the gravel is shorter.
+   */
+  unpaved_hazard: 3,
+  /**
+   * Grade past which a profile's `uphill` or `downhill` preferences apply. Small enough to
+   * catch a real slope, large enough that a false flat is not one. This is local grade,
+   * not a sustained climb or descent; see docs/routing-refactor.md.
+   */
+  grade_from: 0.02,
+  /**
+   * Equivalent metres for a U-turn at an intersection at `direction_changes:
+   * strongly_avoid`, scaled by `(1 - cos angle) / 2`: straight on is free, a right angle
+   * pays half. Only where three or more ways meet, so hairpins inside a way and the
+   * nodes OSM splits ways at cost nothing.
+   */
+  turn_meters: 60,
   /** Added per unit of `edge.uncertainty` — unsurveyed ways are a gamble, not a dislike. */
   uncertainty: 0.25,
   /**

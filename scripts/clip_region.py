@@ -39,6 +39,8 @@ FILTERS = [
     # node[tourism=viewpoint] / node[natural=peak] -> reward field seeds
     "n/tourism=viewpoint",
     "n/natural=peak",
+    "n/natural=saddle",
+    "n/mountain_pass=yes",
     # landuse / natural=wood ways and relations -> urban and forest fractions
     "w/landuse=forest,residential,commercial,industrial,retail,garages,construction",
     "r/landuse=forest,residential,commercial,industrial,retail,garages,construction",

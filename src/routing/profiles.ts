@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { LEVELS, PREFERENCE_KEYS, type PreferenceKey } from "./vocabulary";
+import { sha256 } from "@noble/hashes/sha2.js";
+import {
+  LEVELS,
+  SETTING_KEYS,
+  SIGNAL_KEYS,
+  STRENGTH,
+  type Level,
+  type SettingKey,
+  type SignalKey,
+} from "./vocabulary";
 
 /**
  * A profile is complete or it is not a profile.
@@ -9,8 +18,11 @@ import { LEVELS, PREFERENCE_KEYS, type PreferenceKey } from "./vocabulary";
  * values that decided a route were somewhere else, and the form could only show them as
  * a greyed-out "inherited". Every field is required here, nothing is merged, and export
  * writes exactly what routed. A file is readable by whoever receives it.
+ *
+ * Format 3 separates whole-ride `settings` from way `preferences`, and states those for
+ * `base` with optional `uphill` and `downhill` overrides. Format 2 files convert on load.
  */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 
 const unit = z.number().min(0).max(1);
 const level = z.enum(LEVELS);
@@ -54,12 +66,28 @@ export const setupSchema = z.strictObject({
   rider: riderSchema,
 });
 
-const preferencesSchema = z.strictObject(
-  Object.fromEntries(PREFERENCE_KEYS.map((k) => [k, level])) as Record<
-    PreferenceKey,
+export const settingsSchema = z.strictObject(
+  Object.fromEntries(SETTING_KEYS.map((k) => [k, level])) as Record<
+    SettingKey,
     typeof level
   >,
 );
+
+const signalsSchema = z.strictObject(
+  Object.fromEntries(SIGNAL_KEYS.map((k) => [k, level])) as Record<
+    SignalKey,
+    typeof level
+  >,
+);
+
+export const preferencesSchema = z.strictObject({
+  /** Every way preference, stated once. */
+  base: signalsSchema,
+  /** Only what changes on a climb. */
+  uphill: signalsSchema.partial().default({}),
+  /** Only what changes on a descent. */
+  downhill: signalsSchema.partial().default({}),
+});
 
 export const permissionsSchema = z.strictObject({
   ferry: z.boolean(),
@@ -71,15 +99,12 @@ export const permissionsSchema = z.strictObject({
 
 export const profileSchema = z.strictObject({
   format_version: z.literal(FORMAT_VERSION),
-  id: z
-    .string()
-    .trim()
-    .min(1)
-    .max(60)
-    .regex(/^[a-z0-9][a-z0-9_-]*$/, "lowercase letters, digits, - and _"),
+  /** Generated, never chosen: two people's "my_gravel" must not overwrite each other. */
+  id: z.uuid(),
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(400).default(""),
   setup: setupSchema,
+  settings: settingsSchema,
   preferences: preferencesSchema,
   permissions: permissionsSchema,
 });
@@ -87,29 +112,138 @@ export const profileSchema = z.strictObject({
 export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
 export type Setup = z.infer<typeof setupSchema>;
+export type Settings = z.infer<typeof settingsSchema>;
 export type Permissions = z.infer<typeof permissionsSchema>;
 export type Preferences = z.infer<typeof preferencesSchema>;
+export type Direction = "uphill" | "downhill";
 export type Profile = z.infer<typeof profileSchema>;
 
+const formatUuid = (bytes: Uint8Array) => {
+  const h = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+};
+
+/** A fresh random id (UUID v4). Works outside secure contexts, unlike `randomUUID`. */
+export function newProfileId(): string {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  return formatUuid(b);
+}
+
 /**
- * Parse, then freeze all the way down.
+ * The id a format-2 slug becomes (UUID v8, name-based). Deterministic, so a saved track
+ * on `gravel_50` still matches the shipped Gravel profile after conversion.
+ */
+export function profileUuid(slug: string): string {
+  const b = sha256(new TextEncoder().encode(`cyclatractor/profile/${slug}`));
+  b[6] = (b[6] & 0x0f) | 0x80;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  return formatUuid(b.slice(0, 16));
+}
+
+/** The stronger of two levels, first wins a tie. Used to merge format-2 keys. */
+const stronger = (a?: Level, b?: Level) =>
+  a === undefined
+    ? b
+    : b === undefined
+      ? a
+      : Math.abs(STRENGTH[b]) > Math.abs(STRENGTH[a])
+        ? b
+        : a;
+
+/**
+ * Convert a format-2 profile; anything else passes through untouched for the schema to
+ * judge. Deterministic but lossy in one place: `roughness` and `technicality` merge into
+ * `surface_difficulty` at whichever of the two was stated more strongly.
+ */
+export function migrateProfile(input: unknown): unknown {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    (input as { format_version?: unknown }).format_version !== 2
+  )
+    return input;
+  const {
+    preferences,
+    descent,
+    id,
+    ...rest
+  } = input as Record<string, unknown> & {
+    preferences?: Record<string, Level>;
+    descent?: Record<string, Level>;
+  };
+  const signals = (source: Record<string, Level> = {}) => {
+    const out: Partial<Record<SignalKey, Level>> = {};
+    for (const key of SIGNAL_KEYS) {
+      const value =
+        key === "surface_difficulty"
+          ? stronger(source.roughness, source.technicality)
+          : source[key];
+      if (value !== undefined) out[key] = value;
+    }
+    return out;
+  };
+  return {
+    ...rest,
+    format_version: FORMAT_VERSION,
+    id:
+      typeof id === "string" && z.uuid().safeParse(id).success
+        ? id
+        : profileUuid(String(id)),
+    settings: {
+      detour: preferences?.detour,
+      climbing: preferences?.climbing,
+      direction_changes: "neutral",
+    },
+    preferences: {
+      base: signals(preferences),
+      uphill: {},
+      downhill: signals(descent),
+    },
+  };
+}
+
+/** Overrides that actually differ from `base`, in canonical key order. */
+export function overrides(
+  preferences: Preferences,
+  direction: Direction,
+): Partial<Record<SignalKey, Level>> {
+  return Object.fromEntries(
+    SIGNAL_KEYS.filter(
+      (k) =>
+        preferences[direction][k] !== undefined &&
+        preferences[direction][k] !== preferences.base[k],
+    ).map((k) => [k, preferences[direction][k]]),
+  );
+}
+
+/**
+ * Convert, validate, canonicalize, then freeze all the way down.
  *
  * Routing reads a profile on every edge of every search. Freezing is cheap insurance
  * that nothing downstream mutates a value mid-route and produces a path that no single
- * set of settings would have produced.
+ * set of settings would have produced. An override equal to `base` says nothing, and is
+ * dropped so that two profiles meaning the same thing serialize the same.
  */
 export function parseProfile(input: unknown): Profile {
-  const value = profileSchema.parse(input);
+  const value = profileSchema.parse(migrateProfile(input));
+  value.preferences = {
+    base: Object.freeze(value.preferences.base),
+    uphill: Object.freeze(overrides(value.preferences, "uphill")),
+    downhill: Object.freeze(overrides(value.preferences, "downhill")),
+  };
   Object.freeze(value.setup.bike);
   Object.freeze(value.setup.rider);
   Object.freeze(value.setup);
+  Object.freeze(value.settings);
   Object.freeze(value.preferences);
   Object.freeze(value.permissions);
   return Object.freeze(value);
 }
 
 export const isProfile = (input: unknown): input is Profile =>
-  profileSchema.safeParse(input).success;
+  profileSchema.safeParse(migrateProfile(input)).success;
 
 /**
  * One canonical field order for the whole app.
@@ -144,9 +278,16 @@ export function orderProfile(profile: Profile) {
         descend_confidence: profile.setup.rider.descend_confidence,
       },
     },
-    preferences: Object.fromEntries(
-      PREFERENCE_KEYS.map((k) => [k, profile.preferences[k]]),
+    settings: Object.fromEntries(
+      SETTING_KEYS.map((k) => [k, profile.settings[k]]),
     ),
+    preferences: {
+      base: Object.fromEntries(
+        SIGNAL_KEYS.map((k) => [k, profile.preferences.base[k]]),
+      ),
+      uphill: overrides(profile.preferences, "uphill"),
+      downhill: overrides(profile.preferences, "downhill"),
+    },
     permissions: {
       ferry: profile.permissions.ferry,
       stairs: profile.permissions.stairs,

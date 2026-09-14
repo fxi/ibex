@@ -62,6 +62,16 @@ export function validateEdge(edge: Edge): Edge {
     edge.geometry.some(
       (p) => p.length !== 2 || p.some((v) => !Number.isFinite(v)),
     ) ||
+    (edge.semantics !== undefined &&
+      (edge.semantics.version !== 1 ||
+        typeof edge.semantics.surfaceKnown !== "boolean" ||
+        ![
+          edge.semantics.roughness,
+          edge.semantics.technicalUp,
+          edge.semantics.technicalDown,
+          edge.semantics.unpaved,
+          edge.semantics.curvature,
+        ].every(unit))) ||
     edge.grades?.some(
       ([length, grade]) =>
         !Number.isFinite(length) || length <= 0 || !Number.isFinite(grade),

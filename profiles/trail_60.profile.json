@@ -1,8 +1,8 @@
 {
-  "format_version": 2,
-  "id": "trail_60",
-  "name": "Trail 60 mm",
-  "description": "Singletrack when it is there, and happy to climb or push to reach it.",
+  "format_version": 3,
+  "id": "cb933404-5d12-85ed-bdb2-0591c694de3f",
+  "name": "MTB",
+  "description": "Climb like gravel, on quiet easy tracks; come down on singletrack.",
   "setup": {
     "preset": "mtb_60 / expert",
     "bike": {
@@ -19,16 +19,24 @@
       "descend_confidence": 0.7
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "prefer",
-    "traffic_stress": "strongly_avoid",
-    "unpaved": "strongly_prefer",
-    "roughness": "prefer",
-    "technicality": "prefer",
-    "climbing": "prefer",
-    "scenic": "prefer",
-    "urbanity": "strongly_avoid",
-    "cycle_infrastructure": "neutral"
+    "climbing": "neutral",
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "strongly_prefer",
+      "surface_difficulty": "avoid",
+      "scenic": "prefer",
+      "urbanity": "strongly_avoid",
+      "cycle_infrastructure": "neutral"
+    },
+    "uphill": {},
+    "downhill": {
+      "surface_difficulty": "strongly_prefer"
+    }
   },
   "permissions": {
     "ferry": true,

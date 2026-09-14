@@ -202,17 +202,58 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                       it to plan a new route along the same way.
                     </p>
                   ) : (
-                    <button
-                      className="primary wide"
-                      disabled={!canCompute}
-                      onClick={routing.compute}
-                    >
-                      <RefreshCw
-                        size={18}
-                        className={routing.busy ? "spin" : ""}
-                      />
-                      {routing.busy ? "Computing…" : "Reprocess waypoints"}
-                    </button>
+                    // One choice and one action: which kind of ride, and go.
+                    <div className="track-profile">
+                      <select
+                        aria-label="Profile"
+                        value={models.find((m) => same(t, m.id))?.id ?? ""}
+                        onChange={(e) => {
+                          const chosen = models.find(
+                            (m) => m.id === e.target.value,
+                          );
+                          if (chosen) edit({ profile: modelSnapshot(chosen) });
+                        }}
+                      >
+                        {/* An edited model matches nothing in the list until it is saved. */}
+                        <option value="">{t.profile.name} (custom)</option>
+                        {models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="icon-button primary"
+                        aria-label="Reprocess waypoints"
+                        title={
+                          routing.busy ? "Computing…" : "Reprocess waypoints"
+                        }
+                        aria-busy={routing.busy}
+                        disabled={!canCompute}
+                        onClick={routing.compute}
+                      >
+                        <RefreshCw
+                          size={18}
+                          className={routing.busy ? "spin" : ""}
+                        />
+                      </button>
+                    </div>
+                  )}
+                  {t.result && (
+                    <dl className="track-stats">
+                      <div>
+                        <dt>Distance</dt>
+                        <dd>{(t.result.distanceM / 1000).toFixed(1)} km</dd>
+                      </div>
+                      <div>
+                        <dt>Elevation gain</dt>
+                        <dd>
+                          {t.result.ascentM === null
+                            ? "—"
+                            : `${Math.round(t.result.ascentM)} m`}
+                        </dd>
+                      </div>
+                    </dl>
                   )}
                   {/* The run is started here now, so its outcome is reported here too. */}
                   {!routing.busy && ctx.status && (
@@ -250,28 +291,6 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     </label>
                   </div>
 
-                  {t.kind === "planned" && (
-                    <label>
-                      Profile
-                      <select
-                        value={models.find((m) => same(t, m.id))?.id ?? ""}
-                        onChange={(e) => {
-                          const chosen = models.find(
-                            (m) => m.id === e.target.value,
-                          );
-                          if (chosen) edit({ profile: modelSnapshot(chosen) });
-                        }}
-                      >
-                        {/* An edited model matches nothing in the list until it is saved. */}
-                        <option value="">{t.profile.name} (custom)</option>
-                        {models.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
 
                   {t.kind === "planned" && (
                     <div className="waypoints">

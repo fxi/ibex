@@ -4,6 +4,7 @@ import { download } from "../gpx";
 import { loadModels, saveModels, shippedProfiles } from "../models";
 import { modelSnapshot } from "../tracks";
 import {
+  newProfileId,
   parseProfile,
   serializeProfile,
   type Profile,
@@ -11,12 +12,12 @@ import {
 import { ProfileForm } from "./ProfileForm";
 import type { PanelContext } from "./context";
 
-/** Keep a duplicated profile from colliding with one that already exists. */
-function uniqueId(base: string, existing: { id: string }[]): string {
-  let id = base;
-  for (let n = 2; existing.some((p) => p.id === id); n++) id = `${base}_${n}`;
-  return id;
-}
+/** A file name for an exported profile. The id is a UUID, so it comes from the name. */
+const fileName = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "profile";
 
 export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
   const { tracks, routing, models, reloadModels, setError } = ctx;
@@ -56,7 +57,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       duplicate
         ? {
             ...structuredClone(source),
-            id: uniqueId(`${source.id}_copy`, [...shipped, ...models]),
+            id: newProfileId(),
             name: `${source.name} copy`,
           }
         : structuredClone(source),
@@ -124,46 +125,46 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
           ...shipped.filter((p) => !models.some((q) => q.id === p.id)),
           ...models,
         ].map((p) => (
-          <div key={p.id} className="model-row-wrap">
-            <button
-              className="model-row"
-              aria-pressed={sameModel(p)}
-              onClick={() => useModel(p)}
-              title={p.description}
-            >
-              {isShipped(p) ? <Bike /> : <Mountain />}
-              <span>{p.name}</span>
-              <i />
-            </button>
-            {/* A shipped profile is read-only, so editing one means copying it first. */}
-            {isShipped(p) ? (
+            <div key={p.id} className="model-row-wrap">
               <button
-                className="icon-button"
-                aria-label={`Duplicate ${p.name}`}
-                onClick={() => startEdit(p, true)}
+                className="model-row"
+                aria-pressed={sameModel(p)}
+                onClick={() => useModel(p)}
+                title={p.description}
               >
-                <Plus size={16} />
+                {isShipped(p) ? <Bike /> : <Mountain />}
+                <span>{p.name}</span>
+                <i />
               </button>
-            ) : (
-              <>
+              {/* A shipped profile is read-only, so editing one means copying it first. */}
+              {isShipped(p) ? (
                 <button
                   className="icon-button"
-                  aria-label={`Edit ${p.name}`}
-                  onClick={() => startEdit(p)}
+                  aria-label={`Duplicate ${p.name}`}
+                  onClick={() => startEdit(p, true)}
                 >
-                  <Settings size={16} />
+                  <Plus size={16} />
                 </button>
-                <button
-                  className="icon-button"
-                  aria-label={`Delete ${p.name}`}
-                  onClick={() => setConfirming(p.id)}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </>
-            )}
-          </div>
-        ))}
+              ) : (
+                <>
+                  <button
+                    className="icon-button"
+                    aria-label={`Edit ${p.name}`}
+                    onClick={() => startEdit(p)}
+                  >
+                    <Settings size={16} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label={`Delete ${p.name}`}
+                    onClick={() => setConfirming(p.id)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
       </div>
 
       {confirming && (
@@ -194,16 +195,6 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
                 }
               />
             </label>
-            <label>
-              Profile id
-              <input
-                value={editing.id}
-                aria-label="Profile id"
-                onChange={(e) =>
-                  setEditing({ ...editing, id: e.target.value.trim() })
-                }
-              />
-            </label>
           </div>
 
           <ProfileForm draft={editing} onChange={setEditing} />
@@ -220,7 +211,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
             <button
               onClick={() =>
                 download(
-                  `${editing.id}.profile.json`,
+                  `${fileName(editing.name)}.profile.json`,
                   serializeProfile(editing) + "\n",
                   "application/json",
                 )
@@ -309,12 +300,12 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
         {ctx.debug &&
           (shownComparison ? (
             <>
-              <p>
-                Corridor cost difference:{" "}
-                {shownComparison.relativeCost === null
-                  ? "unavailable"
-                  : `${(shownComparison.relativeCost * 100).toFixed(1)}%`}
-              </p>
+              {shownComparison.relativeCost !== null && (
+                <p>
+                  Corridor cost difference:{" "}
+                  {`${(shownComparison.relativeCost * 100).toFixed(1)}%`}
+                </p>
+              )}
               {shownComparison.exploration?.experience && (
                 <p>
                   Scenic detours:{" "}
@@ -325,9 +316,10 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
                 </p>
               )}
               <p>
-                Full graph: {shownComparison.reference.metrics.explored}{" "}
-                explored · Corridor: {shownComparison.corridor.metrics.explored}{" "}
+                Search: {shownComparison.reference.metrics.explored} states
                 explored
+                {" · "}
+                {Math.round(shownComparison.reference.metrics.durationMs)} ms
               </p>
               <button
                 onClick={() =>

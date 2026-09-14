@@ -6,6 +6,8 @@
  * crossing a cell boundary, present in both adjacent packs, becomes one edge.
  */
 import { decodeBlock } from "../offline/ibex/block";
+import { validateEdge, validateNode } from "../offline/validate";
+import { edgeSignals } from "./signals";
 import { decodeIndex } from "../offline/ibex/index";
 import { IbexError, type BlockRef, type IbexIndex } from "../offline/ibex/spec";
 import {
@@ -170,6 +172,11 @@ export class CellGraphProvider {
       block: { x: ref.x, y: ref.y },
       crc: ref.crc,
     });
+    for (const node of decoded.nodes) validateNode(node);
+    for (const edge of decoded.edges) {
+      validateEdge(edge);
+      edge.semantics ??= { ...edgeSignals(edge), version: 1 };
+    }
     this.cache.set(key, { bbox: ref.bbox, ...decoded });
     this.stats.blocks++;
     return decoded;

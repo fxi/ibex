@@ -3,7 +3,7 @@
 !.env.example
 !.env.demo
 data
-ibex
+/ibex/
 .DS_Store
 node_modules/
 dist/

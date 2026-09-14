@@ -1066,6 +1066,32 @@ progress {
   font-size: 11px;
   color: var(--muted);
 }
+.track-profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.track-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.track-stats div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.track-stats dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.track-stats dd {
+  margin: 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
 .track-meta {
   display: grid;
   grid-template-columns: 1fr auto;

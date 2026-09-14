@@ -76,6 +76,17 @@ export function compareOn(
   coverage: BBox,
   progress: (label: string) => void = () => {},
 ): Comparison & { fieldView: FieldView; exploration: RouteResult } {
+  if (!request.diagnostics) {
+    progress("Finding your route…");
+    const result = route(graph, request, "reference");
+    return {
+      reference: result,
+      corridor: result,
+      exploration: result,
+      fieldView: { type: "FeatureCollection", features: [] },
+      relativeCost: null,
+    };
+  }
   const field = buildField(graph, request);
   const fieldView = fieldViewOf(field);
   let corridor: RouteResult | undefined;
@@ -169,7 +180,9 @@ export async function routeLeg(
   const area = searchArea(anchors);
   source.retain?.(area);
   progress(`${prefix}Loading map data…`);
+  const loadStarted = performance.now();
   const loaded = await source.load(area);
+  const loadMs = performance.now() - loadStarted;
   // The corridor field is laid over the graph bbox; keep it to the leg, not the region.
   const graph: Graph = {
     ...loaded,
@@ -180,6 +193,12 @@ export async function routeLeg(
   const value = compareOn(graph, { ...request, anchors }, coverage, (label) =>
     progress(prefix + label),
   );
+  for (const result of new Set([
+    value.reference,
+    value.corridor,
+    value.exploration,
+  ]))
+    result.metrics.loadMs = loadMs;
   // A search that ran out of graph next to uninstalled coverage is missing data, not a
   // disconnected network.
   if (value.reference.status === "no-path") {
@@ -217,7 +236,9 @@ export function joinComparison(
       legs.map((c) => c.exploration),
       anchors,
     ),
-    relativeCost: relativeCost(reference, corridor),
+    relativeCost: legs.every((leg) => leg.relativeCost !== null)
+      ? relativeCost(reference, corridor)
+      : null,
   };
 }
 
@@ -301,7 +322,20 @@ export function joinLegs(legs: RouteResult[], anchors: Point[]): RouteResult {
   const experiences = legs.filter((r) => r.experience);
   for (const [i, leg] of legs.entries()) {
     joined.metrics.durationMs += leg.metrics.durationMs;
+    joined.metrics.loadMs =
+      (joined.metrics.loadMs ?? 0) + (leg.metrics.loadMs ?? 0);
+    joined.metrics.loadedBytes += leg.metrics.loadedBytes;
+    joined.metrics.blocks =
+      (joined.metrics.blocks ?? 0) + (leg.metrics.blocks ?? 0);
+    joined.metrics.cells = [
+      ...new Set([
+        ...(joined.metrics.cells ?? []),
+        ...(leg.metrics.cells ?? []),
+      ]),
+    ];
     joined.metrics.explored += leg.metrics.explored;
+    joined.metrics.preparedStates =
+      (joined.metrics.preparedStates ?? 0) + (leg.metrics.preparedStates ?? 0);
     joined.metrics.expansions = Math.max(
       joined.metrics.expansions,
       leg.metrics.expansions,
