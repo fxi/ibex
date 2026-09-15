@@ -30,7 +30,12 @@ export type Track = {
   result?: RouteResult;
   packVersion?: string;
 };
-export type TrackCollection = { version: 1; activeId: string; tracks: Track[] };
+/** A collection may be empty; `activeId` is then undefined until a track is added. */
+export type TrackCollection = {
+  version: 1;
+  activeId?: string;
+  tracks: Track[];
+};
 /**
  * A track's colour is its identity on the map, so the palette only has to separate one
  * track from another. Warm hues are deliberately absent: yellow through red is reserved
@@ -241,29 +246,30 @@ export function restoreCollection(value: unknown): TrackCollection {
   const data = z
     .object({
       version: z.literal(1),
-      activeId: z.string(),
-      tracks: z.array(storedTrack).min(1),
+      activeId: z.string().optional(),
+      tracks: z.array(storedTrack),
     })
     .parse(value);
   if (!data.tracks.some((t) => t.id === data.activeId))
-    data.activeId = data.tracks[0].id;
+    data.activeId = data.tracks[0]?.id;
   return data;
 }
 export async function loadTracks(): Promise<TrackCollection> {
   const saved = await preference<unknown>("ibex-tracks");
   if (saved !== undefined) return restoreCollection(saved);
-  // Anchors from an older collection are still meaningful; its profile is not, so the
-  // track restarts on the default one.
+  // A first visit starts with no track. Anchors from an older single plan are still
+  // meaningful; its profile is not, so that track restarts on the default one.
   const old = await preference<{ anchors: Point[] }>("plan");
-  const track = newTrack();
-  if (old?.anchors)
-    Object.assign(track, {
+  const tracks: Track[] = [];
+  if (old?.anchors?.length)
+    tracks.push({
+      ...newTrack(),
       anchors: z.array(point).max(LIMITS.anchorsMax).parse(old.anchors),
     });
   const collection: TrackCollection = {
     version: 1,
-    activeId: track.id,
-    tracks: [track],
+    activeId: tracks[0]?.id,
+    tracks,
   };
   await saveTracks(collection);
   return collection;

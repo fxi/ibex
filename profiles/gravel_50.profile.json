@@ -1,6 +1,6 @@
 {
   "format_version": 3,
-  "id": "2f1ba3ed-9e47-8ebe-ac72-d2ccadbe268f",
+  "id": "4ce64270-c98a-434b-8a2c-d4420101b8a2",
   "name": "Gravel",
   "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense.",
   "setup": {
@@ -20,14 +20,14 @@
     }
   },
   "settings": {
-    "detour": "strongly_prefer",
+    "detour": "prefer",
     "climbing": "neutral",
-    "direction_changes": "neutral"
+    "direction_changes": "avoid"
   },
   "preferences": {
     "base": {
       "traffic_stress": "strongly_avoid",
-      "unpaved": "strongly_prefer",
+      "unpaved": "prefer",
       "surface_difficulty": "avoid",
       "scenic": "strongly_prefer",
       "urbanity": "strongly_avoid",

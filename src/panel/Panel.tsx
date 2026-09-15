@@ -42,6 +42,8 @@ export function Panel({
     <section
       className={`panel glass ${open ? "" : "collapsed"} ${resizing ? "resizing" : ""}`}
       aria-label="Route planner"
+      // Saving is quick and silent; the attribute lets tests wait for it before reloading.
+      data-saving={tracks.saving}
     >
       {/* Dragging the grab bar resizes; the caret alone says open or closed. */}
       <div
@@ -51,9 +53,6 @@ export function Panel({
         aria-orientation="horizontal"
         aria-label="Resize panel"
       >
-        <span className="save-status" role="status">
-          {tracks.saving ? "Saving…" : "Saved"}
-        </span>
         <span className="grab" />
         <button
           className="expand-button"

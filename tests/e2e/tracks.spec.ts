@@ -1,12 +1,18 @@
-import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
+import {
+  expect,
+  test,
+  saveMapData,
+  planArve,
+  tracksSaved,
+  SAVED_TEXT,
+} from "./fixtures";
 test("independent tracks persist, require explicit computation, and export only current results", async ({
   page,
 }) => {
   await page.goto("./");
   await saveMapData(page);
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await expect(page.locator(".track-state")).toHaveText("Needs computation");
   await page
     .getByRole("button", { name: "Reprocess waypoints", exact: true })
@@ -36,7 +42,7 @@ test("independent tracks persist, require explicit computation, and export only 
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
   await expect(page.locator(".track-card").nth(1)).toContainText("Ready");
-  await expect(page.locator(".save-status")).toHaveText("Saved");
+  await tracksSaved(page);
   await page.reload();
   await expect(page.locator(".track-card")).toHaveCount(2);
   await expect(
@@ -52,7 +58,11 @@ test("migrates the previous single plan once without overwriting later tracks", 
   page,
 }) => {
   await page.goto("./");
-  await expect(page.locator(".track-card")).toHaveCount(1);
+  // A first visit has no track, only the prompt to add one.
+  await expect(
+    page.getByRole("button", { name: "No track, add one to start" }),
+  ).toBeVisible();
+  await expect(page.locator(".track-card")).toHaveCount(0);
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const r = indexedDB.open("cyclatractor-v1");
@@ -77,7 +87,7 @@ test("migrates the previous single plan once without overwriting later tracks", 
     });
     db.close();
   });
-  await expect(page.locator(".save-status")).toHaveText("Saved");
+  await tracksSaved(page);
   await page.reload();
   // The anchors survive the migration; the old sparse profile does not, because its
   // meaning lived in a master file that no longer exists. The track restarts on the
@@ -85,7 +95,7 @@ test("migrates the previous single plan once without overwriting later tracks", 
   await expect(page.locator(".track-card")).toContainText("Gravel");
   await expect(page.locator(".track-card")).toContainText("2 waypoints");
   await page.getByRole("button", { name: "New track", exact: true }).click();
-  await expect(page.locator(".save-status")).toHaveText("Saved");
+  await tracksSaved(page);
   await page.reload();
   await expect(page.locator(".track-card")).toHaveCount(2);
 });

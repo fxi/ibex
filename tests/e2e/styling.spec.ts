@@ -1,4 +1,4 @@
-import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
+import { expect, test, saveMapData, planArve, SAVED_TEXT } from "./fixtures";
 
 /** Read back what the map source actually holds, rather than guessing from pixels. */
 async function routeFeatures(page: import("@playwright/test").Page) {
@@ -30,8 +30,7 @@ test("a computed route is drawn as its rideability classes", async ({
     timeout: 60000,
   });
 
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await page
     .getByRole("button", { name: "Reprocess waypoints", exact: true })
     .click();

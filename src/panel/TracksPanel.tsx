@@ -5,7 +5,6 @@ import {
   Route,
   Plus,
   MoreHorizontal,
-  Mountain,
   Eye,
   EyeOff,
   RefreshCw,
@@ -19,32 +18,7 @@ import { SURFACE_STYLE, rideTotals } from "../map/rideStyle";
 import { SurfaceSample } from "./SurfaceSample";
 import { download, exportGPX } from "../gpx";
 import { modelSnapshot, type Track } from "../tracks";
-import type { Point } from "../routing/types";
 import type { PanelContext } from "./context";
-
-const examples: { name: string; anchors: Point[] }[] = [
-  {
-    name: "Along the Arve",
-    anchors: [
-      [6.146, 46.189],
-      [6.235, 46.177],
-    ],
-  },
-  {
-    name: "Geneva → Salève",
-    anchors: [
-      [6.151, 46.201],
-      [6.171, 46.119],
-    ],
-  },
-  {
-    name: "Geneva → Voirons",
-    anchors: [
-      [6.151, 46.201],
-      [6.37, 46.22],
-    ],
-  },
-];
 
 export function exportTrack(t: Track) {
   if (t.result && t.resultRevision === t.revision)
@@ -78,19 +52,22 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
   return (
     <>
       <div className="section-heading">
-        <div>
-          <h1>Your tracks</h1>
-          <p>A different way, every day.</p>
-        </div>
+        <h1>Your tracks</h1>
         <button
           className="icon-button"
           aria-label="New track"
-          disabled={!active}
+          disabled={!collection}
           onClick={() => add()}
         >
           <Plus />
         </button>
       </div>
+      {collection && !collection.tracks.length && (
+        <button className="empty-state" onClick={() => add()}>
+          <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
+          No track, add one to start
+        </button>
+      )}
       <div className="track-list">
         {collection?.tracks.map((t) => {
           const open = t.id === active?.id;
@@ -289,6 +266,10 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     />
                   </div>
 
+                  {t.kind === "planned" && !t.anchors.length && (
+                    <p className="hint">Tap the map to add waypoints.</p>
+                  )}
+
                   {/* The coordinates are for fixing a stray point, not for reading: the map
                       is where waypoints are edited, so the list stays folded away. */}
                   {t.kind === "planned" && t.anchors.length > 0 && (
@@ -398,26 +379,6 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           );
         })}
       </div>
-      {active && !active.anchors.length && (
-        <div className="empty-state">
-          <Mountain size={28} />
-          <h2>Where will you go?</h2>
-          <p>Tap the map to start a track, or try a local route.</p>
-          <div className="examples">
-            {examples.map((e) => (
-              <button
-                key={e.name}
-                onClick={() => {
-                  edit({ anchors: e.anchors });
-                  fit(e.anchors);
-                }}
-              >
-                {e.name} ↗
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </>
   );
 }

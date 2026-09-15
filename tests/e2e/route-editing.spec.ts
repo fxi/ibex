@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, saveMapData } from "./fixtures";
+import { test, expect, saveMapData, planArve } from "./fixtures";
 
 // An edit reroutes only the legs it touched, and the status says how many it kept.
 const routeReady = /^Route ready( · \d+ of \d+ legs reused)?$/;
@@ -76,8 +76,7 @@ const preview = (page: Page) =>
 async function arveRoute(page: Page) {
   await page.goto("./");
   await saveMapData(page);
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
@@ -294,8 +293,7 @@ test("right-click on the route opens the menu over the drag handle", async ({
 test("Street View is offered anywhere on the map", async ({ page }) => {
   await page.goto("./");
   await saveMapData(page);
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();

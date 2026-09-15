@@ -59,6 +59,11 @@ describe("independent track revisions", () => {
       restoreCollection({ version: 2, activeId: track.id, tracks: [track] }),
     ).toThrow();
   });
+  it("restores an empty collection with no active track", () => {
+    const empty = restoreCollection({ version: 1, tracks: [] });
+    expect(empty.tracks).toEqual([]);
+    expect(empty.activeId).toBeUndefined();
+  });
   it("snapshots a profile by value, so editing the model leaves the track alone", () => {
     // There is nothing to resolve any more — a profile is already complete — so the only
     // job left is the copy, and the copy has to be deep.

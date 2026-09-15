@@ -97,12 +97,13 @@ export function useTracks({
     if (latest.current) commit({ ...latest.current, activeId: id });
   }
 
+  /** A new track takes the active track's profile, or the default one when there is none. */
   function add() {
     const current = latest.current;
-    const source = current?.tracks.find((t) => t.id === current.activeId);
-    if (!current || !source) return;
+    if (!current) return;
+    const source = current.tracks.find((t) => t.id === current.activeId);
     beforeChange();
-    const track = newTrack(current.tracks.length, source.profile);
+    const track = newTrack(current.tracks.length, source?.profile);
     commit({
       ...current,
       activeId: track.id,
@@ -134,12 +135,11 @@ export function useTracks({
     if (!current) return;
     beforeChange();
     histories.current.delete(id);
-    let tracks = current.tracks.filter((t) => t.id !== id);
-    if (!tracks.length) tracks = [newTrack()];
+    const tracks = current.tracks.filter((t) => t.id !== id);
     commit({
       ...current,
       tracks,
-      activeId: current.activeId === id ? tracks[0].id : current.activeId,
+      activeId: current.activeId === id ? tracks[0]?.id : current.activeId,
     });
   }
 

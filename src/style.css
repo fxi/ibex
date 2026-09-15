@@ -219,16 +219,6 @@ main,
   letter-spacing: -0.4px;
   line-height: 1;
 }
-.brand small {
-  display: block;
-  font-size: 8px;
-  letter-spacing: 1.6px;
-  margin-top: 3px;
-  color: var(--faint);
-}
-.map-caption {
-  display: none;
-}
 .map-error {
   position: absolute;
   left: 16px;
@@ -581,14 +571,6 @@ main,
   width: 36px;
   height: 4px;
   border-radius: 4px;
-}
-.panel-handle > .save-status {
-  position: absolute;
-  left: 16px;
-  top: 4px;
-  font-size: 10px;
-  color: var(--faint);
-  pointer-events: none;
 }
 .expand-button {
   position: absolute;
@@ -993,24 +975,25 @@ progress {
   font-size: 12px;
 }
 .empty-state {
-  text-align: center;
-  padding: 20px 8px 4px;
-  color: var(--faint);
-}
-.empty-state h2 {
-  color: var(--text);
-  margin: 8px 0 4px;
-}
-.examples {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 12px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 28px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
 }
-.examples button {
-  font-size: 12px;
-  padding: 6px 10px;
+.empty-state:hover:not(:disabled) {
+  color: var(--text);
+}
+.empty-state img {
+  width: 30px;
+  height: 32px;
+  filter: invert(1);
+  opacity: 0.8;
 }
 
 /* ---------- Elevation ---------- */

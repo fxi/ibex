@@ -1,4 +1,11 @@
-import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
+import {
+  expect,
+  test,
+  saveMapData,
+  planArve,
+  tracksSaved,
+  SAVED_TEXT,
+} from "./fixtures";
 test.afterEach(async ({ request }) => {
   await request.post("http://127.0.0.1:4173/__test/network", {
     data: { offline: false },
@@ -33,7 +40,7 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   });
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
-  await expect(page.locator(".save-status")).toHaveText("Saved");
+  await tracksSaved(page);
   const previousTimeOrigin = await page.evaluate(() => performance.timeOrigin);
   if (browserName === "webkit") {
     test.info().annotations.push({
@@ -78,8 +85,7 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   await expect(
     page.getByText("Saved Offline explorer.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();

@@ -254,9 +254,7 @@ function App() {
       />
       <header className="brand">
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
-        <span>
-          ibex<small>MAKE YOUR OWN WAY</small>
-        </span>
+        <span>ibex</span>
       </header>
       <div className="map-actions">
         <button
@@ -358,9 +356,6 @@ function App() {
         </div>
       )}
       <Panel ctx={ctx} tab={tab} error={error} panel={panel} />
-      <div className="map-caption">
-        A little less traffic. A little more possibility.
-      </div>
     </main>
   );
 }

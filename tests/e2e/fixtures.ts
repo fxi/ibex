@@ -31,6 +31,75 @@ export async function saveMapData(page: Page) {
   }
   await process.click();
 }
+/** Two waypoints along the Arve, inside the fixture cell. */
+export const ARVE: [number, number][] = [
+  [6.146, 46.189],
+  [6.235, 46.177],
+];
+
+/**
+ * Start a track on the Tracks tab and place the Arve waypoints, as map clicks, then fit
+ * the map to them. Expects a fresh page with no track yet.
+ */
+export async function planArve(page: Page) {
+  const card = page.locator(".track-card.open");
+  const hasMap = await page
+    .locator(".map")
+    .evaluate((e) => !!(e as HTMLElement & { _map?: unknown })._map);
+  if (!hasMap) {
+    // No basemap means no map clicks. Store the anchors as an older single plan instead,
+    // which a load with no saved collection migrates into a track.
+    await tracksSaved(page);
+    await page.evaluate(async (anchors) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const r = indexedDB.open("cyclatractor-v1");
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("preferences", "readwrite");
+        tx.objectStore("preferences").delete("ibex-tracks");
+        tx.objectStore("preferences").put({ anchors }, "plan");
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    }, ARVE);
+    await page.reload();
+    await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+    await expect(card).toContainText(`${ARVE.length} waypoints`);
+    return;
+  }
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page
+    .getByRole("button", { name: "No track, add one to start" })
+    .click();
+  // One click per render: the map handler appends to the anchors it last saw.
+  for (const [i, [lng, lat]] of ARVE.entries()) {
+    await page.locator(".map").evaluate(
+      (element, [lng, lat]) => {
+        const map = (element as HTMLElement & { _map: any })._map;
+        map.fire("click", {
+          lngLat: { lng, lat },
+          point: map.project([lng, lat]),
+          originalEvent: {},
+        });
+      },
+      [lng, lat],
+    );
+    await expect(card).toContainText(`${i + 1} waypoints`);
+  }
+  await card.getByRole("button", { name: /^Actions for / }).click();
+  await page.getByRole("menuitem", { name: "Fit to map" }).click();
+}
+
+/** Resolves once the track collection has been written, so a reload keeps it. */
+export const tracksSaved = (page: Page) =>
+  expect(page.getByRole("region", { name: "Route planner" })).toHaveAttribute(
+    "data-saving",
+    "false",
+  );
+
 // Empty vector tiles and a transparent sprite retain the production style schema.
 export const test = base.extend<{ mapResources: void }>({
   mapResources: [

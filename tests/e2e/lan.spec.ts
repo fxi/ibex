@@ -1,5 +1,5 @@
 import { networkInterfaces } from "node:os";
-import { expect, test, saveMapData, SAVED_TEXT } from "./fixtures";
+import { expect, test, saveMapData, planArve, SAVED_TEXT } from "./fixtures";
 const address = Object.values(networkInterfaces())
   .flat()
   .find((n) => n?.family === "IPv4" && !n.internal)?.address;
@@ -16,8 +16,7 @@ test("installs and routes on insecure LAN HTTP without StorageManager or Web Cry
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible({
     timeout: 30000,
   });
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
-  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await planArve(page);
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
