@@ -1,6 +1,13 @@
 import { selectedRoute } from "../routing/selection";
 import { insertionIndex, nearestPosition, snapToLines } from "./routeEditing";
-import { MarkerLayer } from "./markers";
+import { MarkerLayer, type MarkerCallbacks } from "./markers";
+import {
+  anchorVertices,
+  findPinches,
+  type Pinch,
+  type Pinches,
+  type RouteGrab,
+} from "../routing/localEdit";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
@@ -19,6 +26,11 @@ import {
 const MIN_SELECT_ZOOM = 6;
 /** How far, in pixels, a right-click reaches to snap Street View onto a way. */
 const SNAP_PX = 16;
+/**
+ * How far inside the map's edges the route must stay to count as on screen, so a pinch
+ * lands where it can be seen rather than under the frame.
+ */
+const PINCH_MARGIN_PX = 48;
 /** Basemap road classes a panorama can stand on: not rail, lifts or ferry lines. */
 const STREET_CLASSES = new Set([
   "motorway",
@@ -82,8 +94,9 @@ export function MapView({
   debug: boolean;
   history: boolean;
   onPoint: (p: Point) => void;
-  onMove: (i: number, p: Point) => void;
-  onInclude: (index: number, point: Point) => void;
+  /** Waypoint `i` was dropped at `p`; `pinches` keep the edit to what was on screen. */
+  onMove: (i: number, p: Point, pinches?: Pinches) => void;
+  onInclude: (index: number, point: Point, pinches?: Pinches) => void;
   editable: boolean;
   /** Right-click or long-press on waypoint `i`, in viewport coordinates. */
   onMenu: (i: number, x: number, y: number) => void;
@@ -95,6 +108,13 @@ export function MapView({
   const container = useRef<HTMLDivElement>(null),
     map = useRef<maplibregl.Map | undefined>(undefined),
     markers = useRef<MarkerLayer | undefined>(undefined);
+  // Waypoint drags are previewed on the map, so markers report to it, not to the props.
+  const markerCallbacks = useRef<MarkerCallbacks>({
+    onMove: () => {},
+    onDragStart: () => {},
+    onDrag: () => {},
+    onMenu: () => {},
+  });
   const [mapError, setMapError] = useState("");
   const appliedBasemap = useRef(basemap);
   const handlers = useRef({
@@ -116,6 +136,7 @@ export function MapView({
     tracks,
     activeId,
     cells,
+    bottomInset,
   });
   snapshot.current = {
     editable,
@@ -127,6 +148,7 @@ export function MapView({
     tracks,
     activeId,
     cells,
+    bottomInset,
   };
   useEffect(() => {
     const key = import.meta.env.VITE_MAPTILER_API_KEY;
@@ -185,7 +207,7 @@ export function MapView({
       draggable: true,
     });
     let dragging = false;
-    let handleIndex = 1;
+    let handleGrab: RouteGrab = { kind: "insert", index: 1, position: 0 };
     let contextPopup: maplibregl.Popup | undefined;
     const locate = (point: maplibregl.Point) => {
       const s = snapshot.current;
@@ -213,25 +235,111 @@ export function MapView({
     m.on("mousemove", (e) => {
       if (dragging || e.originalEvent.buttons) return;
       const hit = locate(e.point);
-      if (!hit || hit.distance > 12 || snapshot.current.anchors.length >= 12) {
+      if (!hit || hit.distance > 12) {
         handle.remove();
         return;
       }
-      handleIndex = hit.index;
+      handleGrab = { kind: "insert", index: hit.index, position: hit.position };
       handle.setLngLat(m.unproject(hit.point));
       if (!handleElement.isConnected) handle.addTo(m);
     });
+    // An edit only reroutes what is on screen (see routing/localEdit). The screen is
+    // what is left of the map once its margins and the planner panel are taken off.
+    const pinchesFor = (grab: RouteGrab): Pinches | undefined => {
+      const s = snapshot.current;
+      const track = s.tracks.find((t) => t.id === s.activeId);
+      if (
+        track?.kind !== "planned" ||
+        !track.visible ||
+        track.resultRevision !== track.revision ||
+        track.result?.status !== "ok"
+      )
+        return;
+      const vertices = anchorVertices(track.result, s.anchors.length);
+      if (!vertices) return;
+      const { clientWidth: width, clientHeight: height } = m.getContainer();
+      const bottom = height - Math.max(PINCH_MARGIN_PX, s.bottomInset);
+      return findPinches(track.result.geometry, vertices, grab, (p) => {
+        const q = m.project(p);
+        return (
+          q.x >= PINCH_MARGIN_PX &&
+          q.x <= width - PINCH_MARGIN_PX &&
+          q.y >= PINCH_MARGIN_PX &&
+          q.y <= bottom
+        );
+      });
+    };
+    // While a drag is under way, dashed lines run from each pinch to the pointer: the
+    // stretch the drop will reroute, and nothing beyond it.
+    let pinches: Pinches | undefined;
+    const preview = (pointer?: Point) => {
+      const pins = [pinches?.before, pinches?.after].filter(
+        (pin): pin is Pinch => pin !== undefined,
+      );
+      const s = snapshot.current;
+      const properties = {
+        color: s.tracks.find((t) => t.id === s.activeId)?.color ?? CENTER_COLOR,
+      };
+      (
+        m.getSource("edit-preview") as maplibregl.GeoJSONSource | undefined
+      )?.setData(
+        pointer && pins.length
+          ? {
+              type: "FeatureCollection",
+              features: pins.flatMap((pin) => [
+                {
+                  type: "Feature" as const,
+                  properties,
+                  geometry: {
+                    type: "LineString" as const,
+                    coordinates: [pin.point, pointer],
+                  },
+                },
+                {
+                  type: "Feature" as const,
+                  properties,
+                  geometry: { type: "Point" as const, coordinates: pin.point },
+                },
+              ]),
+            }
+          : empty,
+      );
+    };
+    const finishEdit = () => {
+      const placed = pinches;
+      pinches = undefined;
+      preview();
+      return placed;
+    };
     handle.on("dragstart", () => {
       dragging = true;
       contextPopup?.remove();
+      pinches = pinchesFor(handleGrab);
+    });
+    handle.on("drag", () => {
+      const p = handle.getLngLat();
+      preview([p.lng, p.lat]);
     });
     handle.on("dragend", () => {
       dragging = false;
       suppressClickUntil = Date.now() + 400;
       const p = handle.getLngLat();
       handle.remove();
-      handlers.current.onInclude(handleIndex, [p.lng, p.lat]);
+      handlers.current.onInclude(
+        handleGrab.index,
+        [p.lng, p.lat],
+        finishEdit(),
+      );
     });
+    markerCallbacks.current = {
+      onMenu: (i, x, y) => handlers.current.onMenu(i, x, y),
+      onDragStart: (i) => {
+        contextPopup?.remove();
+        pinches = pinchesFor({ kind: "move", index: i });
+      },
+      onDrag: (_, p) => preview(p),
+      onMove: (i, p) => handlers.current.onMove(i, p, finishEdit()),
+    };
     // Street View snaps to a visible track first, then to a drawn road or trail, so a loose
     // right-click still lands on the way. Satellite draws no roads; there, and away from
     // any way, the click itself is used and Google picks the closest panorama.
@@ -289,13 +397,21 @@ export function MapView({
         });
         menu.append(button);
       };
-      if (hit)
-        action(
-          "Include in route",
-          () =>
-            handlers.current.onInclude(hit.index, [location.lng, location.lat]),
-          snapshot.current.anchors.length >= 12,
+      if (hit) {
+        // Pinned against the map as it is while the menu is open.
+        const pinned = pinchesFor({
+          kind: "insert",
+          index: hit.index,
+          position: hit.position,
+        });
+        action("Include in route", () =>
+          handlers.current.onInclude(
+            hit.index,
+            [location.lng, location.lat],
+            pinned,
+          ),
         );
+      }
       action("Open in Street View", () =>
         window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
       );
@@ -377,7 +493,14 @@ export function MapView({
     window.addEventListener("online", changeConnection);
     window.addEventListener("offline", changeConnection);
     m.on("style.load", () => {
-      for (const id of ["cells", "field", "corridor", "reference", "route"])
+      for (const id of [
+        "cells",
+        "field",
+        "corridor",
+        "reference",
+        "route",
+        "edit-preview",
+      ])
         m.addSource(id, { type: "geojson", data: empty });
       // Grid cells come from one source with data-driven paint, so a state change is a
       // setData call rather than a layer rebuild. No symbol layer: labelling needs
@@ -517,6 +640,32 @@ export function MapView({
           },
         });
       }
+      // Added last, so a pinch dot is never hidden under the route it sits on.
+      m.addLayer({
+        id: "edit-preview-line",
+        type: "line",
+        source: "edit-preview",
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-cap": "round" },
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 4,
+          "line-dasharray": [2, 1.5],
+          "line-opacity": 0.9,
+        },
+      });
+      m.addLayer({
+        id: "edit-preview-pinch",
+        type: "circle",
+        source: "edit-preview",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: {
+          "circle-radius": 8,
+          "circle-color": ["get", "color"],
+          "circle-stroke-color": CENTER_COLOR,
+          "circle-stroke-width": 3,
+        },
+      });
       update();
     });
     function update() {
@@ -655,7 +804,7 @@ export function MapView({
   useEffect(() => {
     const m = map.current;
     if (!m) return;
-    if (!markers.current) markers.current = new MarkerLayer(m, handlers);
+    if (!markers.current) markers.current = new MarkerLayer(m, markerCallbacks);
     markers.current.sync(anchors);
   }, [anchors]);
   // Redrawing the geojson sources is separate from the markers, and every rendered input

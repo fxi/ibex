@@ -88,7 +88,12 @@ export function legKeys(
 /** Least-recently-used, bounded by entry count. A long leg's result is a few megabytes. */
 export class LegCache<T> {
   private readonly entries = new Map<string, T>();
-  constructor(readonly limit = 24) {}
+  constructor(public limit = 24) {}
+
+  /** Grow to hold at least `count` legs, so a long route never evicts its own. */
+  reserve(count: number): void {
+    this.limit = Math.max(this.limit, count);
+  }
 
   get(key: string): T | undefined {
     const value = this.entries.get(key);

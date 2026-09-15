@@ -15,31 +15,75 @@ test("route handle and include action insert intermediate waypoints", async ({
     .click();
   await expect(page.getByText(routeReady)).toBeVisible();
   const before = await page.locator(".anchor-marker-wrap").count();
-  const point = await page.locator(".map").evaluate(async (element) => {
+  // The whole route on screen, clear of the planner panel: every waypoint is in view, so
+  // no edit here needs pinching and each one only splits or moves as it always did.
+  const spots = await page.locator(".map").evaluate(async (element) => {
     const map = (element as HTMLElement & { _map: any })._map;
     const geometry = (await map.getSource("route").getData()).features.flatMap(
       (f: any) => f.geometry.coordinates,
     );
-    const p = geometry[Math.floor(geometry.length / 2)];
-    map.jumpTo({ center: p, zoom: 14 });
-    const q = map.project(p);
-    return { x: q.x, y: q.y };
+    const panel = document
+      .querySelector('[aria-label="Route planner"]')!
+      .getBoundingClientRect();
+    const [w, s, e, n] = geometry.reduce(
+      (b: number[], [x, y]: number[]) => [
+        Math.min(b[0], x),
+        Math.min(b[1], y),
+        Math.max(b[2], x),
+        Math.max(b[3], y),
+      ],
+      [Infinity, Infinity, -Infinity, -Infinity],
+    );
+    map.fitBounds(
+      [
+        [w, s],
+        [e, n],
+      ],
+      {
+        padding: { top: 90, bottom: panel.height + 150, left: 70, right: 70 },
+        duration: 0,
+      },
+    );
+    // Spots on the route itself, by length along it: fitted on a phone, a few pixels off
+    // the line can be hundreds of metres from any road.
+    const along = [0];
+    for (let i = 1; i < geometry.length; i++)
+      along.push(
+        along[i - 1] +
+          Math.hypot(
+            geometry[i][0] - geometry[i - 1][0],
+            geometry[i][1] - geometry[i - 1][1],
+          ),
+      );
+    const at = (f: number) => {
+      const target = along.at(-1)! * f;
+      const i = Math.max(
+        1,
+        along.findIndex((d) => d >= target),
+      );
+      const t = (target - along[i - 1]) / (along[i] - along[i - 1] || 1);
+      const q = map.project([
+        geometry[i - 1][0] + t * (geometry[i][0] - geometry[i - 1][0]),
+        geometry[i - 1][1] + t * (geometry[i][1] - geometry[i - 1][1]),
+      ]);
+      return { x: q.x, y: q.y };
+    };
+    return {
+      grab: at(0.5),
+      drop: at(0.6),
+      include: at(0.25),
+      press: at(0.8),
+    };
   });
-  // Move the route into the unoccluded upper half of the screen.
-  await page.locator(".map").evaluate((element) => {
-    (element as HTMLElement & { _map: any })._map.panBy([0, 150], {
-      duration: 0,
-    });
-  });
-  point.y -= 150;
-  await page.mouse.move(point.x, point.y);
+  const { grab, drop, include, press } = spots;
+  await page.mouse.move(grab.x, grab.y);
   await expect(page.locator(".route-drag-handle")).toBeVisible();
   await page.mouse.down();
-  await page.mouse.move(point.x + 20, point.y + 10, { steps: 5 });
+  await page.mouse.move(drop.x, drop.y, { steps: 5 });
   await page.mouse.up();
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 1);
   await expect(page.getByText(routeReady)).toBeVisible();
-  await page.mouse.click(point.x - 40, point.y - 20, { button: "right" });
+  await page.mouse.click(include.x, include.y, { button: "right" });
   await page
     .getByRole("button", { name: "Include in route", exact: true })
     .click();
@@ -49,7 +93,7 @@ test("route handle and include action insert intermediate waypoints", async ({
     page.getByText("Route ready · 1 of 3 legs reused", { exact: true }),
   ).toBeVisible();
   const canvas = page.locator(".map canvas");
-  const touch = { identifier: 0, clientX: point.x - 60, clientY: point.y - 30 };
+  const touch = { identifier: 0, clientX: press.x, clientY: press.y };
   await canvas.dispatchEvent("touchstart", {
     touches: [touch],
     changedTouches: [touch],
@@ -65,6 +109,54 @@ test("route handle and include action insert intermediate waypoints", async ({
     .getByRole("button", { name: "Include in route", exact: true })
     .click();
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 3);
+});
+
+test("a zoomed-in edit pins the route at the screen edge and keeps the rest", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await page
+    .getByRole("button", { name: "Compute active track", exact: true })
+    .click();
+  await expect(page.getByText(routeReady)).toBeVisible();
+  const before = await page.locator(".anchor-marker-wrap").count();
+  // Zoomed in on the middle of the route, neither of its ends is on screen.
+  const point = await page.locator(".map").evaluate(async (element) => {
+    const map = (element as HTMLElement & { _map: any })._map;
+    const geometry = (await map.getSource("route").getData()).features.flatMap(
+      (f: any) => f.geometry.coordinates,
+    );
+    const p = geometry[Math.floor(geometry.length / 2)];
+    map.jumpTo({ center: p, zoom: 15 });
+    map.panBy([0, 150], { duration: 0 });
+    const q = map.project(p);
+    return { x: q.x, y: q.y };
+  });
+  const preview = () =>
+    page.locator(".map").evaluate(async (element) => {
+      const map = (element as HTMLElement & { _map: any })._map;
+      const data = await map.getSource("edit-preview").getData();
+      return data.features.map((f: any) => f.geometry.type).sort();
+    });
+  await page.mouse.move(point.x, point.y);
+  await expect(page.locator(".route-drag-handle")).toBeVisible();
+  await page.mouse.down();
+  await page.mouse.move(point.x + 20, point.y + 10, { steps: 5 });
+  // A dashed line from each pinch to the pointer, and a dot on each pinch.
+  await expect
+    .poll(preview)
+    .toEqual(["LineString", "LineString", "Point", "Point"]);
+  await page.mouse.up();
+  await expect.poll(preview).toEqual([]);
+  // The dropped point and a pinch on either side of it.
+  await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 3);
+  // Only pinch → point → pinch is routed; the two legs outside the pinches are kept.
+  await expect(
+    page.getByText("Route ready · 2 of 4 legs reused", { exact: true }),
+  ).toBeVisible();
 });
 
 test("right-click on the route opens the menu over the drag handle", async ({

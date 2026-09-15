@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { preference, savePreference } from "./offline/store";
+import { LIMITS } from "./offline/validate";
 import {
   migrateProfile,
   parseProfile,
@@ -149,7 +150,7 @@ const storedTrack = z.object({
   name: z.string(),
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   visible: z.boolean(),
-  anchors: z.array(point).max(12),
+  anchors: z.array(point).max(LIMITS.anchorsMax),
   // Tracks saved before format 3 carry a format-2 snapshot; it converts, it is not lost.
   profile: z.preprocess(migrateProfile, profileSchema),
   revision: z.number().int().nonnegative(),
@@ -187,7 +188,7 @@ export async function loadTracks(): Promise<TrackCollection> {
   const track = newTrack();
   if (old?.anchors)
     Object.assign(track, {
-      anchors: z.array(point).max(12).parse(old.anchors),
+      anchors: z.array(point).max(LIMITS.anchorsMax).parse(old.anchors),
     });
   const collection: TrackCollection = {
     version: 1,

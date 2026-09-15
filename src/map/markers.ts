@@ -4,6 +4,10 @@ import type { Point } from "../routing/types";
 
 export type MarkerCallbacks = {
   onMove: (index: number, point: Point) => void;
+  /** A drag began on a waypoint, so the edit it will make can be previewed. */
+  onDragStart: (index: number) => void;
+  /** The dragged waypoint is now over `point`. */
+  onDrag: (index: number, point: Point) => void;
   /** Right-click or long-press on a waypoint, in viewport coordinates. */
   onMenu: (index: number, x: number, y: number) => void;
 };
@@ -50,6 +54,11 @@ function create(
   marker.on("dragstart", () => {
     draggedRecently = true;
     clearTimeout(pressTimer);
+    callbacks.current.onDragStart(indexOf());
+  });
+  marker.on("drag", () => {
+    const p = marker.getLngLat();
+    callbacks.current.onDrag(indexOf(), [p.lng, p.lat]);
   });
   marker.on("dragend", () => {
     const p = marker.getLngLat();

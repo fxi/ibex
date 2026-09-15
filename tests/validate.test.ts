@@ -208,20 +208,24 @@ describe("field validation", () => {
 });
 
 describe("anchor validation", () => {
-  it("accepts two to twelve finite points", () => {
+  it("accepts two to the maximum of finite points", () => {
     const two: Point[] = [
       [6.15, 46.2],
       [6.2, 46.25],
     ];
     expect(validateAnchors(two)).toBe(two);
     expect(
-      validateAnchors(Array.from({ length: 12 }, () => [6, 46] as Point)),
-    ).toHaveLength(12);
+      validateAnchors(
+        Array.from({ length: LIMITS.anchorsMax }, () => [6, 46] as Point),
+      ),
+    ).toHaveLength(LIMITS.anchorsMax);
   });
   it("rejects too few, too many, and malformed anchors", () => {
     expect(() => validateAnchors([[6, 46]])).toThrow("Invalid route anchors");
     expect(() =>
-      validateAnchors(Array.from({ length: 13 }, () => [6, 46] as Point)),
+      validateAnchors(
+        Array.from({ length: LIMITS.anchorsMax + 1 }, () => [6, 46] as Point),
+      ),
     ).toThrow("Invalid route anchors");
     expect(() =>
       validateAnchors([

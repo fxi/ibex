@@ -15,6 +15,13 @@ import { BASEMAPS, type Basemap } from "./map/style";
 import { BasemapControl } from "./map/BasemapControl";
 import { loadModels } from "./models";
 import type { Point } from "./routing/types";
+import {
+  anchorVertices,
+  applyLocalEdit,
+  type Pinches,
+  type RouteGrab,
+} from "./routing/localEdit";
+import { LIMITS } from "./offline/validate";
 import type { Profile } from "./routing/profiles";
 import { DEFAULT_CATALOGUE_URL, absoluteURL } from "./config";
 import { useTracks } from "./state/useTracks";
@@ -129,6 +136,28 @@ function App() {
   }, []);
 
   const { active } = tracks;
+  /**
+   * Move or insert a waypoint. Pinches from the map keep the edit to what was on screen:
+   * they become waypoints, and the legs outside them are kept rather than routed again.
+   */
+  const reshape = (grab: RouteGrab, point: Point, pinches?: Pinches) => {
+    if (!active) return;
+    const route =
+      active.resultRevision === active.revision ? active.result : undefined;
+    const vertices = route && anchorVertices(route, active.anchors.length);
+    const edit = applyLocalEdit(
+      active.anchors,
+      grab,
+      point,
+      route && vertices && pinches ? { route, vertices, pinches } : undefined,
+    );
+    if (edit.anchors.length > LIMITS.anchorsMax) {
+      setError(`A track supports up to ${LIMITS.anchorsMax} waypoints.`);
+      return;
+    }
+    tracks.edit({ anchors: edit.anchors });
+    routing.computeKeeping(edit.kept);
+  };
   const fit = (points: Point[]) => {
     if (points.length) setCommand({ id: Date.now(), kind: "fit", points });
   };
@@ -164,17 +193,9 @@ function App() {
     <main>
       <MapView
         editable={tab === "tracks"}
-        onInclude={(index, point) => {
-          if (
-            !active ||
-            active.kind !== "planned" ||
-            active.anchors.length >= 12
-          )
-            return;
-          const anchors = [...active.anchors];
-          anchors.splice(index, 0, point);
-          tracks.edit({ anchors });
-          routing.compute();
+        onInclude={(index, point, pinches) => {
+          if (active?.kind !== "planned") return;
+          reshape({ kind: "insert", index, position: index }, point, pinches);
         }}
         anchors={active?.anchors ?? []}
         comparison={
@@ -199,25 +220,17 @@ function App() {
         }}
         onPoint={(point) => {
           if (tab !== "tracks" || !active) return;
-          if (active.anchors.length >= 12) {
-            setError("A track supports up to 12 waypoints.");
+          if (active.anchors.length >= LIMITS.anchorsMax) {
+            setError(`A track supports up to ${LIMITS.anchorsMax} waypoints.`);
             return;
           }
-          if (insertAt !== undefined) {
-            const anchors = [...active.anchors];
-            anchors.splice(insertAt, 0, point);
-            tracks.edit({ anchors });
-          } else if (active.anchors.length < 12)
-            tracks.edit({ anchors: [...active.anchors, point] });
-          else setError("A track supports up to 12 waypoints.");
+          const anchors = [...active.anchors];
+          anchors.splice(insertAt ?? anchors.length, 0, point);
+          tracks.edit({ anchors });
         }}
-        onMove={(i, p) => {
-          if (!active) return;
-          tracks.edit({
-            anchors: active.anchors.map((old, j) => (i === j ? p : old)),
-          });
-          routing.compute();
-        }}
+        onMove={(i, p, pinches) =>
+          reshape({ kind: "move", index: i }, p, pinches)
+        }
       />
       <header className="brand">
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />

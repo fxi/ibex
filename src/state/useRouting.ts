@@ -8,7 +8,7 @@ import {
   missingLegs,
 } from "../routing/legCache";
 import type { LegComparison } from "../routing/legs";
-import type { Comparison } from "../routing/types";
+import type { Comparison, RouteResult } from "../routing/types";
 import type { Installed } from "../offline/store";
 import type { Catalogue } from "../offline/catalogue";
 import RoutingWorker from "../workers/route.worker.ts?worker&inline";
@@ -65,7 +65,11 @@ export function useRouting({
 
   useEffect(() => () => routeWorker.current?.terminate(), []);
 
-  function compute() {
+  /**
+   * Route the active track. `kept` holds legs a local edit already knows, numbered
+   * one-based: they are cached under their own keys, so they are not routed again.
+   */
+  function compute(kept?: ReadonlyMap<number, RouteResult>) {
     const current = latest.current;
     const active = current?.tracks.find((t) => t.id === current.activeId);
     if (!active || active.anchors.length < 2) return;
@@ -85,6 +89,19 @@ export function useRouting({
       cellPacks,
       catalogue.cells,
     );
+    // Room for this route and the one it was edited from, whose legs may come back.
+    legs.reserve(keys.length * 2);
+    for (const [leg, route] of kept ?? []) {
+      const key = keys[leg - 1];
+      if (key && !legs.has(key))
+        legs.set(key, {
+          reference: route,
+          corridor: route,
+          exploration: route,
+          fieldView: { type: "FeatureCollection", features: [] },
+          relativeCost: null,
+        });
+    }
     const missing = missingLegs(keys, legs);
     const routed = new Map<number, LegComparison>();
 
@@ -197,5 +214,12 @@ export function useRouting({
     });
   }
 
-  return { busy, comparison, compute, cancel };
+  return {
+    busy,
+    comparison,
+    // Buttons pass their click event; only a local edit hands over kept legs.
+    compute: () => compute(),
+    computeKeeping: compute,
+    cancel,
+  };
 }

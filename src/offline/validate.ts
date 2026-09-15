@@ -14,7 +14,9 @@ export const LIMITS = {
   restrictions: 50_000,
   fieldCells: 100_000,
   anchorsMin: 2,
-  anchorsMax: 12,
+  // Legs are routed one at a time, so a waypoint no longer widens any search. This only
+  // bounds a malformed track file.
+  anchorsMax: 500,
 } as const;
 
 const unit = (v: unknown): boolean =>
