@@ -164,6 +164,15 @@ export function mapStyle(
   };
 }
 
+/** iD refuses to edit below zoom 16, so the editor never opens further out than this. */
+const OSM_EDIT_MIN_ZOOM = 17;
+
+/** The openstreetmap.org editor centred on a map point, close enough to edit at once. */
+export function osmEditURL([lng, lat]: [number, number], zoom: number): string {
+  const z = Math.max(OSM_EDIT_MIN_ZOOM, Math.round(zoom));
+  return `https://www.openstreetmap.org/edit#map=${z}/${lat.toFixed(6)}/${lng.toFixed(6)}`;
+}
+
 /** Google Street View at the nearest panorama; Google picks the closest imagery. */
 export function streetViewURL([lng, lat]: [number, number]): string {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;

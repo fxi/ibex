@@ -3,6 +3,7 @@ import {
   customMapStyle,
   mapResourceURL,
   mapStyle,
+  osmEditURL,
   streetViewURL,
 } from "../src/map/style";
 import { mapTilerKey } from "../scripts/local-env";
@@ -77,6 +78,14 @@ it("opens Street View at a map point", () => {
   const url = new URL(streetViewURL([6.2051234567, 46.19]));
   expect(url.searchParams.get("map_action")).toBe("pano");
   expect(url.searchParams.get("viewpoint")).toBe("46.190000,6.205123");
+});
+it("opens the OSM editor at a map point, never below an editable zoom", () => {
+  expect(osmEditURL([6.1065051234, 46.064938], 12.4)).toBe(
+    "https://www.openstreetmap.org/edit#map=17/46.064938/6.106505",
+  );
+  expect(osmEditURL([6.1, 46.1], 18.6)).toBe(
+    "https://www.openstreetmap.org/edit#map=19/46.100000/6.100000",
+  );
 });
 it("reads only the specified local dotenv file without expansion or ambient fallback", () => {
   const dir = mkdtempSync(join(tmpdir(), "cyclatractor-env-"));

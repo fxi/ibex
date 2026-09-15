@@ -1,7 +1,7 @@
 {
   "format_version": 3,
-  "id": "02aae4ad-e71c-4cd4-b24a-da1e9f145ab2",
-  "name": "Gravel",
+  "id": "cd0dc8a5-95ab-4dd9-830c-f252c733be16",
+  "name": "Gravel Easy Downhill",
   "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense.",
   "setup": {
     "preset": "custom",
@@ -13,10 +13,10 @@
       "load_kg": 3
     },
     "rider": {
-      "mass_kg": 80,
+      "mass_kg": 75,
       "sustained_w_per_kg": 3.2,
-      "tech_skill": 0.8,
-      "descend_confidence": 0.9
+      "tech_skill": 0.7,
+      "descend_confidence": 0.7
     }
   },
   "settings": {
@@ -34,7 +34,12 @@
       "cycle_infrastructure": "neutral"
     },
     "uphill": {},
-    "downhill": {}
+    "downhill": {
+      "unpaved": "avoid",
+      "surface_difficulty": "strongly_avoid",
+      "scenic": "neutral",
+      "cycle_infrastructure": "prefer"
+    }
   },
   "permissions": {
     "ferry": true,

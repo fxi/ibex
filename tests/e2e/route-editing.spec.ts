@@ -286,6 +286,9 @@ test("right-click on the route opens the menu over the drag handle", async ({
     page.getByRole("button", { name: "Include in route", exact: true }),
   ).toBeVisible();
   await expect(
+    page.getByRole("button", { name: "Edit in OSM", exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Open in Street View", exact: true }),
   ).toBeVisible();
 });
@@ -381,6 +384,19 @@ test("Street View is offered anywhere on the map", async ({ page }) => {
   );
   expect(landing.moved).toBeGreaterThan(2);
   expect(landing.onRoute).toBeGreaterThan(0);
+  // The OSM editor opens at the same snapped point, zoomed in far enough to edit.
+  await page.mouse.click(near.x, near.y, { button: "right" });
+  await page.getByRole("button", { name: "Edit in OSM", exact: true }).click();
+  const edit = await page.evaluate(
+    () => (window as Window & { opened?: string }).opened ?? "",
+  );
+  const [zoom, ...editAt] = new URL(edit).hash
+    .replace("#map=", "")
+    .split("/")
+    .map(Number);
+  expect(edit).toMatch(/^https:\/\/www\.openstreetmap\.org\/edit#map=/);
+  expect(zoom).toBe(17);
+  expect(editAt).toEqual(snapped);
 });
 
 test("the base map control switches and remembers the base map", async ({

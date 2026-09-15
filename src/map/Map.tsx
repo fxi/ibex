@@ -13,7 +13,13 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import type { Comparison, Point, RouteResult } from "../routing/types";
-import { mapResourceURL, mapStyle, streetViewURL, type Basemap } from "./style";
+import {
+  mapResourceURL,
+  mapStyle,
+  osmEditURL,
+  streetViewURL,
+  type Basemap,
+} from "./style";
 import type { Track } from "../tracks";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
 import {
@@ -511,8 +517,8 @@ export function MapView({
       onDrag: (_, p) => preview(p),
       onMove: (i, p) => handlers.current.onMove(i, p, finishEdit()?.pinches),
     };
-    // Street View snaps to a visible track first, then to a drawn road or trail, so a loose
-    // right-click still lands on the way. Satellite draws no roads; there, and away from
+    // Street View and the OSM editor snap to a visible track first, then to a drawn road or
+    // trail, so a loose right-click still lands on the way. Satellite draws no roads; there, and away from
     // any way, the click itself is used and Google picks the closest panorama.
     const streetPoint = (point: maplibregl.Point): Point => {
       const project = (p: Point): Point => {
@@ -575,6 +581,13 @@ export function MapView({
         action("Include in route", () =>
           handlers.current.onInclude(hit.index, [location.lng, location.lat]),
         );
+      action("Edit in OSM", () =>
+        window.open(
+          osmEditURL(street, m.getZoom()),
+          "_blank",
+          "noopener,noreferrer",
+        ),
+      );
       action("Open in Street View", () =>
         window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
       );
