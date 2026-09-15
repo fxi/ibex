@@ -277,6 +277,16 @@ export function MapView({
       e.preventDefault();
       openInclude(e.point);
     });
+    // The handle sits under the cursor whenever it is near the route, so a right-click
+    // there lands on the marker element and never reaches the map's own listener.
+    handleElement.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const box = m.getCanvasContainer().getBoundingClientRect();
+      openInclude(
+        new maplibregl.Point(event.clientX - box.left, event.clientY - box.top),
+      );
+    });
     let pressTimer: ReturnType<typeof setTimeout> | undefined;
     let pressPoint: maplibregl.Point | undefined;
     let longPressed = false;

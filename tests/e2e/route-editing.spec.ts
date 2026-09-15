@@ -67,6 +67,39 @@ test("route handle and include action insert intermediate waypoints", async ({
   await expect(page.locator(".anchor-marker-wrap")).toHaveCount(before + 3);
 });
 
+test("right-click on the route opens the menu over the drag handle", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("button", { name: "Along the Arve" }).click();
+  await page
+    .getByRole("button", { name: "Compute active track", exact: true })
+    .click();
+  await expect(page.getByText(routeReady)).toBeVisible();
+  const point = await page.locator(".map").evaluate(async (element) => {
+    const map = (element as HTMLElement & { _map: any })._map;
+    const geometry = (await map.getSource("route").getData()).features.flatMap(
+      (f: any) => f.geometry.coordinates,
+    );
+    const p = geometry[Math.floor(geometry.length / 2)];
+    map.jumpTo({ center: p, zoom: 14 });
+    map.panBy([0, 150], { duration: 0 });
+    const q = map.project(p);
+    return { x: q.x, y: q.y };
+  });
+  await page.mouse.move(point.x, point.y);
+  await expect(page.locator(".route-drag-handle")).toBeVisible();
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  await expect(
+    page.getByRole("button", { name: "Include in route", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open in Street View", exact: true }),
+  ).toBeVisible();
+});
+
 test("Street View is offered only on a computed route", async ({ page }) => {
   await page.goto("./");
   await saveMapData(page);
