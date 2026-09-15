@@ -1,0 +1,49 @@
+{
+  "format_version": 3,
+  "id": "63a4a2b2-39dd-488a-97af-768b580de3cf",
+  "name": "Gravel Bikepacking",
+  "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense. Heavy load",
+  "setup": {
+    "preset": "custom",
+    "bike": {
+      "tire_mm": 50,
+      "mass_kg": 11.5,
+      "lowest_gear_ratio": 0.8,
+      "suspension": "none",
+      "load_kg": 8
+    },
+    "rider": {
+      "mass_kg": 80,
+      "sustained_w_per_kg": 2.6,
+      "tech_skill": 0.8,
+      "descend_confidence": 0.9
+    }
+  },
+  "settings": {
+    "detour": "prefer",
+    "climbing": "neutral",
+    "direction_changes": "avoid"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "prefer",
+      "surface_difficulty": "avoid",
+      "scenic": "strongly_prefer",
+      "urbanity": "strongly_avoid",
+      "cycle_infrastructure": "neutral"
+    },
+    "uphill": {
+      "surface_difficulty": "strongly_avoid"
+    },
+    "downhill": {
+      "unpaved": "strongly_avoid",
+      "surface_difficulty": "strongly_avoid"
+    }
+  },
+  "permissions": {
+    "ferry": true,
+    "stairs": false,
+    "push": false
+  }
+}
