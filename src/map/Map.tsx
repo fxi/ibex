@@ -129,6 +129,10 @@ export function MapView({
   });
   const [mapError, setMapError] = useState("");
   const appliedBasemap = useRef(basemap);
+  // Read at fit time only: as an effect dependency, every panel resize replayed the last
+  // camera command and moved the map without the user asking.
+  const bottomInsetRef = useRef(bottomInset);
+  bottomInsetRef.current = bottomInset;
   const handlers = useRef({
     onPoint,
     onMove,
@@ -1030,7 +1034,7 @@ export function MapView({
           top: 110,
           // The panel is an overlay the map never reflows around, so its real height
           // has to be padded out explicitly or fits land underneath it.
-          bottom: Math.min(bottomInset, innerHeight * 0.7),
+          bottom: Math.min(bottomInsetRef.current, innerHeight * 0.7),
           left: 45,
           right: 90,
         },
@@ -1040,7 +1044,7 @@ export function MapView({
           : 700,
       });
     }
-  }, [command, bottomInset]);
+  }, [command]);
   return (
     <>
       <div ref={container} className="map" aria-label="Route map" />
