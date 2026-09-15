@@ -44,6 +44,30 @@ it("builds satellite and hybrid basemaps from the bundled style", () => {
   expect(ids).not.toContain("Hillshade");
   expect(ids).not.toContain("Contour");
   expect(hybrid.layers.every((l) => l.type !== "fill")).toBe(true);
+  // Trail casings go dark on imagery; the outdoor style keeps them white.
+  const casing = (s: typeof hybrid) =>
+    s.layers.find((l) => l.id === "Bicycle outline") as {
+      paint: Record<string, unknown>;
+    };
+  expect(casing(hybrid).paint["line-color"]).toMatch(/^hsla\(0, 0%, 8%/);
+  expect(casing(mapStyle("k", "outdoor")).paint["line-color"]).toContain(
+    "100%",
+  );
+  // Large roads recede in both styles; hybrid labels flip to light text on a dark halo.
+  const paint = (s: typeof hybrid, id: string) =>
+    (s.layers.find((l) => l.id === id) as { paint: Record<string, unknown> })
+      .paint;
+  const outdoor = mapStyle("k", "outdoor");
+  expect(JSON.stringify(paint(outdoor, "Road network")["line-color"])).toContain(
+    "motorway",
+  );
+  expect(paint(hybrid, "Road network")["line-color"]).not.toEqual(
+    paint(outdoor, "Road network")["line-color"],
+  );
+  const town = paint(hybrid, "Town labels");
+  expect(town["text-halo-color"]).toMatch(/^hsla\(0, 0%, 8%/);
+  expect(town["text-color"]).toBe("hsl(240, 6%, 96%)");
+  expect(paint(outdoor, "Town labels")["text-color"]).toBe("hsl(240, 6%, 13%)");
   // Every layer must reference a source the style still declares.
   for (const l of hybrid.layers)
     if ("source" in l) expect(hybrid.sources).toHaveProperty(l.source);
