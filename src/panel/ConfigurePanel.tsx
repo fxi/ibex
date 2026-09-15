@@ -120,51 +120,61 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
         <Settings />
       </div>
 
+      {/* An open draft holds the list: picking, editing or deleting another model would
+          leave the editor showing one model while the track uses another, or drop the
+          draft's changes. Save or Cancel releases it. */}
+      {editing && (
+        <p className="hint">Save or cancel the edit to choose another model.</p>
+      )}
       <div className="model-list">
         {[
           ...shipped.filter((p) => !models.some((q) => q.id === p.id)),
           ...models,
         ].map((p) => (
-            <div key={p.id} className="model-row-wrap">
+          <div key={p.id} className="model-row-wrap">
+            <button
+              className="model-row"
+              aria-pressed={sameModel(p)}
+              disabled={!!editing}
+              onClick={() => useModel(p)}
+              title={p.description}
+            >
+              {isShipped(p) ? <Bike /> : <Mountain />}
+              <span>{p.name}</span>
+              <i />
+            </button>
+            {/* A shipped profile is read-only, so editing one means copying it first. */}
+            {isShipped(p) ? (
               <button
-                className="model-row"
-                aria-pressed={sameModel(p)}
-                onClick={() => useModel(p)}
-                title={p.description}
+                className="icon-button"
+                aria-label={`Duplicate ${p.name}`}
+                disabled={!!editing}
+                onClick={() => startEdit(p, true)}
               >
-                {isShipped(p) ? <Bike /> : <Mountain />}
-                <span>{p.name}</span>
-                <i />
+                <Plus size={16} />
               </button>
-              {/* A shipped profile is read-only, so editing one means copying it first. */}
-              {isShipped(p) ? (
+            ) : (
+              <>
                 <button
                   className="icon-button"
-                  aria-label={`Duplicate ${p.name}`}
-                  onClick={() => startEdit(p, true)}
+                  aria-label={`Edit ${p.name}`}
+                  disabled={!!editing}
+                  onClick={() => startEdit(p)}
                 >
-                  <Plus size={16} />
+                  <Settings size={16} />
                 </button>
-              ) : (
-                <>
-                  <button
-                    className="icon-button"
-                    aria-label={`Edit ${p.name}`}
-                    onClick={() => startEdit(p)}
-                  >
-                    <Settings size={16} />
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label={`Delete ${p.name}`}
-                    onClick={() => setConfirming(p.id)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
+                <button
+                  className="icon-button"
+                  aria-label={`Delete ${p.name}`}
+                  disabled={!!editing}
+                  onClick={() => setConfirming(p.id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            )}
+          </div>
+        ))}
       </div>
 
       {confirming && (

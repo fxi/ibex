@@ -19,6 +19,26 @@ const setLevel = (page: Page, field: string, level: string) =>
     .getByRole("radio", { name: level, exact: true })
     .click();
 
+test("an open edit holds the model list until it is saved or cancelled", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Configure", exact: true }).click();
+  const rows = page.locator(".model-list .model-row");
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
+  await expect(page.getByLabel("Model name")).toHaveValue(/copy/i);
+  // Picking another model now would leave the editor showing a model the track no longer uses.
+  for (const row of await rows.all()) await expect(row).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Duplicate Gravel", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByLabel("Model name")).toBeHidden();
+  for (const row of await rows.all()) await expect(row).toBeEnabled();
+});
+
 test("creates, edits, persists and deletes a custom profile", async ({
   page,
 }) => {
@@ -26,7 +46,9 @@ test("creates, edits, persists and deletes a custom profile", async ({
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
 
   // Shipped profiles are read-only, so editing one starts from a copy.
-  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
   const name = page.getByLabel("Model name");
   await expect(name).toHaveValue(/copy/i);
   await name.fill("My mountain bike");
@@ -81,7 +103,9 @@ test("creates, edits, persists and deletes a custom profile", async ({
 test("shows what the bike and rider add up to", async ({ page }) => {
   await page.goto("./");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
 
   // The readout is the answer to "inheritance doesn't show values": the setup feeds a
   // model, and the model says out loud what it concluded.
@@ -104,7 +128,9 @@ test("imports and exports a complete profile", async ({ page }) => {
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
 
   // Export first, so the file under test is one the app itself produced.
-  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
   await page.getByLabel("Model name").fill("Exported");
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON" }).click();
@@ -137,7 +163,9 @@ test("imports and exports a complete profile", async ({ page }) => {
 test("reports an invalid profile instead of saving it", async ({ page }) => {
   await page.goto("./");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
   await showJSON(page);
   // A partial profile is rejected rather than filled in from somewhere else — which is
   // exactly what the old format did, and why a shared file meant nothing on its own.

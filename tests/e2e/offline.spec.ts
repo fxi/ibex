@@ -68,7 +68,9 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   // Building a profile while offline exercises the IndexedDB write path with no network.
-  await page.getByRole("button", { name: "Duplicate Gravel" }).click();
+  await page
+    .getByRole("button", { name: "Duplicate Gravel", exact: true })
+    .click();
   await page.getByLabel("Model name").fill("Offline explorer");
   const setLevel = (field: string, level: string) =>
     page
@@ -112,10 +114,7 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   await page.getByRole("button", { name: "Export your route" }).click();
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Road", exact: true })
-    .first()
-    .click();
+  await page.getByRole("button", { name: "Road", exact: true }).first().click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
