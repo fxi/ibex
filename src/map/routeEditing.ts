@@ -24,6 +24,21 @@ export function nearestPosition(line: Point[], point: Point) {
   return best;
 }
 
+/** The closest point on any of `lines` within `maxDistance`, or undefined when none is. */
+export function snapToLines(
+  lines: Point[][],
+  point: Point,
+  maxDistance: number,
+): Point | undefined {
+  let best: { distance: number; point: Point } | undefined;
+  for (const line of lines) {
+    if (line.length < 2) continue;
+    const nearest = nearestPosition(line, point);
+    if (!best || nearest.distance < best.distance) best = nearest;
+  }
+  return best && best.distance <= maxDistance ? best.point : undefined;
+}
+
 /** Map a position along the displayed route to an ordered waypoint leg. */
 export function insertionIndex(
   line: Point[],

@@ -100,7 +100,7 @@ test("right-click on the route opens the menu over the drag handle", async ({
   ).toBeVisible();
 });
 
-test("Street View is offered only on a computed route", async ({ page }) => {
+test("Street View is offered anywhere on the map", async ({ page }) => {
   await page.goto("./");
   await saveMapData(page);
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
@@ -132,13 +132,66 @@ test("Street View is offered only on a computed route", async ({ page }) => {
     name: "Open in Street View",
     exact: true,
   });
-  await page.mouse.click(point.x + 200, point.y - 120, { button: "right" });
-  await expect(streetView).toHaveCount(0);
-  await page.mouse.click(point.x, point.y, { button: "right" });
+  const opened = async () => {
+    const url = await page.evaluate(
+      () => (window as Window & { opened?: string }).opened ?? "",
+    );
+    expect(url).toContain("map_action=pano");
+    return new URL(url).searchParams.get("viewpoint")!.split(",").map(Number);
+  };
+  // Away from the route and from any drawn road (test tiles are empty), the click itself
+  // is the viewpoint. A phone leaves little bare map between the buttons and the panel,
+  // so the spot is searched for rather than hard-coded.
+  const away = await page.locator(".map").evaluate((element, p) => {
+    const map = (element as HTMLElement & { _map: any })._map;
+    const canvas = map.getCanvas();
+    for (let dy = -40; dy >= -200; dy -= 20)
+      for (const dx of [-120, -80, 80, 120]) {
+        const x = Math.round(p.x + dx),
+          y = Math.round(p.y + dy);
+        if (document.elementFromPoint(x, y) !== canvas) continue;
+        const near = map.queryRenderedFeatures(
+          [
+            [x - 40, y - 40],
+            [x + 40, y + 40],
+          ],
+          { layers: ["route"] },
+        );
+        if (!near.length) return { x, y };
+      }
+    throw new Error("No bare map in view");
+  }, point);
+  await page.mouse.click(away.x, away.y, { button: "right" });
   await streetView.click();
-  expect(
-    await page.evaluate(() => (window as Window & { opened?: string }).opened),
-  ).toContain("map_action=pano");
+  const expected = await page.locator(".map").evaluate((element, p) => {
+    const q = (element as HTMLElement & { _map: any })._map.unproject([
+      p.x,
+      p.y,
+    ]);
+    return [q.lat, q.lng];
+  }, away);
+  const [lat, lng] = await opened();
+  expect(lat).toBeCloseTo(expected[0], 4);
+  expect(lng).toBeCloseTo(expected[1], 4);
+  // Near the route, the viewpoint moves off the click and onto the route.
+  const near = { x: point.x + 10, y: point.y + 10 };
+  await page.mouse.click(near.x, near.y, { button: "right" });
+  await streetView.click();
+  const snapped = await opened();
+  const landing = await page.locator(".map").evaluate(
+    (element, { at: [la, ln], click }) => {
+      const map = (element as HTMLElement & { _map: any })._map;
+      const q = map.project([ln, la]);
+      return {
+        moved: Math.hypot(q.x - click.x, q.y - click.y),
+        onRoute: map.queryRenderedFeatures([q.x, q.y], { layers: ["route"] })
+          .length,
+      };
+    },
+    { at: snapped, click: near },
+  );
+  expect(landing.moved).toBeGreaterThan(2);
+  expect(landing.onRoute).toBeGreaterThan(0);
 });
 
 test("the base map control switches and remembers the base map", async ({

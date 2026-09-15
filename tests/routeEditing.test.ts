@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { insertionIndex, nearestPosition } from "../src/map/routeEditing";
+import {
+  insertionIndex,
+  nearestPosition,
+  snapToLines,
+} from "../src/map/routeEditing";
 import type { Point } from "../src/routing/types";
 
 describe("route editing", () => {
@@ -56,5 +60,20 @@ describe("route editing", () => {
         [5, 2],
       ).position,
     ).toBe(1.5);
+  });
+  it("snaps to the nearest line within reach and to nothing beyond it", () => {
+    const lines: Point[][] = [
+      [
+        [0, 0],
+        [100, 0],
+      ],
+      [
+        [0, 10],
+        [100, 10],
+      ],
+    ];
+    expect(snapToLines(lines, [50, 7], 16)).toEqual([50, 10]);
+    expect(snapToLines(lines, [50, 40], 16)).toBeUndefined();
+    expect(snapToLines([[[5, 5]]], [5, 5], 16)).toBeUndefined();
   });
 });

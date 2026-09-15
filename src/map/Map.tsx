@@ -1,5 +1,5 @@
 import { selectedRoute } from "../routing/selection";
-import { insertionIndex, nearestPosition } from "./routeEditing";
+import { insertionIndex, nearestPosition, snapToLines } from "./routeEditing";
 import { MarkerLayer } from "./markers";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
@@ -17,6 +17,21 @@ import {
 } from "./rideStyle";
 /** Below this zoom the grid is context only: one stray click must not queue an area. */
 const MIN_SELECT_ZOOM = 6;
+/** How far, in pixels, a right-click reaches to snap Street View onto a way. */
+const SNAP_PX = 16;
+/** Basemap road classes a panorama can stand on: not rail, lifts or ferry lines. */
+const STREET_CLASSES = new Set([
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "minor",
+  "service",
+  "track",
+  "path",
+  "busway",
+]);
 
 /** One-shot imperative camera instruction. `id` makes repeats of the same action distinct. */
 export type MapCommand = {
@@ -217,27 +232,47 @@ export function MapView({
       handle.remove();
       handlers.current.onInclude(handleIndex, [p.lng, p.lat]);
     });
-    // Street View is only offered on a computed route: elsewhere Google usually has no
-    // panorama, and the route is where a rider wants to check the way ahead.
-    const onRoute = (point: maplibregl.Point): Point | undefined => {
-      let best: { distance: number; point: Point } | undefined;
-      for (const track of snapshot.current.tracks) {
-        if (!track.visible || track.result?.status !== "ok") continue;
-        const line = track.result.geometry.map((p): Point => {
-          const q = m.project(p);
-          return [q.x, q.y];
-        });
-        const nearest = nearestPosition(line, [point.x, point.y]);
-        if (!best || nearest.distance < best.distance) best = nearest;
-      }
-      if (!best || best.distance > 16) return;
-      const snapped = m.unproject(best.point);
-      return [snapped.lng, snapped.lat];
+    // Street View snaps to a visible track first, then to a drawn road or trail, so a loose
+    // right-click still lands on the way. Satellite draws no roads; there, and away from
+    // any way, the click itself is used and Google picks the closest panorama.
+    const streetPoint = (point: maplibregl.Point): Point => {
+      const project = (p: Point): Point => {
+        const q = m.project(p);
+        return [q.x, q.y];
+      };
+      const at: Point = [point.x, point.y];
+      const tracks = snapshot.current.tracks
+        .filter((t) => t.visible && t.result?.status === "ok")
+        .map((t) => t.result!.geometry.map(project));
+      const roads = m
+        .queryRenderedFeatures([
+          [point.x - SNAP_PX, point.y - SNAP_PX],
+          [point.x + SNAP_PX, point.y + SNAP_PX],
+        ])
+        .filter(
+          (f) =>
+            f.sourceLayer === "trail" ||
+            (f.sourceLayer === "transportation" &&
+              STREET_CLASSES.has(f.properties.class)),
+        )
+        .flatMap((f): Point[][] =>
+          f.geometry.type === "LineString"
+            ? [f.geometry.coordinates as Point[]]
+            : f.geometry.type === "MultiLineString"
+              ? (f.geometry.coordinates as Point[][])
+              : [],
+        )
+        .map((line) => line.map(project));
+      const snapped =
+        snapToLines(tracks, at, SNAP_PX) ??
+        snapToLines(roads, at, SNAP_PX) ??
+        at;
+      const q = m.unproject(snapped);
+      return [q.lng, q.lat];
     };
-    const openInclude = (point: maplibregl.Point) => {
+    const openContextMenu = (point: maplibregl.Point) => {
       const hit = locate(point);
-      const street = onRoute(point);
-      if (!hit && !street) return;
+      const street = streetPoint(point);
       handle.remove();
       contextPopup?.remove();
       const location = m.unproject(point);
@@ -261,10 +296,9 @@ export function MapView({
             handlers.current.onInclude(hit.index, [location.lng, location.lat]),
           snapshot.current.anchors.length >= 12,
         );
-      if (street)
-        action("Open in Street View", () =>
-          window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
-        );
+      action("Open in Street View", () =>
+        window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
+      );
       contextPopup = new maplibregl.Popup({
         closeButton: false,
         className: "map-context-popup",
@@ -275,7 +309,7 @@ export function MapView({
     };
     m.on("contextmenu", (e) => {
       e.preventDefault();
-      openInclude(e.point);
+      openContextMenu(e.point);
     });
     // The handle sits under the cursor whenever it is near the route, so a right-click
     // there lands on the marker element and never reaches the map's own listener.
@@ -283,7 +317,7 @@ export function MapView({
       event.preventDefault();
       event.stopPropagation();
       const box = m.getCanvasContainer().getBoundingClientRect();
-      openInclude(
+      openContextMenu(
         new maplibregl.Point(event.clientX - box.left, event.clientY - box.top),
       );
     });
@@ -299,7 +333,7 @@ export function MapView({
       pressTimer = setTimeout(() => {
         longPressed = true;
         suppressClickUntil = Date.now() + 1000;
-        openInclude(e.point);
+        openContextMenu(e.point);
       }, 500);
     });
     m.on("touchmove", (e) => {
