@@ -80,7 +80,10 @@ def way_profile(ids, positions, elevations, incline=None):
         # Shift the full window at way ends instead of creating a tiny tail.
         low = max(0, min(length-WINDOW, middle-WINDOW/2))
         high = min(length, low+WINDOW)
-        grade = (height(high)-height(low))/max(high-low, 1)
+        # A way shorter than the window spreads its rise over the window, as a structure
+        # does: dividing 4 m of DEM noise at a tunnel portal by a 12 m way invented a 31%
+        # wall that, on a `foot=no` road, deleted the edge and closed the Col de Rousset.
+        grade = (height(high)-height(low))/max(high-low, WINDOW)
         samples.append((start, end, max(-CLAMP, min(CLAMP, grade))))
         start = end
     return offsets, samples

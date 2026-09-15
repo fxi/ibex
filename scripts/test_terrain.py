@@ -22,6 +22,12 @@ class TerrainTests(unittest.TestCase):
         self.assertAlmostEqual(sum(m for m,g in sliced), offsets[-1], places=1)
         self.assertLess(max(g for m,g in sliced),.13)
 
+    def test_short_way_spreads_its_rise_over_the_smoothing_window(self):
+        # D518 just past the Rousset tunnel's north portal: a 12 m way reading a 3.75 m drop.
+        positions={0:[5.4054252,44.8403589],1:[5.405566,44.8403991]}
+        _,samples=way_profile([0,1],positions,{0:1252.72,1:1248.97})
+        self.assertTrue(all(-.05 < g < 0 for a,b,g in samples))
+
     def test_steep_terrain_is_never_discarded_as_flat(self):
         positions={0:[6,46],1:[6.001,46]}
         _,samples=way_profile([0,1],positions,{0:0,1:100})
