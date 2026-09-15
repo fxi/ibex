@@ -568,21 +568,13 @@ export function MapView({
         });
         menu.append(button);
       };
-      if (hit) {
-        // Pinned against the map as it is while the menu is open.
-        const pinned = pinchesFor({
-          kind: "insert",
-          index: hit.index,
-          position: hit.position,
-        });
+      // Including is a change to the route, where dragging a handle is an adjustment to it:
+      // one waypoint and no pinches, so the whole stretch from the previous waypoint to the
+      // next is routed again. Legs it does not touch are still reused.
+      if (hit)
         action("Include in route", () =>
-          handlers.current.onInclude(
-            hit.index,
-            [location.lng, location.lat],
-            pinned,
-          ),
+          handlers.current.onInclude(hit.index, [location.lng, location.lat]),
         );
-      }
       action("Open in Street View", () =>
         window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
       );

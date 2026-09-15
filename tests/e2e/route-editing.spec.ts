@@ -168,7 +168,9 @@ test("route handle and include action insert intermediate waypoints", async ({
   await page
     .getByRole("button", { name: "Include in route", exact: true })
     .click();
-  await expect.poll(count).toBeGreaterThan(before);
+  // Including is a change to the route, not a local adjustment: one waypoint and no
+  // pinches, and the whole stretch between its neighbours is routed again.
+  await expect(waypoints).toHaveCount(before + 1);
   await expect(page.getByText(routeReady)).toBeVisible();
   before = await count();
   const canvas = page.locator(".map canvas");
@@ -187,7 +189,7 @@ test("route handle and include action insert intermediate waypoints", async ({
   await page
     .getByRole("button", { name: "Include in route", exact: true })
     .click();
-  await expect.poll(count).toBeGreaterThan(before);
+  await expect(waypoints).toHaveCount(before + 1);
 });
 
 test("a route handle branches at its neighbouring handles, and the edit can be undone", async ({
