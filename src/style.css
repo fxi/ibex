@@ -426,6 +426,53 @@ main,
   box-shadow: 0 1px 5px #0007;
   cursor: grab;
 }
+/* Handles along the route: where it can be grabbed, and where an edit will branch. The
+   marker itself is only the hit area, larger than the dot so a fingertip lands on it. It is
+   never scaled: MapLibre positions it with `transform`, and a scale there would carry it
+   out from under the pointer. The dot inside grows instead. */
+.route-handle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: grab;
+  -webkit-tap-highlight-color: transparent;
+}
+.route-handle:active {
+  cursor: grabbing;
+}
+.route-handle-dot {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px #0007;
+  pointer-events: none;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.route-handle:hover .route-handle-dot {
+  transform: scale(1.35);
+}
+.route-handle.is-branch .route-handle-dot {
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px #fff,
+    0 1px 5px #0009;
+}
+@media (pointer: coarse) {
+  .route-handle {
+    width: 40px;
+    height: 40px;
+  }
+  .route-handle-dot {
+    width: 15px;
+    height: 15px;
+  }
+}
 .route-drag-handle:active {
   cursor: grabbing;
 }
@@ -888,8 +935,25 @@ progress {
   flex-direction: column;
   gap: 8px;
 }
-.result > button {
-  align-self: flex-start;
+.track-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.track-actions .icon-button {
+  width: 36px;
+  height: 36px;
+}
+.button-group {
+  display: flex;
+  margin-left: auto;
+}
+.button-group .icon-button:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.button-group .icon-button:last-child {
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .waypoints ul,
 .waypoints > div {

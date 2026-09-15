@@ -10,6 +10,9 @@ import {
   EyeOff,
   RefreshCw,
   Trash2,
+  Download,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
 import { SURFACE_STYLE, rideTotals } from "../map/rideStyle";
@@ -343,9 +346,50 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                         )}
                         % with uncertain map attributes.
                       </p>
-                      <button disabled={!!stale} onClick={() => exportTrack(t)}>
-                        Export your route
-                      </button>
+                    </div>
+                  )}
+
+                  {(t.result || t.kind === "planned") && (
+                    <div className="track-actions">
+                      {t.result && (
+                        <button
+                          className="icon-button"
+                          aria-label="Export your route"
+                          title="Export GPX"
+                          disabled={!!stale}
+                          onClick={() => exportTrack(t)}
+                        >
+                          <Download size={18} />
+                        </button>
+                      )}
+                      {/* Map edits add pinch waypoints and are easy to overdo, so each step
+                          can be taken back, route and all. */}
+                      {t.kind === "planned" && (
+                        <div
+                          className="button-group"
+                          role="group"
+                          aria-label="Edit history"
+                        >
+                          <button
+                            className="icon-button"
+                            aria-label="Undo"
+                            title="Undo (Ctrl+Z)"
+                            disabled={!tracks.canUndo}
+                            onClick={() => tracks.undo()}
+                          >
+                            <Undo2 size={18} />
+                          </button>
+                          <button
+                            className="icon-button"
+                            aria-label="Redo"
+                            title="Redo (Ctrl+Shift+Z)"
+                            disabled={!tracks.canRedo}
+                            onClick={() => tracks.redo()}
+                          >
+                            <Redo2 size={18} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

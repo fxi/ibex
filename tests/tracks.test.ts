@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { GRAVEL, ROAD } from "./helpers";
 import { profileUuid, serializeProfile } from "../src/routing/profiles";
 import {
+  HISTORY_LIMIT,
   acceptResult,
   editTrack,
   modelSnapshot,
   newTrack,
+  recordEdit,
   restoreCollection,
+  stepHistory,
+  type TrackHistory,
 } from "../src/tracks";
 import type { RouteResult } from "../src/routing/types";
 describe("independent track revisions", () => {
@@ -63,6 +67,59 @@ describe("independent track revisions", () => {
     expect(snapshot).not.toBe(GRAVEL);
     expect(snapshot.setup.bike).not.toBe(GRAVEL.setup.bike);
     expect(serializeProfile(snapshot)).toBe(serializeProfile(GRAVEL));
+  });
+
+  it("undoes and redoes edits with the route each step had", () => {
+    const empty: TrackHistory = { undo: [], redo: [] };
+    const a: [number, number][] = [
+      [6, 46],
+      [6.1, 46],
+    ];
+    const b: [number, number][] = [...a, [6.2, 46]];
+    const other = { ...result, geometry: b } as RouteResult;
+    const first = acceptResult(
+      editTrack(newTrack(), { anchors: a }),
+      1,
+      result,
+      "p",
+    );
+    let history = recordEdit(empty, first);
+    // Edited, then routed later: the route that arrives belongs to the redo step.
+    const second = acceptResult(
+      editTrack(first, { anchors: b }),
+      2,
+      other,
+      "p",
+    );
+
+    const back = stepHistory(history, second, "undo")!;
+    expect(back.track.anchors).toEqual(a);
+    expect(back.track.result).toBe(result);
+    expect(back.track.resultRevision).toBe(back.track.revision);
+    expect(back.track.revision).toBeGreaterThan(second.revision);
+    expect(stepHistory(back.history, back.track, "undo")).toBeUndefined();
+
+    const forward = stepHistory(back.history, back.track, "redo")!;
+    expect(forward.track.anchors).toEqual(b);
+    expect(forward.track.result).toBe(other);
+    expect(forward.track.resultRevision).toBe(forward.track.revision);
+
+    // A new edit after an undo drops what could have been redone.
+    history = recordEdit(back.history, back.track);
+    expect(history.redo).toEqual([]);
+    expect(history.undo).toHaveLength(1);
+
+    // A step that was never routed comes back needing computation.
+    const unrouted = stepHistory(
+      recordEdit(empty, editTrack(first, { anchors: b })),
+      first,
+      "undo",
+    )!;
+    expect(unrouted.track.resultRevision).not.toBe(unrouted.track.revision);
+
+    let long = empty;
+    for (let i = 0; i < HISTORY_LIMIT + 5; i++) long = recordEdit(long, first);
+    expect(long.undo).toHaveLength(HISTORY_LIMIT);
   });
 
   it("refuses a collection holding a profile in the old format", () => {

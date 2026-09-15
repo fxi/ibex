@@ -106,6 +106,25 @@ function App() {
   });
   cancel.current = routing.cancel;
 
+  // Undo and redo route edits from the keyboard, except where a field has its own undo.
+  const shortcuts = useRef(tracks);
+  shortcuts.current = tracks;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, select, [contenteditable]"))
+        return;
+      e.preventDefault();
+      if (key === "y" || e.shiftKey) shortcuts.current.redo();
+      else shortcuts.current.undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const search = useSearch({ online, setError });
   const panel = usePanelHeight();
 
@@ -137,8 +156,9 @@ function App() {
 
   const { active } = tracks;
   /**
-   * Move or insert a waypoint. Pinches from the map keep the edit to what was on screen:
-   * they become waypoints, and the legs outside them are kept rather than routed again.
+   * Move or insert a waypoint. Pinches from the map keep the edit between the nearest route
+   * handles: they become waypoints, and the legs outside them are kept rather than routed
+   * again. Each edit is a step that undo can take back.
    */
   const reshape = (grab: RouteGrab, point: Point, pinches?: Pinches) => {
     if (!active) return;

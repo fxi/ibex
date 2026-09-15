@@ -80,6 +80,76 @@ export function editTrack(
   return { ...track, ...structuredClone(edit), revision: track.revision + 1 };
 }
 /**
+ * What undo brings back: the fields that shape a route, and the route they had then. A
+ * route is restored as it was rather than routed again, so undoing an edit whose legs were
+ * cut from the previous route gives back exactly that route.
+ */
+export type TrackState = {
+  anchors: Point[];
+  profile: Profile;
+  result?: RouteResult;
+  routed: boolean;
+};
+/** Undo and redo, most recent last. Held in memory for a session, per track. */
+export type TrackHistory = { undo: TrackState[]; redo: TrackState[] };
+/** A long edit session stays bounded; the oldest steps are dropped first. */
+export const HISTORY_LIMIT = 100;
+
+export function trackState(track: Track): TrackState {
+  return {
+    anchors: track.anchors,
+    profile: track.profile,
+    result: track.result,
+    routed: track.resultRevision === track.revision,
+  };
+}
+
+/** Put `state` back as a new revision, its route still current if it was then. */
+export function restoreState(track: Track, state: TrackState): Track {
+  const revision = track.revision + 1;
+  return {
+    ...track,
+    anchors: state.anchors,
+    profile: state.profile,
+    result: state.result,
+    resultRevision: state.routed ? revision : undefined,
+    revision,
+  };
+}
+
+/** `track` is about to be edited: remember it, and forget what had been undone. */
+export function recordEdit(history: TrackHistory, track: Track): TrackHistory {
+  return {
+    undo: [...history.undo, trackState(track)].slice(-HISTORY_LIMIT),
+    redo: [],
+  };
+}
+
+/** One step back or forward, or undefined when there is nothing that way. */
+export function stepHistory(
+  history: TrackHistory,
+  track: Track,
+  direction: "undo" | "redo",
+): { history: TrackHistory; track: Track } | undefined {
+  const [from, to] =
+    direction === "undo"
+      ? [history.undo, history.redo]
+      : [history.redo, history.undo];
+  const state = from.at(-1);
+  if (!state) return;
+  const moved = {
+    from: from.slice(0, -1),
+    to: [...to, trackState(track)].slice(-HISTORY_LIMIT),
+  };
+  return {
+    history:
+      direction === "undo"
+        ? { undo: moved.from, redo: moved.to }
+        : { undo: moved.to, redo: moved.from },
+    track: restoreState(track, state),
+  };
+}
+/**
  * Wrap an imported polyline so the rest of the app can treat it like any other track.
  * The synthetic result carries no edges and no cost, only what the file actually said.
  */

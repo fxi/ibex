@@ -2,10 +2,14 @@
  * Edits that stay where they were made.
  *
  * Moving a waypoint reroutes both legs that meet there, end to end, so on a 500 km route a
- * nudge made at street level could redraw the ride 200 km away. Instead, where the route
- * leaves the screen on either side of the grab, a pinch waypoint is pinned onto the current
- * line. Only the stretch between the pinches is routed again; the legs outside them are
- * cut from the route as it already is, so they cannot change.
+ * nudge made at street level could redraw the ride 200 km away. Instead the route carries
+ * handles, spread along each leg at a spacing the map derives from its zoom. An edit is
+ * pinned at the nearest stop on either side of the grab, a handle or a waypoint: a handle
+ * there becomes a pinch waypoint, and only the stretch between the two stops is routed
+ * again. The legs outside are cut from the route as it already is, so they cannot change.
+ *
+ * Because the handles are drawn before anything is grabbed, where an edit will branch off
+ * the route is known in advance, and the same on a phone as with a mouse.
  *
  * Pinches are ordinary waypoints once placed. What they give up is what every waypoint
  * gives up: a route may turn around at one (see routing/legs).
@@ -63,55 +67,69 @@ export function anchorVertices(
 }
 
 /**
- * Where to pin the route on each side of a grab: where it crosses out of `visible`,
- * walking out from the grab. The crossing is found along the span that leaves, not at a
- * vertex, because a long straight way can put its next vertex kilometres off screen.
+ * Handles along a route, in order, each a fractional `position` on its geometry.
  *
- * No pinch on a side whose neighbouring waypoint is reached on screen, which is then the
- * natural limit, and none at all when the grab itself is off screen.
+ * Every leg is handled on its own and evenly, so a handle never crowds a waypoint: a leg
+ * `n` spacings long gets `n - 1` handles, and one as soon as it is half a spacing long.
+ * `spacingAt` gives the spacing in metres near a point, which lets a map keep handles a
+ * steady number of pixels apart whatever the latitude. Positions depend only on the route
+ * and the spacing, never on the viewport, so panning does not move them.
  */
-export function findPinches(
+export function routeHandles(
   geometry: Point[],
   vertices: number[],
+  spacingAt: (point: Point) => number,
+): Pinch[] {
+  const along = [0];
+  for (let i = 1; i < geometry.length; i++)
+    along.push(along[i - 1] + distance(geometry[i - 1], geometry[i]));
+  const handles: Pinch[] = [];
+  for (let leg = 1; leg < vertices.length; leg++) {
+    const from = vertices[leg - 1],
+      to = vertices[leg];
+    const length = along[to] - along[from];
+    const spacing = spacingAt(geometry[from]);
+    if (!(spacing > 0) || length < spacing / 2) continue;
+    const count = Math.max(1, Math.round(length / spacing) - 1);
+    let i = from;
+    for (let k = 1; k <= count; k++) {
+      const target = along[from] + (length * k) / (count + 1);
+      while (i < to - 1 && along[i + 1] < target) i++;
+      const span = along[i + 1] - along[i];
+      const position = i + (span > 0 ? (target - along[i]) / span : 0);
+      handles.push({ position, point: pointAt(geometry, position) });
+    }
+  }
+  return handles;
+}
+
+/**
+ * Where an edit is pinned on each side of a grab: the nearest handle between the grab and
+ * the neighbouring waypoint, or none when that waypoint is the nearest stop. A handle that
+ * is itself being dragged is the grab, not a stop.
+ */
+export function pinchesAround(
+  vertices: number[],
+  handles: Pinch[],
   grab: RouteGrab,
-  visible: (point: Point) => boolean,
 ): Pinches {
   const [at, lower, upper] =
     grab.kind === "move"
       ? [
           vertices[grab.index],
-          vertices[grab.index - 1],
-          vertices[grab.index + 1],
+          vertices[grab.index - 1] ?? Infinity,
+          vertices[grab.index + 1] ?? -Infinity,
         ]
       : [grab.position, vertices[grab.index - 1], vertices[grab.index]];
-  if (!visible(pointAt(geometry, at))) return {};
-  // Bisect between a position still on screen and one that is not.
-  const crossing = (inside: number, outside: number): Pinch | undefined => {
-    let lo = inside,
-      hi = outside;
-    for (let k = 0; k < 30; k++) {
-      const mid = (lo + hi) / 2;
-      if (visible(pointAt(geometry, mid))) lo = mid;
-      else hi = mid;
-    }
-    return Math.abs(lo - at) < 1e-6
-      ? undefined
-      : { position: lo, point: pointAt(geometry, lo) };
+  const apart = (h: Pinch) => Math.abs(h.position - at) > 1e-6;
+  return {
+    before: handles
+      .filter((h) => h.position > lower && h.position < at && apart(h))
+      .at(-1),
+    after: handles.find(
+      (h) => h.position < upper && h.position > at && apart(h),
+    ),
   };
-  const walk = (limit: number | undefined, step: 1 | -1) => {
-    if (limit === undefined) return;
-    let inside = at;
-    for (
-      let i = step < 0 ? Math.ceil(at) - 1 : Math.floor(at) + 1;
-      step < 0 ? i >= limit : i <= limit;
-      i += step
-    ) {
-      if (!visible(geometry[i])) return crossing(inside, i);
-      inside = i;
-    }
-    return undefined;
-  };
-  return { before: walk(lower, -1), after: walk(upper, 1) };
 }
 
 /** Rising and falling metres between consecutive known heights. */

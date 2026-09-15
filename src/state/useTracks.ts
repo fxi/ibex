@@ -4,10 +4,15 @@ import {
   saveTracks,
   editTrack,
   newTrack,
+  recordEdit,
+  stepHistory,
   trackId,
   type Track,
   type TrackCollection,
+  type TrackHistory,
 } from "../tracks";
+
+const noHistory: TrackHistory = { undo: [], redo: [] };
 
 export type TracksState = ReturnType<typeof useTracks>;
 
@@ -33,7 +38,13 @@ export function useTracks({
   const saveRevision = useRef(0);
   const saveQueue = useRef(Promise.resolve());
 
+  // Route edits can be undone per track. History is read during render, and every change to
+  // it comes with a commit, so a ref is enough to keep it current.
+  const histories = useRef(new Map<string, TrackHistory>());
+
   const active = collection?.tracks.find((t) => t.id === collection.activeId);
+  const activeHistory =
+    (active && histories.current.get(active.id)) ?? noHistory;
 
   function commit(next: TrackCollection) {
     latest.current = next;
@@ -56,7 +67,29 @@ export function useTracks({
     const track = current?.tracks.find((t) => t.id === current.activeId);
     if (!track) return;
     beforeChange();
+    histories.current.set(
+      track.id,
+      recordEdit(histories.current.get(track.id) ?? noHistory, track),
+    );
     updateTrack(track.id, (t) => editTrack(t, changes));
+  }
+
+  /** Step the active track's route edits back or forward. False when there is nothing to. */
+  function travel(direction: "undo" | "redo"): boolean {
+    const current = latest.current;
+    const track = current?.tracks.find((t) => t.id === current.activeId);
+    const step =
+      track &&
+      stepHistory(
+        histories.current.get(track.id) ?? noHistory,
+        track,
+        direction,
+      );
+    if (!track || !step) return false;
+    beforeChange();
+    histories.current.set(track.id, step.history);
+    updateTrack(track.id, () => step.track);
+    return true;
   }
 
   function select(id: string) {
@@ -100,6 +133,7 @@ export function useTracks({
     const current = latest.current;
     if (!current) return;
     beforeChange();
+    histories.current.delete(id);
     let tracks = current.tracks.filter((t) => t.id !== id);
     if (!tracks.length) tracks = [newTrack()];
     commit({
@@ -154,6 +188,10 @@ export function useTracks({
     commit,
     updateTrack,
     edit,
+    canUndo: activeHistory.undo.length > 0,
+    canRedo: activeHistory.redo.length > 0,
+    undo: () => travel("undo"),
+    redo: () => travel("redo"),
     select,
     add,
     duplicate,

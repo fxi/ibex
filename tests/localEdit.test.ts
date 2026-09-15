@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { route as routeOn } from "../src/routing/engine";
+import { distance, route as routeOn } from "../src/routing/engine";
 import { joinLegs, routeLegs } from "../src/routing/legs";
 import {
   anchorVertices,
   applyLocalEdit,
-  findPinches,
+  pinchesAround,
+  routeHandles,
   sliceRoute,
 } from "../src/routing/localEdit";
 import { selectedRoute } from "../src/routing/selection";
@@ -37,8 +38,6 @@ const routed: Promise<RouteResult> = routeLegs(
 /** A straight line of `n` vertices along x, one unit apart. */
 const line = (n: number): Point[] =>
   Array.from({ length: n }, (_, i): Point => [i, 0]);
-const within = (lo: number, hi: number) => (p: Point) =>
-  p[0] >= lo && p[0] <= hi;
 const close = (a: number, b: number) =>
   expect(Math.abs(a - b)).toBeLessThan(1e-6 * Math.max(1, Math.abs(b)));
 
@@ -104,62 +103,77 @@ describe("local edits", () => {
       }
   });
 
-  it("pinches where the route leaves the screen, never past a neighbour", () => {
-    const geometry = line(11);
-    const vertices = [0, 5, 10];
-    const moved = findPinches(
-      geometry,
-      vertices,
-      { kind: "move", index: 1 },
-      within(3, 7),
+  it("spreads handles evenly along each leg, never onto a waypoint", () => {
+    const geometry = line(21);
+    const vertices = [0, 8, 20];
+    const unit = distance([0, 0], [1, 0]);
+    // Two units apart: the 8-unit leg gets 3 handles, the 12-unit leg 5.
+    const handles = routeHandles(geometry, vertices, () => 2 * unit);
+    expect(handles.map((h) => h.position)).toEqual(
+      [2, 4, 6, 10, 12, 14, 16, 18].map((p) => expect.closeTo(p, 6)),
     );
-    expect(moved.before?.position).toBeCloseTo(3, 6);
-    expect(moved.after?.position).toBeCloseTo(7, 6);
-    expect(moved.before?.point[0]).toBeCloseTo(3, 6);
-    // Both neighbours on screen: nothing to pin.
+    expect(handles[0].point[0]).toBeCloseTo(2, 6);
+    // A leg half a spacing long still gets one, in its middle; a shorter one gets none.
     expect(
-      findPinches(
-        geometry,
-        vertices,
-        { kind: "move", index: 1 },
-        within(0, 10),
-      ),
-    ).toEqual({ before: undefined, after: undefined });
-    // The first waypoint has nothing before it.
-    expect(
-      findPinches(geometry, vertices, { kind: "move", index: 0 }, within(0, 3))
-        .before,
-    ).toBeUndefined();
-    // A leg grabbed between vertices pins only the side that leaves the screen.
-    const inserted = findPinches(
-      geometry,
-      vertices,
-      { kind: "insert", index: 1, position: 2.5 },
-      within(2, 8),
+      routeHandles(geometry, vertices, () => 16 * unit).map((h) => h.position),
+    ).toEqual([expect.closeTo(4, 6), expect.closeTo(14, 6)]);
+    expect(routeHandles(geometry, vertices, () => 100 * unit)).toEqual([]);
+    // A long straight span is split between its vertices, not at them.
+    const span = routeHandles(
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      [0, 1],
+      () => 2.5 * unit,
     );
-    expect(inserted.before?.position).toBeCloseTo(2, 6);
-    expect(inserted.after).toBeUndefined();
-    // A grab already off screen pins nothing.
-    expect(
-      findPinches(geometry, vertices, { kind: "move", index: 1 }, within(6, 9)),
-    ).toEqual({});
+    expect(span.map((h) => h.position)).toEqual(
+      [0.25, 0.5, 0.75].map((p) => expect.closeTo(p, 6)),
+    );
   });
 
-  it("pins a long straight span where it crosses the edge, not at its far vertex", () => {
-    // Two vertices, ten units apart: the next vertex out is always off screen.
-    const geometry: Point[] = [
-      [0, 0],
-      [10, 0],
-    ];
-    const pinches = findPinches(
-      geometry,
-      [0, 1],
-      { kind: "insert", index: 1, position: 0.5 },
-      within(3, 7),
-    );
-    expect(pinches.before?.position).toBeCloseTo(0.3, 6);
-    expect(pinches.after?.position).toBeCloseTo(0.7, 6);
-    expect(pinches.after?.point[0]).toBeCloseTo(7, 5);
+  it("pins an edit at the nearest stop on either side of the grab", () => {
+    const vertices = [0, 8, 20];
+    const handles = [2, 4, 6, 10, 12, 18].map((position) => ({
+      position,
+      point: [position, 0] as Point,
+    }));
+    const at = (p: number) => handles.find((h) => h.position === p);
+    // A waypoint moved is pinned by the last handle before it and the first after it.
+    expect(
+      pinchesAround(vertices, handles, { kind: "move", index: 1 }),
+    ).toEqual({ before: at(6), after: at(10) });
+    // The first and last waypoints have nothing beyond them.
+    expect(
+      pinchesAround(vertices, handles, { kind: "move", index: 0 }),
+    ).toEqual({ before: undefined, after: at(2) });
+    expect(
+      pinchesAround(vertices, handles, { kind: "move", index: 2 }),
+    ).toEqual({ before: at(18), after: undefined });
+    // Grabbed between handles, those two handles are the stops.
+    expect(
+      pinchesAround(vertices, handles, {
+        kind: "insert",
+        index: 2,
+        position: 11,
+      }),
+    ).toEqual({ before: at(10), after: at(12) });
+    // A dragged handle is the grab, so the stops are its neighbours; a waypoint nearer
+    // than any handle is a stop of its own, and pins nothing.
+    expect(
+      pinchesAround(vertices, handles, {
+        kind: "insert",
+        index: 1,
+        position: 2,
+      }),
+    ).toEqual({ before: undefined, after: at(4) });
+    expect(
+      pinchesAround(vertices, handles, {
+        kind: "insert",
+        index: 2,
+        position: 19,
+      }),
+    ).toEqual({ before: at(18), after: undefined });
   });
 
   it("keeps the legs outside the pinches and edits only between them", async () => {
