@@ -1,144 +1,105 @@
 # Ibex
 
-The successor to Ibex, built on Cyclatractor’s local routing engine. A full-screen map and four-tab planner support independent cycling tracks, selectable offline map areas, and editable routing models. The data-build window covers Geneva to Toulon, including the Rhône valley and the French Alps; the map can be browsed worldwide.
+Choose the territory. Find your way.
 
-- **Tracks:** create or duplicate tracks, assign independent models, edit numbered waypoints, show/hide routes, and export GPX. Each draft is saved locally. Use the row’s menu for track actions and **Edit track** for waypoints, color, attractions, elevation, and diagnostics.
-- **Data:** select the zoom-9 map areas you need, inspect coverage and download size, resume interrupted downloads, or remove installed data. Each area is an independently downloadable cell; routes cross freely between installed neighbours.
-- **Tools:** explicitly compute the active track. Edits mark its previous result stale; GPX export becomes available again after successful computation. The floating refresh button performs the same action.
-- **Configure:** choose a model for the active track, or edit a custom model using forms and advanced JSON. Other tracks retain their model snapshots. Empty form fields inherit defaults; advanced JSON preserves all cost parameters.
+Ibex is an offline-capable cycling route planner that runs entirely in the browser. You download the map areas you ride in, and routing happens on your device against your own routing profile: no route or waypoint ever leaves it. The published data covers Geneva to Toulon, including the Rhône valley and the French Alps; the map itself can be browsed worldwide.
 
-The bottom panel can collapse or expand. Search and location controls move the map without adding waypoints. The previous Cyclatractor draft migrates once into the track collection; installed packs and custom profiles are retained. Importing the original Ibex app’s stored tracks is deferred. The deployment URL and IndexedDB namespace remain unchanged.
+Live at **https://fxi.io/ibex/**.
 
-A semantic field selects a search corridor; an OSM topology graph determines the actual route. The application compares that result with full-region Dijkstra using the same costs.
+- **Tracks:** create, duplicate and hide tracks, each with its own routing profile. Edit numbered waypoints on the map, undo edits, and export GPX. Imported GPX rides become reference tracks.
+- **Data:** select zoom-9 grid cells, check their size, resume interrupted downloads, refresh or remove them. Routes cross freely between installed neighbouring cells.
+- **Tools:** compute the active track explicitly; editing marks the previous result stale.
+- **Configure:** pick or edit a profile with forms or raw JSON, and show routing diagnostics.
 
-## Run locally
+## Quick start
 
-Requires Node 22.13+ (or Node 24) and npm. The default app uses `public/packs/geneva-grid/catalogue.json`, the locally rebuilt Geneva cell release. Generate it with the commands below, or set `VITE_CATALOGUE_URL` to a compatible cost-model-4 catalogue. Older model-1/2/3 packs and pre-grid region packs are intentionally rejected and removed on start-up.
+Requires Node 22.13+ and npm.
 
 ```sh
-npm ci
-npm run dev
+git clone https://github.com/fxi/ibex.git && cd ibex
+npm run setup     # npm ci, creates .env from .env.example, reports what is missing
+npm run dev       # http://localhost:5173/ibex/
 ```
 
-The map always uses the bundled `src/map/custom-style.json`. Copy `.env.example` to `.env` and set `VITE_MAPTILER_API_KEY` there for online MapTiler tiles, fonts, and sprites. Vite and the manual style downloader read only this workspace’s `.env`; ambient MapTiler variables, ancestor files, other dotenv files, and secret-reference expansion are not used. A missing key or resource failure displays a map status message and never selects another style. The key is a browser resource credential embedded at build time.
+`.env.example` points `VITE_DATA_URL` at the public data, so a fresh clone can download areas and route right away. Set `VITE_MAPTILER_API_KEY` (free at [MapTiler](https://cloud.maptiler.com)) for the basemap and place search; without it the map shows a status message and routing still works. Only this workspace's `.env` is read for the key: an ambient environment variable is never embedded.
 
-To rebuild the data locally, also install `uv` and `tippecanoe`:
+In **Data**, save an area; in **Tracks**, add a track and place two waypoints on the **Edit** tab; then use **Tools → Compute current track**.
+
+To test the service worker and offline mode, use a production build: `npm run build && npm run preview`. HTTPS is required to reopen the app offline on an iPhone; plain LAN HTTP still installs data and routes while the page is open.
+
+## How data works
+
+Routing data is not bundled with the app. It is a static tree of grid cells, each holding a `manifest.json`, an `index.ibx` block directory and a `graph.ibx` of deflated binary blocks that the router reads by byte range. A `v1/latest.json` pointer names the current immutable release, so new data ships without redeploying the app, and a breaking format change moves to `v2/` without breaking deployed clients. See **[docs/data-format.md](docs/data-format.md)** for the layout, the single `DATA_VERSION` rule, cache headers and publishing.
+
+In the browser, downloads are staged and checksum-verified before the installed record changes. OPFS is preferred, with IndexedDB as the fallback (database `ibex`). Graph blocks are decoded in a worker with a 32 MB allocation cap per block. Cells installed under another data version are removed on start-up.
+
+Building data from OpenStreetMap needs `uv`, `osmium-tool` and about 8 GB of disk. See **[docs/release-pipeline.md](docs/release-pipeline.md)**:
 
 ```sh
 uv sync --locked
-uv run scripts/fetch_extracts.py
-uv run scripts/clip_region.py
-uv run scripts/global_splits.py
-uv run scripts/extract_cells.py
-uv run scripts/build_cells.py --jobs 3
-uv run scripts/fetch_attribution.py
-uv run scripts/fetch_water.py
-node --max-old-space-size=8000 --import tsx scripts/package_cells.ts
-npm run dev
+# fetch_extracts → clip_region → global_splits → extract_cells → build_cells → package_cells
+npm run data:stage -- <packs dir>   # serve it locally: leave VITE_DATA_URL empty
 ```
 
-Open `http://localhost:5173/cyclatractor/`. Save the map areas you need in **Data**, select an example or place at least two waypoints in **Tracks**, then use **Tools → Compute current track**. Open **Edit track → Inside the route** to compare results. Drag markers to move waypoints. The historical ride overlay is optional and online-only.
+## Deploy your own
 
-For service-worker/offline testing:
+The app deploys to GitHub Pages at `/<repository name>/`; the data goes to any S3-compatible bucket.
 
-```sh
-npm run build
-npm run preview -- --port 4173
-```
+1. Build and verify a release locally, fill in the S3 block of `.env`, then publish and promote it:
+   ```sh
+   uv run scripts/publish_release.py --create-bucket     # once: bucket + CORS
+   uv run scripts/publish_release.py --release <packs dir> --publish --promote
+   uv run scripts/verify_public_release.py <VITE_DATA_URL>
+   ```
+2. Configure the repository: `scripts/gh-setup.sh` copies the named secrets and variables from `.env` with `gh`. Then enable Pages with source **GitHub Actions**.
+3. Push to `main`. [`deploy.yml`](.github/workflows/deploy.yml) runs all checks, builds with `BASE_PATH=/<repo>/` and deploys. It is skipped until `VITE_DATA_URL` is set, so a fork without data stays green.
 
-Open `http://localhost:4173/cyclatractor/`, save a map area, then reload offline. The development server intentionally does not install the production service worker. LAN HTTP supports the map, installation in IndexedDB, checksum verification through a JavaScript SHA-256 fallback, and local routing while the application is open. HTTPS is required for service-worker registration and reopening the application offline on an iPhone.
+| Workflow      | Trigger                      | Does                                                                   |
+| ------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| `ci.yml`      | pull requests, branch pushes | lint, typecheck, unit, Python, browser tests                           |
+| `deploy.yml`  | push to `main`, manual       | the checks above, then build and publish to Pages                      |
+| `data.yml`    | manual, weekly               | promote or prune releases; verify hashes, cache, CORS and Range on S3  |
+| `release.yml` | tag `v*`                     | GitHub release with generated notes (tag must match `package.json`)    |
 
-## Data and privacy
+| Name                                                  | Kind     | Used by              |
+| ----------------------------------------------------- | -------- | -------------------- |
+| `VITE_MAPTILER_API_KEY`                               | secret   | deploy               |
+| `S3_ENDPOINT`, `S3_KEY`, `S3_SECRET`, `S3_BUCKET`     | secrets  | data                 |
+| `VITE_DATA_URL`                                       | variable | deploy, data         |
+| `VITE_HEATMAP_URL`, `S3_PREFIX`, `S3_PUBLIC_URL`, `APP_ORIGIN` | variables | deploy, data |
 
-Original and derived personal tracks remain under ignored `data/`. The application never uploads waypoints or routes. Enabling the historical overlay requests tiles from the existing public PMTiles archive; it does not send route geometry to that archive.
-
-```sh
-uv run scripts/prepare_tracks.py
-uv run scripts/match_tracks.py --limit 80
-node --import tsx scripts/benchmark.ts
-```
-
-Use `--limit 0` to audit every prepared portion. Matching reports distinguish spatial confidence from restriction-aware sequence validity. Repeated/overlapping portions and portions of the same activity share a calibration/evaluation group. `Ride` is unspecified cycling; it is not automatically a road-bike label. Personalization is disabled in this baseline.
-
-Checksum-verified Geofabrik extracts and cached, input-stamped stages make the build reproducible; see [the release pipeline](docs/release-pipeline.md) and `data/README.md` for the data layout. Terrain tiles and upstream attribution are cached under `data/terrain`. Graph tiles retain stable OSM node IDs; nearby geometry is never treated as connectivity.
-
-## Pack format and storage
-
-Each cell directory holds `manifest.json`, `index.ibx` and `graph.ibx`. The manifest declares schema/model versions, the cell coordinates, coverage, source date, byte lengths and SHA-256 checksums. `index.ibx` is a 64-byte binary header plus a JSON directory of independently readable z13 blocks; `graph.ibx` holds those blocks, deflate-compressed, which the router reads by byte range rather than in full. Routing and GPX export work offline after installation; the bundled custom style needs online MapTiler resources to render its map.
-
-Downloads are staged and verified before the installed record changes. Interrupted downloads resume at completed file boundaries. Cancel removes the current staging data. OPFS is preferred; IndexedDB is the capability fallback. Browser persistence is requested but can be denied. Removing browser site data removes installed packs. Storage is namespaced but shares the `fxi.io` origin quota with other applications.
-
-Graph chunks are decoded in a worker with a 32 MB per-chunk allocation cap. The worker loads the graph once to build a field for the selected profile, then reuses it for corridor expansion and the full-graph comparison. A new request terminates the old worker, and generation IDs prevent stale output. Both searches use the graph merged from the installed cells.
-
-## Publish
-
-Copy `.env.example` settings into the ignored `.env`. Only `VITE_*` settings enter the browser bundle. Set `VITE_MAPTILER_API_KEY` in `.env` to use the custom MapTiler style `01984598-44d5-70a4-b028-6ce2d6f3027a` online. Restart Vite after changing `.env`. Vite embeds this browser API key in the client bundle; S3 credentials remain confined to Python scripts. The local PMTiles style is used without a key, offline, or if MapTiler fails. Route overlays remain available on both styles.
-
-Run `uv run scripts/download_map_style.py` to save a credential-free copy as `src/map/custom-style.json`. Vite embeds that downloaded style when present and injects the configured key into its resource URLs; otherwise it loads the custom style directly from MapTiler. Downloading the style JSON does not download its tiles, sprites or fonts, so the custom basemap still requires connectivity.
-
-```sh
-uv run scripts/publish_release.py
-uv run scripts/publish_release.py --publish
-```
-
-The first command verifies and previews the publication: it walks `catalogue.json`, checks every cell manifest against the catalogue release and version, and verifies the size and SHA-256 of every `.ibx` file. The second uploads only catalogue-listed public artifacts, never personal traces, to `cyclatractor/packs/<release>/`. Configure `VITE_CATALOGUE_URL` with the public immutable catalogue URL. S3 needs public GET/HEAD, byte ranges, and CORS for the app origin. Credentials are used only by the publisher. Verify a live release with `uv run scripts/verify_public_release.py <catalogue-url>`.
-
-GitHub Pages deployment is a manual workflow and requires a configured repository and Pages environment. The repository currently has no Git remote configured. Set repository variable `VITE_CATALOGUE_URL` before publishing. The app base and service-worker scope are `/cyclatractor/`.
+The MapTiler key ends up in the public bundle: restrict it to your origins in the MapTiler dashboard. Give CI an S3 key limited to the data bucket.
 
 ## Checks
 
 ```sh
-npm run lint
-npm run typecheck
-npm test
+npm run lint && npm run typecheck && npm test
+uv run ruff check scripts
 uv run python -m unittest discover -s scripts -p 'test_*.py'
-npm run build:test
-npx playwright install chromium webkit
-npm run test:e2e
+npm run build:test && npx playwright install chromium webkit && npm run test:e2e
 ```
 
-Browser regression tests require `npm run build:test`. It builds an isolated test checkout with a dummy key in its own `.env`, without reading or modifying your credentials. Browser fixtures intercept MapTiler resources while retaining the production style. CI uses the checked-in single-cell release `public/packs/cell-fixture` without external downloads. It is explicitly test data, not a real route network. Regenerate it with `node --import tsx scripts/create_cell_fixture.ts` when the format changes. Run `npm run build` afterwards to restore the real configuration. `node scripts/smoke-lan.mjs <dev-url>` verifies installation and routing with the real pack on an insecure LAN development origin.
+`npm run build:test` builds an isolated checkout with a dummy key and the synthetic single-cell release in `tests/fixtures/data`, which is explicitly test data, not a real network. Browser tests intercept MapTiler, then cover Chromium and mobile WebKit: LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. Regenerate the fixture with `node --import tsx scripts/create_cell_fixture.ts` after a format change. `tests/release.test.ts` also runs on a real local release when one exists (`IBEX_RELEASE=<packs dir>`).
 
-## Routing profiles and data updates
+## Routing
 
-Choose **Gravel, MTB, Road or Touring**, then your rider level and technical comfort.
-Gravel defaults to 50 mm tyres. Fitness changes climbing capability independently of handling
-and traffic tolerance. Equipment and crossing permissions remain available under a disclosure;
-older custom profiles remain readable under **Show older profiles**.
+A profile is a complete, self-contained file: bike, rider, whole-ride settings, way preferences with uphill and downhill overrides, and permissions. See [the profile guide](profiles/README.md). Every `profiles/*.profile.json` ships with the app.
 
-Normal routing performs one A* search per leg. A relaxed directed graph supplies stronger
-lower bounds on large graphs; turn restrictions, urban turns, riding transitions and ferry
-boarding remain in the final search. Completed workers retain bounded block and cost caches
-for nearby edits. Corridor comparisons and scenic candidate sweeps require an explicit
-`diagnostics: true` request in audit code.
+Normal routing runs one A* search per leg over the graph merged from installed cells. Turn restrictions, urban turns, riding transitions and ferry boarding stay in the final search. Costs are additive: scenery can discount distance but never traffic or capability penalties. Legal access excludes a connection; difficult terrain and refused pushing remain expensive last resorts. Snapping requires a suitable connection within 250 m. See [the routing refactor](docs/routing-refactor.md) and [scenic detours](docs/scenic-detours.md).
 
-Versioned ride policies use additive costs: scenery can discount distance, but cannot discount
-traffic or capability penalties. Legal access still excludes a connection; difficult terrain
-and refused pushing remain expensive last resorts. Unknown elevation is never evidence that a
-bridge or tunnel is impassable. Snapping requires a suitable connection within 250 m.
+For audits, `node --import tsx scripts/audit_route.ts [packs dir]` writes selected ways, grades and costs under `data/derived/routing-audit/`. The checked-in Voirons and Coudry fixtures exercise real detours in `npm test`. Every script is listed in [scripts/README.md](scripts/README.md).
 
-New binary blocks contain precomputed roughness, technical difficulty, surface confidence and
-curvature. Old model-4 packs still work, deriving those facts once per loaded block. Preprocessor
-7 also extracts mapped passes and saddles as scenic sources. Published regional packs have not
-been replaced by this code change. See [the routing refactor](docs/routing-refactor.md) for
-behaviour, benchmark scope and remaining data limitations.
+## Privacy
 
-Run the real-data audit with `node --import tsx scripts/audit_route.ts`. It writes selected ways, grades, and costs under ignored `data/derived/routing-audit/`. The small checked-in Voirons fixture also exercises the actual Sauget detour in `npm test`.
+The app never uploads waypoints, routes or profiles. The optional "your rides" overlay (`VITE_HEATMAP_URL`) requests tiles from a public PMTiles archive and sends no route geometry. Personal activity traces used for calibration stay under the ignored `data/` directory and are never published.
 
-## Limits of this experiment
+## Limits
 
-- Synthetic and desktop browser checks cannot certify physical iPhone memory, battery or storage retention. Real-device acceptance remains a manual step.
-- The scalar field is a coarse prior, not an exact directional/topological model. Valid routes may cost more than the full-graph baseline; the UI reports the measured difference.
-- Profiles can enable bicycle pushing, stairs, and ferries. Ferry timetables and conditional/time-dependent access are not evaluated. Ambiguous conditional restriction from-ways are excluded conservatively. `no-path` means no path in this model, not proof that cycling is impossible.
-- Terrain is sampled at Mapterhorn zoom 12 with bilinear height interpolation and 80 m windows along complete OSM ways before splitting topology edges. Bridge/tunnel terrain is not treated as road elevation. Missing elevation remains unknown and incurs a conservative slope surcharge; GPX exports geometry without invented heights.
+- Desktop and emulated browser checks can't certify iPhone memory, battery or storage retention; test on a real device.
+- Profiles can allow pushing, stairs and ferries. Ferry timetables and time-dependent access aren't evaluated, and ambiguous conditional restrictions are excluded conservatively. `no-path` means no path in this model, not proof that cycling is impossible.
+- Terrain is sampled from Mapterhorn with bilinear interpolation along complete OSM ways. Bridges and tunnels get no ground elevation. Missing elevation stays unknown and adds a conservative slope surcharge, and GPX exports never invent heights.
 - Network utility is a bounded 1 km low-stress reach metric, not a learned preference. Surface, stress and uncertainty coefficients are experimental.
 
-OSM-derived regional databases are distributed under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain attribution is preserved from [Mapterhorn](https://mapterhorn.com/attribution/). See `CYCLATRACTOR_SPEC.md` for the broader product vision and the implementation baseline.
+## License and attribution
 
-Public data CORS can be refreshed with `uv run scripts/publish_release.py --configure-cors`. The dedicated public-data bucket allows GET/HEAD from any origin, including LAN development addresses; credentials remain server-side.
-
-Browser checks cover Chromium and mobile WebKit, including insecure LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. WebKit offline tests stop the local HTTP server transport because Playwright’s offline emulation also breaks standalone Blob workers in this WebKit build. Physical iPhone validation remains manual.
-
-Profiles retain bike, rider and permission data for import/export. New profiles also carry an
-explicit ride-policy version; the former preference vocabulary is used only by legacy profiles.
-See [the profile guide](profiles/README.md).
+The code is under the [MIT License](LICENCE). Routing data derived from OpenStreetMap is © OpenStreetMap contributors, available under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain: [Mapterhorn](https://mapterhorn.com/attribution/). Basemap: © MapTiler © OpenStreetMap contributors.

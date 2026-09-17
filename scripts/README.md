@@ -1,8 +1,10 @@
 # scripts/
 
 Run everything from the repo root (`uv run scripts/<name>.py`, `node --import tsx scripts/<name>.ts`).
-Outputs go under the gitignored `data/` (see `data/README.md`); nothing here writes to `src/`.
+Outputs go under the gitignored `data/`; nothing here writes to `src/`.
 Modules marked **lib** are imported by other scripts: do not rename or move them in isolation.
+Scripts that read a local release take its packs directory as an argument, defaulting to
+`DEFAULT_RELEASE` in `local_release.ts`.
 
 | Group | Script | Purpose |
 |---|---|---|
@@ -12,25 +14,27 @@ Modules marked **lib** are imported by other scripts: do not rename or move them
 | | `extract_cells.py` | One pbf per z9 cell plus halo |
 | | `build_cells.py` | Parallel, resumable per-cell builds; calls `build_region.py` by path |
 | | `build_region.py` | **lib** + per-cell graph builder (see its docstring) |
-| | `package_cells.ts` | Cell builds → `catalogue.json` + `.ibx` packs |
+| | `package_cells.ts` | Cell builds → `catalogue.json` + `.ibx` packs at the current `DATA_VERSION` |
 | | `fetch_attribution.py`, `fetch_water.py` | Terrain attribution, water layer |
 | | `region_config.py` | **lib**: window, halo, zooms, extract list — the only place a bbox is defined |
 | | `grid.py`, `osm_source.py`, `profile_features.py`, `terrain_profile.py`, `profile.ts` | **lib** helpers for the builder and audits |
-| Publish | `publish_release.py` | Verify a packs dir (default) or upload it (`--publish`, `--configure-cors`) |
+| Publish | `publish_release.py` | Verify a packs dir; `--publish`, `--promote`, `--promote-id`, `--prune`, `--create-bucket` on S3 ([data-format.md](../docs/data-format.md)) |
 | | `verify_release.ts` | Decode every block of a local release and route Marseille→Toulon |
-| | `verify_public_release.py` | Verify a live catalogue URL |
+| | `verify_public_release.py` | Verify published data from its root URL: pointer, hashes, cache headers, CORS, Range |
+| | `stage_release.ts` | `npm run data:stage`: link a local release under `data/publish/` for the dev server |
 | | `download_map_style.py` | Save the MapTiler style as `src/map/custom-style.json` |
-| Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local release's merged packs (argv[2], default `data/build/geneva-toulon/packs`) |
+| Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local release's merged packs |
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
-| | `audit_route.ts`, `audit_coudry.ts`, `audit_profile_options.ts`, `audit_search_budget.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
-| | `compare_builds.py` | Grid vs pre-grid build regression comparison |
-| Fixtures | `create_cell_fixture.ts` | `public/packs/cell-fixture` (CI release) |
-| | `gen_grid_fixture.ts`, `gen_grid_vectors.ts` | `public/packs/grid-fixture`, `tests/fixtures/grid-vectors.json` |
+| | `audit_route.ts`, `audit_long_route.ts`, `audit_coudry.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
+| Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests) |
+| | `gen_grid_fixture.ts`, `gen_grid_vectors.ts` | `tests/fixtures/grid-fixture`, `tests/fixtures/grid-vectors.json` |
 | | `gen_coudry_fixture.ts`, `gen_voirons_fixture.ts` | Real-data routing fixtures in `tests/fixtures/` |
 | Personal tracks | `prepare_tracks.py`, `match_tracks.py` | Private ride traces → `data/derived/` (never uploaded) |
-| Dev & browser tests | `build_browser_tests.ts`, `local-env.ts`, `test-server.mjs` | Isolated browser test build |
-| | `smoke-lan.mjs`, `repro-webkit-offline.mjs` | LAN smoke test; WebKit offline repro cited in `VALIDATION.md` |
+| Dev & browser tests | `setup.mjs` | `npm run setup`: install, create `.env`, report missing settings |
+| | `data-server.ts`, `local-env.ts` | **lib** for `vite.config.ts`: serve `data/publish/` with byte ranges; read only this workspace's `.env` |
+| | `build_browser_tests.ts`, `test-server.mjs` | Isolated browser test build and its server |
+| | `gh-setup.sh` | Copy the deploy secrets and variables from `.env` to the GitHub repository |
 | Python tests | `test_*.py` | `uv run python -m unittest discover -s scripts -p 'test_*.py'` |
 
 Rules: one-off experiments do not get committed here. If a script is worth keeping, give it
