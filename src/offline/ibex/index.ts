@@ -7,12 +7,15 @@
  * without decoding it. The bulk of a pack is its blocks, which are fully binary; the
  * directory itself is a small JSON body (~1% of a cell) kept readable on purpose.
  */
+import { z } from "zod";
 import { ByteReader, ByteWriter, crc32 } from "./varint";
+import { LIMITS } from "../validate";
 import {
   DATA_VERSION,
   INDEX_HEADER_BYTES,
   INDEX_MAGIC,
   IbexError,
+  MAX_RAW_BLOCK_BYTES,
   releaseTag as computeReleaseTag,
   type BlockRef,
   type IbexIndex,
@@ -28,6 +31,50 @@ type Body = {
   restrictions: Restriction[];
   meta: Record<string, unknown>;
 };
+
+const count = z.number().int().nonnegative();
+/**
+ * The header is binary and checksummed; this body is JSON, and its CRC covers only the
+ * header, so nothing else stands between a malformed pack and the router. Block offsets
+ * become byte ranges and restrictions are indexed by position, so their shape is a
+ * precondition of the search, not a detail.
+ *
+ * Deliberately tolerant where the encoder is: `restrictions` and `meta` may be absent, and
+ * unknown keys are ignored so an additive field does not need a DATA_VERSION bump.
+ */
+const bodySchema = z.object({
+  release: z.string().max(64),
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  strings: z.array(z.string()).max(LIMITS.chunkEdges),
+  blocks: z
+    .array(
+      z.object({
+        x: count,
+        y: count,
+        offset: count,
+        length: count,
+        rawLength: count.max(MAX_RAW_BLOCK_BYTES),
+        crc: z.number().int(),
+        nodes: count.max(LIMITS.chunkNodes),
+        edges: count.max(LIMITS.chunkEdges),
+        bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+      }),
+    )
+    .max(LIMITS.indexChunks),
+  restrictions: z
+    .array(
+      z.object({
+        // The search reads `ways[ways.length - 2]`: a shorter rule is not a rule.
+        ways: z.array(z.string()).min(2).max(64),
+        via: count.optional(),
+        only: z.boolean(),
+        uTurn: z.boolean().optional(),
+      }),
+    )
+    .max(LIMITS.restrictions)
+    .optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});
 
 export function encodeIndex(
   index: Omit<IbexIndex, "releaseTag" | "dataVersion">,
@@ -112,16 +159,21 @@ export function decodeIndex(
   if (jsonOffset + jsonLength > data.length)
     throw new IbexError("bounds", "Cell index body is truncated");
 
-  let body: Body;
+  let parsed: unknown;
   try {
-    body = JSON.parse(
+    parsed = JSON.parse(
       new TextDecoder().decode(data.subarray(jsonOffset, jsonOffset + jsonLength)),
     );
   } catch {
     throw new IbexError("bounds", "Cell index body is not valid JSON");
   }
-  if (!Array.isArray(body.blocks) || !Array.isArray(body.strings))
-    throw new IbexError("bounds", "Cell index body is missing its directory");
+  const checked = bodySchema.safeParse(parsed);
+  if (!checked.success)
+    throw new IbexError(
+      "bounds",
+      `Cell index body is malformed: ${checked.error.issues[0]?.message ?? "unknown"}`,
+    );
+  const body = checked.data as Body;
   if (expect.release !== undefined && body.release !== expect.release)
     throw new IbexError("release", "Pack belongs to another data release");
 

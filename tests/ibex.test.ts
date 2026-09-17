@@ -357,6 +357,41 @@ describe("cell index", () => {
     future[4] = 99; // the data version, little-endian u16 after the magic
     expect(() => decodeIndex(future)).toThrow(/Unsupported data version 99/);
   });
+  /**
+   * The header CRC covers the header only, so the body is the one part of a pack that
+   * arrives unchecked. Its shape is a precondition of the search: block offsets become
+   * byte ranges, and a restriction shorter than two ways is indexed as `undefined`.
+   */
+  it("refuses a body whose directory or restrictions are malformed", () => {
+    // A well-formed header around a body the encoder would never produce, so the header
+    // checks all pass and the body is what is under test.
+    const encoded = (body: Record<string, unknown>) =>
+      encodeIndex(body as unknown as Parameters<typeof encodeIndex>[0]);
+    const cases: [string, Record<string, unknown>][] = [
+      ["a block offset that is not a number", { ...base, blocks: [{ ...base.blocks[0], offset: "0" }] }],
+      ["a negative block length", { ...base, blocks: [{ ...base.blocks[0], length: -1 }] }],
+      ["a string table holding a number", { ...base, strings: [1] }],
+      ["a one-way restriction", { ...base, restrictions: [{ ways: ["1"], only: false }] }],
+      ["a bbox that is not four numbers", { ...base, bbox: [1, 2, 3] }],
+    ];
+    for (const [what, body] of cases) {
+      let thrown: unknown;
+      try {
+        decodeIndex(encoded(body));
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, what).toBeInstanceOf(IbexError);
+      expect((thrown as IbexError).message, what).toMatch(/malformed/);
+    }
+    // Absent optional members stay acceptable: the encoder may omit them.
+    const { restrictions: _r, meta: _m, ...without } = base;
+    const decoded = decodeIndex(encoded(without));
+    expect(decoded.restrictions).toEqual([]);
+    expect(decoded.meta).toEqual({});
+    // An unknown additive field must not need a DATA_VERSION bump to be readable.
+    expect(() => decodeIndex(encoded({ ...base, futureField: 1 }))).not.toThrow();
+  });
   it("refuses a corrupt header and a truncated body", () => {
     const bytes = encodeIndex(base);
     const broken = bytes.slice();

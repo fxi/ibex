@@ -66,8 +66,10 @@ function edge(index: number, reverse = false): Edge {
   };
 }
 
+// As the builder emits a no_u_turn: from and to are the same way, never a single entry
+// (scripts/build_region.py always writes [from, ...via, to]).
 const restriction: Restriction = {
-  ways: ["500"],
+  ways: ["500", "500"],
   via: nodes[2].id,
   only: false,
   uTurn: true,
