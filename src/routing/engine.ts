@@ -9,7 +9,13 @@ import {
 } from "./vocabulary";
 import { exceedance } from "./capability";
 import { edgeSignals, scenicValue, type Signals } from "./signals";
-import { eligible, isFerry, rideClass, traversalSegments } from "./eligibility";
+import {
+  climbingTechnical,
+  eligible,
+  isFerry,
+  rideClass,
+  traversalSegments,
+} from "./eligibility";
 import { isStreet } from "./tagging";
 import type {
   Attraction,
@@ -215,7 +221,9 @@ function riddenRate(
 ): Rate {
   const k = p.capability;
   const down = grade !== null && grade < 0;
-  const technical = down ? s.technicalDown : s.technicalUp;
+  const technical = down
+    ? s.technicalDown
+    : climbingTechnical(s.technicalUp, grade, k);
 
   // Past a false flat, the profile's uphill or downhill preferences take over: the same
   // rider can want good gravel on the way up and smooth tarmac, or singletrack, down.

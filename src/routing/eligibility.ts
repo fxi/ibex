@@ -3,7 +3,7 @@ import type { CompiledProfile } from "./compile";
 import { toCompiled } from "./compile";
 import type { Profile } from "./profiles";
 import { edgeSignals, type Signals } from "./signals";
-import { exceedance } from "./capability";
+import { exceedance, type CapabilityProfile } from "./capability";
 import {
   footBarred,
   GRAVEL_SURFACES,
@@ -69,6 +69,35 @@ export function rideClass(
   return "unknown";
 }
 
+/**
+ * Technical difficulty as met on a climb of this grade, by this rider.
+ *
+ * An MTB grade describes the ground, not the slope under it. Roots and steps are cleared
+ * with momentum, and past the grade a rider climbs comfortably there is none left: the
+ * same `mtb:scale:uphill=2` is a ride at 4% and a push at 12% on a loaded gravel bike,
+ * while a low-geared trail bike still has speed to spare. So difficulty is untouched up
+ * to `uphill_grade.comfortable_until` and has doubled by `high_cost_at`. Read flat, the
+ * Chemin rural dit du Sel near Esery — 7-14% for most of a kilometre — sat between
+ * comfortable and hard for a bikepacker who strongly avoids technical climbs, and its
+ * forest bought it back.
+ *
+ * Descents are left alone: speed carries a bike over what stops it going up, and the
+ * descent's own threshold and curvature term already price steepness.
+ */
+export function climbingTechnical(
+  technicalUp: number,
+  grade: number | null,
+  k: CapabilityProfile,
+): number {
+  const { comfortable_until, high_cost_at } = k.uphill_grade;
+  if (grade === null || grade <= comfortable_until) return technicalUp;
+  return Math.min(
+    1,
+    technicalUp *
+      (1 + (grade - comfortable_until) / (high_cost_at - comfortable_until)),
+  );
+}
+
 export type TraversalSegment = {
   length: number;
   grade: number | null;
@@ -113,7 +142,7 @@ function segmentMode(
     const technical =
       grade !== null && grade < 0
         ? exceedance(s.technicalDown, k.technical_down)
-        : exceedance(s.technicalUp, k.technical_up);
+        : exceedance(climbingTechnical(s.technicalUp, grade, k), k.technical_up);
     // An unmeasured grade is a gap in the terrain data, never evidence that the way is
     // impassable. Bridges and tunnels are deliberately left unsampled — the DEM reads the
     // ground under a deck and the mountain over a bore — so treating a missing grade as

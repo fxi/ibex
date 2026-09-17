@@ -3,7 +3,7 @@ import { cycleInfrastructure, scoreEdge, total } from "../src/routing/engine";
 import { traversalSegments } from "../src/routing/eligibility";
 import { edgeSignals } from "../src/routing/signals";
 import type { Edge } from "../src/routing/types";
-import { GRAVEL } from "./helpers";
+import { GRAVEL, loadProfile, TRAIL } from "./helpers";
 
 // Regressions found by matching a hand-drawn Geneva → Hyères bikepacking route
 // (data/tracks/reference/geneve_mediterranean.gpx) against the Geneva–Toulon release.
@@ -84,4 +84,21 @@ it("stops riding difficulty compounding on a push known to walk easily", () => {
   expect(signed).toBeLessThan(plain);
   // Still a harder push than easier ground on the same terms.
   expect(total(scoreEdge(push({ sac_scale: "hiking", "mtb:scale:uphill": "5" }), GRAVEL))).toBeGreaterThan(hiking);
+});
+
+it("makes technical ground harder on a climb past what the rider climbs comfortably", () => {
+  // The Chemin rural dit du Sel near Esery: `mtb:scale:uphill=2` at 7-14%. A loaded gravel
+  // bike rides that ground on the flat and pushes it up a steep climb; a low-geared trail
+  // bike still has the momentum to clear it.
+  const bikepacking = loadProfile("bikepacking_45");
+  const climb = (grade: number) =>
+    way("track", "ground", { "mtb:scale:uphill": "2" }, { grades: [[100, grade]] });
+  const modes = (grade: number, profile: typeof TRAIL) =>
+    traversalSegments(climb(grade), profile).map((s) => s.mode);
+  expect(modes(0.04, bikepacking)).toEqual(["ride"]);
+  expect(modes(0.12, bikepacking)).toEqual(["walk"]);
+  expect(modes(0.12, TRAIL)).toEqual(["ride"]);
+  expect(scoreEdge(climb(0.12), TRAIL).technical).toBe(
+    scoreEdge(climb(0.04), TRAIL).technical,
+  );
 });
