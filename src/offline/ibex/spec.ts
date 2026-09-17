@@ -1,10 +1,10 @@
-/** Ibex binary routing format, version 1. */
+/** Ibex binary routing format. Its version is the release-wide `DATA_VERSION`. */
 import type { BBox } from "../../geo/grid";
 import type { Edge, Node, Restriction } from "../../routing/types";
 
 export const BLOCK_MAGIC = 0x42584249; // "IBXB" little-endian
 export const INDEX_MAGIC = 0x49584249; // "IBXI"
-export const FORMAT_VERSION = 1;
+export { DATA_VERSION } from "../version";
 export const INDEX_HEADER_BYTES = 64;
 
 /** Coordinates are stored as OSM's own 1e-7 degrees, so encoding is lossless. */
@@ -47,7 +47,6 @@ export type IbexErrorKind =
   | "version"
   | "release"
   | "cell"
-  | "costModel"
   | "digest"
   | "bounds"
   | "limits"
@@ -86,10 +85,9 @@ export type IbexField = {
 };
 
 export type IbexIndex = {
-  formatVersion: number;
+  dataVersion: number;
   release: string;
   releaseTag: number;
-  costModelVersion: number;
   cell: { zoom: number; x: number; y: number };
   blockZoom: number;
   fieldZoom: number;

@@ -8,14 +8,17 @@ uv run scripts/clip_region.py             # merge + clip + tag-filter -> data/pb
 uv run scripts/global_splits.py           # release-wide way-split node set (required)
 uv run scripts/extract_cells.py           # one complete pbf per cell, cell + halo
 uv run scripts/build_cells.py --jobs 3    # halo-exact graph per cell, parallel, resumable
-node --max-old-space-size=8000 --import tsx scripts/package_cells.ts
+node --max-old-space-size=8000 --import tsx scripts/package_cells.ts <cells dir> <packs dir>
 ```
 
-Then point the app at the result:
+Then serve the result locally, with `VITE_DATA_URL` empty in `.env`:
 
 ```sh
-VITE_CATALOGUE_URL=/cyclatractor/packs/geneva-grid/catalogue.json npm run dev
+npm run data:stage -- <packs dir>   # links it under data/publish/v1/, writes latest.json
+npm run dev
 ```
+
+Publishing to S3 and the versioned layout are described in [data-format.md](data-format.md).
 
 `scripts/region_config.py` is the single definition of the window, halo, and zooms. Nothing
 else hardcodes a bbox.
@@ -44,7 +47,7 @@ node --import tsx scripts/verify_release.ts data/build/geneva-toulon/packs
 rm -r data/pbf/geneva-toulon/cells   # once both checks pass
 ```
 
-`publish_release.py --release` verifies local checksums without uploading; `verify_release.ts`
+Without `--publish`, `publish_release.py --release` only verifies local checksums; `verify_release.ts`
 decodes every block and routes Marseille→Toulon across a seam. All neighbouring cells
 must be rebuilt together using the new release-wide split nodes; do not combine old
 Geneva packs with newly built southern packs. Elevation sampling remains enabled.
@@ -122,10 +125,8 @@ npx playwright test   # UI shell only: install flow, offline restart, tab wiring
   caching, foreign release, corrupt block, missing-cell reporting. 40 ms.
 - `tests/release.test.ts` — the generated release: catalogue/manifest agreement, byte-range
   tiling, every block's CRC, and the real Geneva → Voirons route across the
-  `9-264-181` / `9-265-181` boundary. `skipIf` keeps CI green without the packs.
-- `scripts/compare_builds.py` — diffs two builds. Way-level metrics for cross-edition
-  comparison; the stricter edge-level key for halo checks, where both sides read identical
-  data.
+  `9-264-181` / `9-265-181` boundary. `skipIf` keeps CI green without the packs; point
+  `IBEX_RELEASE` at a packs directory to run it on another release.
 
 ## Route segments
 
@@ -159,7 +160,7 @@ the line, and the segments are what make that choice inspectable.
   one graph. Per-cell rasters remain an optimisation: they would avoid decoding blocks
   outside the corridor. The index reserves the section.
 - **`ascentM` is null on most routes.** `completeElevation` goes false if any non-ferry edge
-  lacks `grades`, and bridges/tunnels have none by design. Pre-existing on the legacy pack
+  lacks `grades`, and bridges/tunnels have none by design. Pre-existing on the pre-grid pack
   too (terrain coverage 0.986); not introduced here.
 - **The route worker is recreated per computation**, so the provider's block cache does not
   survive. Making it persistent is what would make the LRU worth having.

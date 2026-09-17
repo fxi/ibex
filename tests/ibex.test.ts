@@ -301,9 +301,7 @@ describe("block rejection", () => {
 
 describe("cell index", () => {
   const base = {
-    formatVersion: 1,
     release: RELEASE,
-    costModelVersion: 4 as const,
     cell: { zoom: 9, x: 264, y: 181 },
     blockZoom: 13,
     fieldZoom: 15,
@@ -331,7 +329,6 @@ describe("cell index", () => {
     const decoded = decodeIndex(encodeIndex(base), {
       release: RELEASE,
       cell: base.cell,
-      costModelVersion: 4,
     });
     expect(decoded.release).toBe(RELEASE);
     expect(decoded.releaseTag).toBe(TAG);
@@ -344,11 +341,11 @@ describe("cell index", () => {
   it("identifies a pack from its first 64 bytes alone", () => {
     const probe = probeHeader(encodeIndex(base).slice(0, 64));
     expect(probe.magic).toBe(true);
-    expect(probe.formatVersion).toBe(1);
+    expect(probe.dataVersion).toBe(1);
     expect(probe.releaseTag).toBe(TAG);
     expect(probe.cell).toEqual(base.cell);
   });
-  it("refuses another release, another cell, and a stale cost model", () => {
+  it("refuses another release and another cell", () => {
     const bytes = encodeIndex(base);
     expect(() => decodeIndex(bytes, { release: "g4-other" })).toThrow(
       /another data release/,
@@ -356,9 +353,9 @@ describe("cell index", () => {
     expect(() => decodeIndex(bytes, { cell: { zoom: 9, x: 1, y: 1 } })).toThrow(
       /contains cell/,
     );
-    expect(() => decodeIndex(bytes, { costModelVersion: 99 })).toThrow(
-      /outdated routing data/,
-    );
+    const future = bytes.slice();
+    future[4] = 99; // the data version, little-endian u16 after the magic
+    expect(() => decodeIndex(future)).toThrow(/Unsupported data version 99/);
   });
   it("refuses a corrupt header and a truncated body", () => {
     const bytes = encodeIndex(base);

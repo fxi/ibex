@@ -18,7 +18,6 @@ import {
 } from "../offline/store";
 import { bboxIntersects, cellId, type BBox } from "../geo/grid";
 import {
-  COST_MODEL_VERSION,
   type Edge,
   type Graph,
   type Node,
@@ -102,7 +101,6 @@ export class CellGraphProvider {
       const index = decodeIndex(bytes, {
         release: this.release,
         cell: pack.manifest.cell,
-        costModelVersion: COST_MODEL_VERSION,
       });
       this.loaded.push({ pack, index });
     }

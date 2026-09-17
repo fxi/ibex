@@ -4,7 +4,7 @@
  * Each cell becomes two files: index.ibx (a 64-byte identifying header plus the block
  * directory) and graph.ibx (the z13 blocks, deflated and concatenated, each addressable by
  * the byte range recorded in the directory). The catalogue sits at the release root and
- * resolves cell manifests relative to itself, so the same tree serves from public/ and from
+ * resolves cell manifests relative to itself, so the same tree serves locally and from
  * an S3 prefix unchanged.
  */
 import fs from "node:fs/promises";
@@ -15,6 +15,7 @@ import { encodeBlock, stringTable } from "../src/offline/ibex/block";
 import { encodeIndex } from "../src/offline/ibex/index";
 import { crc32 } from "../src/offline/ibex/varint";
 import { releaseTag, type BlockRef } from "../src/offline/ibex/spec";
+import { DATA_VERSION } from "../src/offline/version";
 import {
   COST_MODEL_VERSION,
   type Edge,
@@ -22,8 +23,8 @@ import {
   type Node,
 } from "../src/routing/types";
 
-const input = process.argv[2] ?? "data/build/cells";
-const output = process.argv[3] ?? "public/packs/geneva-grid";
+const input = process.argv[2] ?? "data/build/geneva-toulon-v7/cells";
+const output = process.argv[3] ?? "data/build/geneva-toulon-v7/packs";
 const BLOCK_ZOOM = 13;
 const FIELD_ZOOM = 15;
 const CELL_BYTE_LIMIT = 50_000_000;
@@ -92,7 +93,11 @@ try {
 }
 const osmTimestamp = cellTimestamps[0] || releaseStamp || "unknown";
 const edition = osmTimestamp.slice(0, 10).replace(/-/g, "");
-const release = `g${COST_MODEL_VERSION}-${edition}-p${preprocessorVersion}-s1-${shortHash(sources)}`;
+// Cost model, preprocessor and data version change what a cell means, so they are part
+// of the hash: a rebuild under any of them is a new release, never a silent overwrite.
+const release = `${edition}-${shortHash(
+  `v${DATA_VERSION}|c${COST_MODEL_VERSION}|p${preprocessorVersion}|${sources}`,
+)}`;
 const tag = releaseTag(release);
 console.log(`release ${release}\n`);
 
@@ -140,9 +145,7 @@ for (const { id, manifest } of cells) {
             );
           nodes.push(node);
         }
-    const raw = encodeBlock({ x, y }, nodes, edges, strings, tag, {
-      semantics: true,
-    });
+    const raw = encodeBlock({ x, y }, nodes, edges, strings, tag);
     const stored = deflateRawSync(raw, { level: 9 });
     const bbox: [number, number, number, number] = [
       Infinity,
@@ -179,9 +182,7 @@ for (const { id, manifest } of cells) {
     at += chunk.length;
   }
   const indexBytes = encodeIndex({
-    formatVersion: 1,
     release,
-    costModelVersion: COST_MODEL_VERSION,
     cell,
     blockZoom: BLOCK_ZOOM,
     fieldZoom: FIELD_ZOOM,
@@ -214,8 +215,7 @@ for (const { id, manifest } of cells) {
     );
 
   const cellManifest = {
-    schemaVersion: 2,
-    format: "ibex-1",
+    dataVersion: DATA_VERSION,
     id,
     name: `${cell.zoom}/${cell.x}/${cell.y}`,
     version: shortHash(release + files.map((f) => f.sha256).join("")),
@@ -226,7 +226,6 @@ for (const { id, manifest } of cells) {
       manifest.osmTimestamp && manifest.osmTimestamp !== "unknown"
         ? manifest.osmTimestamp
         : osmTimestamp,
-    costModelVersion: COST_MODEL_VERSION,
     terrainCoverage: manifest.terrainCoverage ?? 0,
     attribution: manifest.attribution ?? "© OpenStreetMap contributors",
     blockZoom: BLOCK_ZOOM,
@@ -261,7 +260,7 @@ for (const { id, manifest } of cells) {
 }
 
 const catalogue = {
-  schemaVersion: 1,
+  dataVersion: DATA_VERSION,
   release,
   grid: {
     scheme: "xyz",
@@ -269,8 +268,6 @@ const catalogue = {
     blockZoom: BLOCK_ZOOM,
     fieldZoom: FIELD_ZOOM,
   },
-  costModelVersion: COST_MODEL_VERSION,
-  formatVersion: 1,
   osmTimestamp,
   generated: new Date().toISOString(),
   attribution: cells[0].manifest.attribution ?? "© OpenStreetMap contributors",

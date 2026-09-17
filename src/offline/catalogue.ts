@@ -4,7 +4,7 @@
  * shows up as a bbox mismatch at parse time rather than as mis-stitched routes later.
  */
 import { z } from "zod";
-import { COST_MODEL_VERSION } from "../routing/types";
+import { DATA_VERSION } from "./version";
 import { cellBBox, cellId, type BBox, type CellId } from "../geo/grid";
 import { preference, savePreference } from "./store";
 
@@ -21,7 +21,7 @@ const cellSchema = z.object({
   x: z.number().int().nonnegative(),
   y: z.number().int().nonnegative(),
   bbox: bboxSchema,
-  // Relative to the catalogue URL so the same tree serves from public/ and from S3.
+  // Relative to the catalogue URL so the same tree serves locally and from S3.
   manifest: z
     .string()
     .regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/)
@@ -38,7 +38,7 @@ const cellSchema = z.object({
 
 export const catalogueSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    dataVersion: z.literal(DATA_VERSION),
     release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
     grid: z.object({
       scheme: z.literal("xyz"),
@@ -46,8 +46,6 @@ export const catalogueSchema = z
       blockZoom: z.number().int().min(0).max(20),
       fieldZoom: z.number().int().min(0).max(20),
     }),
-    costModelVersion: z.literal(COST_MODEL_VERSION),
-    formatVersion: z.number().int().positive(),
     osmTimestamp: z.string(),
     generated: z.string(),
     attribution: z.string(),
@@ -95,7 +93,29 @@ export const catalogueSchema = z
 
 export type Catalogue = z.infer<typeof catalogueSchema>;
 export type CatalogueCell = Catalogue["cells"][number];
-type Cached = { url: string; fetchedAt: string; catalogue: Catalogue };
+/** A catalogue together with the URL its cell manifests resolve against. */
+export type Resolved = { url: string; catalogue: Catalogue };
+type Cached = Resolved & { pointer: string; fetchedAt: string };
+
+/**
+ * `v<DATA_VERSION>/latest.json`: the only mutable object in a data tree. It names the
+ * current release, whose files never change, so everything else can be cached forever.
+ */
+export const pointerSchema = z.object({
+  dataVersion: z.literal(DATA_VERSION),
+  release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
+  catalogue: z
+    .string()
+    .regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/)
+    .refine((p) => !p.split("/").includes(".."), "Catalogue path escapes"),
+  published: z.string(),
+});
+export type Pointer = z.infer<typeof pointerSchema>;
+
+/** The pointer URL this build reads under a data root such as `https://host/ibex/data`. */
+export function pointerURL(dataRoot: string): string {
+  return `${dataRoot.replace(/\/+$/, "")}/v${DATA_VERSION}/latest.json`;
+}
 
 /** Resolve a cell's manifest, refusing anything that leaves the catalogue's directory. */
 export function resolveCellManifest(
@@ -136,24 +156,40 @@ export function selectedBytes(
   return total;
 }
 
-/** Fetch and cache. The cost-model check precedes parsing so the message is actionable. */
-export async function readCatalogue(url: string): Promise<Catalogue> {
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new Error(`Pack catalogue unavailable (${response.status})`);
-  const value = await response.json();
-  if (value?.costModelVersion !== COST_MODEL_VERSION)
-    throw new Error(
-      "This catalogue uses outdated routing data. Update the application.",
-    );
-  const catalogue = catalogueSchema.parse(value);
+async function fetchJSON(url: string, what: string): Promise<unknown> {
+  // The pointer is short-lived by design; never let an HTTP cache pin an old release.
+  const response = await fetch(url, { cache: "no-cache" });
+  if (!response.ok) throw new Error(`${what} unavailable (${response.status})`);
+  return response.json();
+}
+
+/**
+ * Follow the pointer to the current release, then fetch and cache its catalogue. The data
+ * version is checked before parsing so a mismatch gets an actionable message.
+ */
+export async function readCatalogue(pointer: string): Promise<Resolved> {
+  const value = pointerSchema.safeParse(
+    await fetchJSON(pointer, "Data release pointer"),
+  );
+  if (!value.success)
+    throw new Error("The published data is for another version of Ibex.");
+  const url = new URL(value.data.catalogue, pointer).href;
+  const raw = (await fetchJSON(url, "Pack catalogue")) as {
+    dataVersion?: unknown;
+  };
+  if (raw?.dataVersion !== DATA_VERSION)
+    throw new Error("The published data is for another version of Ibex.");
+  const catalogue = catalogueSchema.parse(raw);
+  if (catalogue.release !== value.data.release)
+    throw new Error("Data release pointer and catalogue disagree.");
   const cached: Cached = {
+    pointer,
     url,
     fetchedAt: new Date().toISOString(),
     catalogue,
   };
   await savePreference(CACHE_KEY, cached).catch(() => {});
-  return catalogue;
+  return { url, catalogue };
 }
 
 /**
@@ -162,10 +198,10 @@ export async function readCatalogue(url: string): Promise<Catalogue> {
  * advisory: installed state always comes from `listPacks`, never from here.
  */
 export async function cachedCatalogue(
-  url: string,
-): Promise<Catalogue | undefined> {
+  pointer: string,
+): Promise<Resolved | undefined> {
   const cached = await preference<Cached>(CACHE_KEY).catch(() => undefined);
-  if (!cached || cached.url !== url) return undefined;
+  if (!cached || cached.pointer !== pointer) return undefined;
   const parsed = catalogueSchema.safeParse(cached.catalogue);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? { url: cached.url, catalogue: parsed.data } : undefined;
 }

@@ -5,6 +5,14 @@ import { build } from "vite";
 const root = resolve(".");
 await mkdir("test-results", { recursive: true });
 const temporary = await mkdtemp(resolve("test-results/build-"));
+// Pin what an ambient or CI environment could otherwise override in vite.config.ts.
+const pinned = {
+  BASE_PATH: "/ibex/",
+  VITE_DATA_URL: "",
+  VITE_HEATMAP_URL: "",
+  VITE_MAPTILER_API_KEY: "ibex-browser-test-key",
+};
+Object.assign(process.env, pinned);
 try {
   for (const file of [
     "src",
@@ -15,13 +23,12 @@ try {
   ])
     await cp(join(root, file), join(temporary, file), { recursive: true });
   await mkdir(join(temporary, "scripts"));
-  await cp("scripts/local-env.ts", join(temporary, "scripts/local-env.ts"));
-  await mkdir(join(temporary, "public/packs"), { recursive: true });
-  await cp(
-    "public/packs/cell-fixture",
-    join(temporary, "public/packs/cell-fixture"),
-    { recursive: true },
-  );
+  for (const file of ["local-env.ts", "data-server.ts"])
+    await cp(`scripts/${file}`, join(temporary, "scripts", file));
+  // The synthetic release is served from the app's own `data/` path, as a published tree.
+  await cp("tests/fixtures/data", join(temporary, "public/data"), {
+    recursive: true,
+  });
   await cp("public/icon.svg", join(temporary, "public/icon.svg"));
   await symlink(
     join(root, "node_modules"),
@@ -30,7 +37,9 @@ try {
   );
   await writeFile(
     join(temporary, ".env"),
-    "VITE_MAPTILER_API_KEY=cyclatractor-browser-test-key\nVITE_CATALOGUE_URL=/cyclatractor/packs/cell-fixture/catalogue.json\n",
+    Object.entries(pinned)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n") + "\n",
   );
   await build({
     root: temporary,

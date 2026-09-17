@@ -18,7 +18,6 @@ import {
   nextIntent,
   type CellIntent,
 } from "../offline/cells";
-import { COST_MODEL_VERSION } from "../routing/types";
 import DataWorker from "../workers/data.worker.ts?worker&inline";
 
 export type CatalogueState = ReturnType<typeof useCatalogue>;
@@ -30,12 +29,13 @@ export type CatalogueState = ReturnType<typeof useCatalogue>;
  * meaningful and lets a single cancel stop the run without orphaning staged files.
  */
 export function useCatalogue({
-  catalogueURL,
+  pointerURL,
   onError,
   onStatus,
   onDataChange,
 }: {
-  catalogueURL: string;
+  /** `v<DATA_VERSION>/latest.json` of the data tree this build reads. */
+  pointerURL: string;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   /** Installed data changed, so any in-flight route is invalid. */
@@ -65,6 +65,8 @@ export function useCatalogue({
   const pending = useRef<string[]>([]);
   const catalogueRef = useRef<Catalogue | undefined>(undefined);
   catalogueRef.current = catalogue;
+  /** Where the current catalogue came from; cell manifests resolve against it. */
+  const catalogueURL = useRef("");
   const changed = useRef(onDataChange);
   changed.current = onDataChange;
 
@@ -83,7 +85,7 @@ export function useCatalogue({
     dataWorker.current?.postMessage({
       id: 1,
       type: "install",
-      url: resolveCellManifest(catalogueURL, cell),
+      url: resolveCellManifest(catalogueURL.current, cell),
     });
   }
 
@@ -150,13 +152,9 @@ export function useCatalogue({
     listPacks()
       .then(async (packs) => {
         if (disposed) return;
-        // Pre-grid region packs and outdated cost models can no longer be routed, so
+        // Cells installed under another DATA_VERSION cannot be read by this build, so
         // they are storage the user cannot use. Reclaim it rather than listing it.
-        const usable = packs.filter(
-          (p) =>
-            isCellManifest(p.manifest) &&
-            p.manifest.costModelVersion === COST_MODEL_VERSION,
-        );
+        const usable = packs.filter((p) => isCellManifest(p.manifest));
         const obsolete = packs.filter((p) => !usable.includes(p));
         setInstalled(usable);
         if (obsolete.length) {
@@ -171,21 +169,23 @@ export function useCatalogue({
       })
       .catch(() => onError("Browser storage unavailable"));
 
-    readCatalogue(catalogueURL)
+    readCatalogue(pointerURL)
       .then((v) => {
-        if (!disposed) setCatalogue(v);
+        if (disposed) return;
+        catalogueURL.current = v.url;
+        setCatalogue(v.catalogue);
       })
       .catch(async () => {
         // A catalogue failure must never block using or removing installed packs.
-        const cached = await cachedCatalogue(catalogueURL).catch(
+        const cached = await cachedCatalogue(pointerURL).catch(
           () => undefined,
         );
         if (disposed) return;
-        // No catalogue at all simply means the grid release is not published yet, so
-        // stay silent as the legacy manifest fetch does. Only say something when we are
-        // deliberately showing stale data.
+        // No catalogue at all simply means no data is published at this URL yet, so
+        // stay silent. Only say something when we are deliberately showing stale data.
         if (!cached) return;
-        setCatalogue(cached);
+        catalogueURL.current = cached.url;
+        setCatalogue(cached.catalogue);
         setCatalogueError(
           "Showing the last saved catalogue. Reconnect for updates.",
         );

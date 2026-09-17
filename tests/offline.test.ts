@@ -1,18 +1,15 @@
 import { expect, it } from "vitest";
 import { manifestSchema } from "../src/offline/store";
-import manifest from "../public/packs/cell-fixture/9-264-181/manifest.json";
+import manifest from "./fixtures/data/v1/releases/fixture/9-264-181/manifest.json";
 it("rejects traversal paths, incompatible versions and oversized allocations", () => {
   expect(manifestSchema.safeParse(manifest).success).toBe(true);
+  // Cells from any other data version must not parse: this build cannot read them.
   expect(
-    manifestSchema.safeParse({ ...manifest, schemaVersion: 99 }).success,
+    manifestSchema.safeParse({ ...manifest, dataVersion: 99 }).success,
   ).toBe(false);
-  // The pre-grid region pack shape must no longer parse: there is one data path.
-  expect(
-    manifestSchema.safeParse({ ...manifest, schemaVersion: 1 }).success,
-  ).toBe(false);
-  expect(
-    manifestSchema.safeParse({ ...manifest, costModelVersion: 1 }).success,
-  ).toBe(false);
+  const { dataVersion, ...unversioned } = manifest;
+  expect(dataVersion).toBe(1);
+  expect(manifestSchema.safeParse(unversioned).success).toBe(false);
   for (const path of ["../private", "https://other/file", "a/b"])
     expect(
       manifestSchema.safeParse({

@@ -55,7 +55,7 @@ graph.edges = [
   },
 ];
 
-it("new binary packs carry independently derived signals in both directions", () => {
+it("binary packs carry independently derived signals in both directions", () => {
   const table = stringTable();
   const bytes = encodeBlock(
     { x: 1, y: 2 },
@@ -63,7 +63,6 @@ it("new binary packs carry independently derived signals in both directions", ()
     graph.edges,
     table,
     123,
-    { semantics: true },
   );
   const decoded = decodeBlock(bytes, table.values(), { releaseTag: 123 });
   for (const [i, edge] of decoded.edges.entries()) {
@@ -86,29 +85,13 @@ it("new binary packs carry independently derived signals in both directions", ()
     expect(edge.semantics).toEqual(parents.get(edge.way));
 });
 
-it("old packs still derive the same facts locally", () => {
-  const table = stringTable();
-  const bytes = encodeBlock(
-    { x: 1, y: 2 },
-    graph.nodes,
-    graph.edges,
-    table,
-    123,
-  );
-  const decoded = decodeBlock(bytes, table.values(), { releaseTag: 123 });
-  expect(decoded.edges[0].semantics).toBeUndefined();
-  expect(edgeSignals(decoded.edges[0])).toEqual(edgeSignals(forward));
-});
-
 it("rejects corrupted precomputed facts", () => {
   const table = stringTable();
   const bad: Edge = {
     ...forward,
     semantics: { ...edgeSignals(forward), version: 1, roughness: 2 },
   };
-  const bytes = encodeBlock({ x: 1, y: 2 }, graph.nodes, [bad], table, 123, {
-    semantics: true,
-  });
+  const bytes = encodeBlock({ x: 1, y: 2 }, graph.nodes, [bad], table, 123);
   expect(() => decodeBlock(bytes, table.values(), { releaseTag: 123 })).toThrow(
     "Invalid precomputed riding signals",
   );

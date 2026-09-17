@@ -126,9 +126,7 @@ function buildCell(
     at += c.length;
   }
   const index = encodeIndex({
-    formatVersion: 1,
     release,
-    costModelVersion: 4,
     cell,
     blockZoom: 13,
     fieldZoom: 15,
@@ -141,8 +139,7 @@ function buildCell(
   });
   const pack: Installed = {
     manifest: {
-      schemaVersion: 2,
-      format: "ibex-1",
+      dataVersion: 1,
       id,
       name: id,
       version: "v1",
@@ -152,7 +149,6 @@ function buildCell(
       blocks: blocks.length,
       bbox: cellBBox(cell),
       osmTimestamp: "synthetic",
-      costModelVersion: 4,
       terrainCoverage: 1,
       attribution: "synthetic",
       files: [

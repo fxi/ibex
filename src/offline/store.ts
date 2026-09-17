@@ -1,4 +1,4 @@
-import { COST_MODEL_VERSION } from "../routing/types";
+import { DATA_VERSION } from "./version";
 import { storageEstimate, sha256Hex } from "./capabilities";
 import { openDB } from "idb";
 import { z } from "zod";
@@ -7,37 +7,32 @@ const fileSchema = z.object({
   bytes: z.number().int().positive().max(300_000_000),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
 });
-const common = {
-  name: z.string().max(100),
-  version: z.string().regex(/^[a-zA-Z0-9-]+$/),
-  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
-  osmTimestamp: z.string(),
-  costModelVersion: z.literal(COST_MODEL_VERSION),
-  terrainCoverage: z.number().min(0).max(1),
-  attribution: z.string(),
-  files: z.array(fileSchema).min(2).max(1000),
-  build: z.record(z.string(), z.unknown()).optional(),
-};
-/** One downloadable grid cell in the binary format — the only pack shape there is. */
+/** One downloadable grid cell: `manifest.json` beside its `index.ibx` and `graph.ibx`. */
 export const cellManifestSchema = z.object({
-  schemaVersion: z.literal(2),
-  format: z.literal("ibex-1"),
+  dataVersion: z.literal(DATA_VERSION),
   // Hyphenated cell id, which is also the `packs` object-store key.
   id: z.string().regex(/^\d{1,2}-\d{1,8}-\d{1,8}$/),
+  name: z.string().max(100),
+  version: z.string().regex(/^[a-zA-Z0-9-]+$/),
   release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
   cell: z.object({
     zoom: z.number().int().min(0).max(14),
     x: z.number().int().nonnegative(),
     y: z.number().int().nonnegative(),
   }),
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  osmTimestamp: z.string(),
+  terrainCoverage: z.number().min(0).max(1),
+  attribution: z.string(),
   blockZoom: z.number().int().min(0).max(20),
   blocks: z.number().int().nonnegative(),
-  ...common,
+  files: z.array(fileSchema).min(2).max(1000),
+  build: z.record(z.string(), z.unknown()).optional(),
 });
 export const manifestSchema = cellManifestSchema;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type CellManifest = Manifest;
-/** True for any pack this build can read. Pre-grid region packs fail `manifestSchema`. */
+/** True for any pack this build can read; cells from another data version fail. */
 export const isCellManifest = (m: unknown): m is CellManifest =>
   cellManifestSchema.safeParse(m).success;
 export type Installed = {
@@ -47,7 +42,7 @@ export type Installed = {
   backend: "opfs" | "idb";
 };
 const db = () =>
-  openDB("cyclatractor-v1", 1, {
+  openDB("ibex", 1, {
     upgrade(database) {
       database.createObjectStore("packs");
       database.createObjectStore("files");
@@ -61,14 +56,12 @@ export async function readManifest(url: string): Promise<Manifest> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Pack catalog unavailable (${r.status})`);
   const value = await r.json();
-  if (value.costModelVersion !== COST_MODEL_VERSION)
-    throw new Error(
-      "This region uses outdated routing data. Install the updated region.",
-    );
+  if (value?.dataVersion !== DATA_VERSION)
+    throw new Error("This area's data is for another version of Ibex.");
   return manifestSchema.parse(value);
 }
 const root = async () =>
-  (await navigator.storage.getDirectory()).getDirectoryHandle("cyclatractor", {
+  (await navigator.storage.getDirectory()).getDirectoryHandle("ibex", {
     create: true,
   });
 export async function readFile(

@@ -26,9 +26,10 @@ import { compileProfile } from "../src/routing/compile";
 import { GRAVEL, ROAD, WANDERER, withPreferences } from "./helpers";
 import { validateEdge, validateNode } from "../src/offline/validate";
 import type { Installed } from "../src/offline/store";
-import { COST_MODEL_VERSION, type Point } from "../src/routing/types";
+import type { Point } from "../src/routing/types";
+import { DATA_VERSION } from "../src/offline/version";
 
-const DIR = "public/packs/geneva-grid";
+const DIR = process.env.IBEX_RELEASE ?? "data/build/geneva-toulon-v7/packs";
 const present = existsSync(`${DIR}/catalogue.json`);
 const CELL_LIMIT = 50_000_000;
 
@@ -72,11 +73,8 @@ describe.skipIf(!present)("generated release", () => {
   it("publishes a catalogue that validates and is grid-consistent", () => {
     expect(catalogue!.cells.length).toBeGreaterThan(0);
     expect(catalogue!.grid).toMatchObject({ scheme: "xyz", blockZoom: 13 });
-    // The cost model is an invariant the app enforces; the preprocessor digit is only a
-    // cache-buster, so pin its shape rather than a value that moves with the pipeline.
-    expect(catalogue!.release).toMatch(
-      new RegExp(`^g${COST_MODEL_VERSION}-\\d{8}-p\\d+-[0-9a-f]{8}$`),
-    );
+    // `<osm edition>-<hash of inputs>`; pin the shape, not a value that moves with the data.
+    expect(catalogue!.release).toMatch(/^\d{8}-[0-9a-f]{8}$/);
     for (const cell of catalogue!.cells) {
       const derived = cellBBox(parseCellId(cell.id));
       derived.forEach((v, i) => expect(cell.bbox[i]).toBeCloseTo(v, 6));
@@ -96,8 +94,7 @@ describe.skipIf(!present)("generated release", () => {
       expect(manifest.release).toBe(catalogue!.release);
       expect(manifest.version).toBe(cell.version);
       expect(manifest.id).toBe(cell.id);
-      expect(manifest.schemaVersion).toBe(2);
-      expect(manifest.format).toBe("ibex-1");
+      expect(manifest.dataVersion).toBe(DATA_VERSION);
       const total = manifest.files.reduce(
         (sum: number, f: { bytes: number }) => sum + f.bytes,
         0,
@@ -111,7 +108,6 @@ describe.skipIf(!present)("generated release", () => {
       const index = decodeIndex(read(`${DIR}/${cell.id}/index.ibx`), {
         release: catalogue!.release,
         cell: parseCellId(cell.id),
-        costModelVersion: 4,
       });
       expect(index.blocks.length).toBeGreaterThan(0);
       expect(index.strings.length).toBeGreaterThan(0);
@@ -198,11 +194,7 @@ describe.skipIf(!present)("generated release", () => {
         expect(provider.installedCells).toEqual(ids);
         const graph = await provider.load(searchArea(anchors));
         expect(graph.edges.length).toBeGreaterThan(50_000);
-        const result = route(
-          graph,
-          { anchors, profile: GRAVEL },
-          "reference",
-        );
+        const result = route(graph, { anchors, profile: GRAVEL }, "reference");
         expect(result.status).toBe("ok");
         expect(result.distanceM).toBeGreaterThan(15_000);
         expect(result.distanceM).toBeLessThan(80_000);
@@ -267,7 +259,11 @@ describe.skipIf(!present)("generated release", () => {
         expect(result.distanceM).toBeLessThan(45_000);
         // Grades are no longer capped — they are priced — so the guarantee is that the
         // wanderer stays within its detour budget rather than that it dodges gradients.
-        const direct = route(graph, { anchors: track, profile: GRAVEL }, "reference");
+        const direct = route(
+          graph,
+          { anchors: track, profile: GRAVEL },
+          "reference",
+        );
         expect(result.distanceM).toBeLessThan(
           direct.distanceM * compileProfile(WANDERER).detour.budget_ratio,
         );
@@ -315,7 +311,9 @@ describe.skipIf(!present)("generated release", () => {
             const e = byId.get(id);
             return e && test(e) ? sum + e.length : sum;
           }, 0);
-        expect(metres((e) => ["track", "path"].includes(e.highway))).toBeLessThan(200);
+        expect(
+          metres((e) => ["track", "path"].includes(e.highway)),
+        ).toBeLessThan(200);
         expect(
           metres((e) => ["primary", "secondary"].includes(e.highway)),
         ).toBeLessThan(100);

@@ -23,7 +23,7 @@ import {
 } from "./routing/localEdit";
 import { LIMITS } from "./offline/validate";
 import type { Profile } from "./routing/profiles";
-import { DEFAULT_CATALOGUE_URL, absoluteURL } from "./config";
+import { DATA_POINTER_URL } from "./config";
 import { useTracks } from "./state/useTracks";
 import { useCatalogue } from "./state/useCatalogue";
 import { useRouting } from "./state/useRouting";
@@ -43,11 +43,6 @@ function storedBasemap(): Basemap {
   }
   return "outdoor";
 }
-
-const catalogueURL = absoluteURL(
-  import.meta.env.VITE_CATALOGUE_URL,
-  DEFAULT_CATALOGUE_URL,
-);
 
 function App() {
   const [tab, setTab] = useState("tracks");
@@ -88,7 +83,7 @@ function App() {
     },
   });
   const data = useCatalogue({
-    catalogueURL,
+    pointerURL: DATA_POINTER_URL,
     onError: setError,
     onStatus: setStatus,
     onDataChange: () => cancel.current(),

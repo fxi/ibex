@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   catalogueSchema,
+  pointerSchema,
+  pointerURL,
+  readCatalogue,
   cellById,
   coverageBBox,
   resolveCellManifest,
@@ -8,8 +11,7 @@ import {
   type Catalogue,
 } from "../src/offline/catalogue";
 import { cellBBox, cellId } from "../src/geo/grid";
-import { COST_MODEL_VERSION } from "../src/routing/types";
-import fixture from "../public/packs/grid-fixture/catalogue.json";
+import fixture from "./fixtures/grid-fixture/catalogue.json";
 
 const cell = (x: number, y: number, extra: Record<string, unknown> = {}) => ({
   id: cellId({ zoom: 9, x, y }),
@@ -23,11 +25,9 @@ const cell = (x: number, y: number, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 const base = () => ({
-  schemaVersion: 1,
-  release: "g4-2026w36-p5-1a2b3c4d",
+  dataVersion: 1,
+  release: "20260910-1a2b3c4d",
   grid: { scheme: "xyz", zoom: 9, blockZoom: 13, fieldZoom: 15 },
-  costModelVersion: COST_MODEL_VERSION,
-  formatVersion: 1,
   osmTimestamp: "2026-07-15T15:22:01Z",
   generated: "2026-09-10T00:00:00.000Z",
   attribution: "© OpenStreetMap contributors",
@@ -48,14 +48,9 @@ describe("catalogue schema", () => {
   it("accepts a well-formed catalogue", () => {
     expect(catalogueSchema.parse(base()).cells).toHaveLength(2);
   });
-  it("rejects an unknown schema version", () => {
+  it("rejects another data version", () => {
     expect(() =>
-      catalogueSchema.parse({ ...base(), schemaVersion: 99 }),
-    ).toThrow();
-  });
-  it("rejects a stale cost model", () => {
-    expect(() =>
-      catalogueSchema.parse({ ...base(), costModelVersion: 1 }),
+      catalogueSchema.parse({ ...base(), dataVersion: 99 }),
     ).toThrow();
   });
   it("rejects a cell id that does not match its grid coordinates", () => {
@@ -118,21 +113,21 @@ describe("manifest URL resolution", () => {
   it("resolves against a local development path", () => {
     expect(
       resolveCellManifest(
-        "http://localhost:5173/cyclatractor/packs/geneva-grid/catalogue.json",
+        "http://localhost:5173/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
         catalogue.cells[0],
       ),
     ).toBe(
-      "http://localhost:5173/cyclatractor/packs/geneva-grid/9-264-181/manifest.json",
+      "http://localhost:5173/ibex/data/v1/releases/20260910-1a2b3c4d/9-264-181/manifest.json",
     );
   });
   it("resolves against an S3 prefix without changing the layout", () => {
     expect(
       resolveCellManifest(
-        "https://bucket.example.com/cyclatractor/packs/g4-2026w36/catalogue.json",
+        "https://bucket.example.com/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
         catalogue.cells[1],
       ),
     ).toBe(
-      "https://bucket.example.com/cyclatractor/packs/g4-2026w36/9-265-181/manifest.json",
+      "https://bucket.example.com/ibex/data/v1/releases/20260910-1a2b3c4d/9-265-181/manifest.json",
     );
   });
   it("refuses a path that resolves outside the catalogue directory", () => {
@@ -162,5 +157,57 @@ describe("catalogue helpers", () => {
     expect(selectedBytes(catalogue, ["9-264-181"])).toBe(4096);
     expect(selectedBytes(catalogue, ["9-264-181", "9-265-181"])).toBe(8192);
     expect(selectedBytes(catalogue, ["9-999-999"])).toBe(0);
+  });
+});
+
+describe("release pointer", () => {
+  const pointer = {
+    dataVersion: 1,
+    release: "20260910-1a2b3c4d",
+    catalogue: "releases/20260910-1a2b3c4d/catalogue.json",
+    published: "2026-09-10T00:00:00.000Z",
+  };
+  const serve = (routes: Record<string, unknown>) =>
+    vi.stubGlobal("fetch", async (url: string) =>
+      url in routes
+        ? new Response(JSON.stringify(routes[url]))
+        : new Response("", { status: 404 }),
+    );
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is looked up under this build's data version", () => {
+    expect(pointerURL("https://host.example/ibex/data/")).toBe(
+      "https://host.example/ibex/data/v1/latest.json",
+    );
+  });
+  it("refuses a catalogue path that escapes the data tree", () => {
+    expect(
+      pointerSchema.safeParse({ ...pointer, catalogue: "../v2/catalogue.json" })
+        .success,
+    ).toBe(false);
+  });
+  it("resolves the catalogue relative to the pointer", async () => {
+    const at = "https://host.example/ibex/data/v1/latest.json";
+    serve({
+      [at]: pointer,
+      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json":
+        base(),
+    });
+    const { url, catalogue } = await readCatalogue(at);
+    expect(url).toBe(
+      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
+    );
+    expect(catalogue.release).toBe(pointer.release);
+  });
+  it("rejects a pointer from another data version or a mismatched catalogue", async () => {
+    const at = "https://host.example/ibex/data/v1/latest.json";
+    serve({ [at]: { ...pointer, dataVersion: 2 } });
+    await expect(readCatalogue(at)).rejects.toThrow(/another version/);
+    serve({
+      [at]: { ...pointer, release: "20260911-ffffffff" },
+      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json":
+        base(),
+    });
+    await expect(readCatalogue(at)).rejects.toThrow(/disagree/);
   });
 });

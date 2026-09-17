@@ -12,7 +12,7 @@ import {
   ELEVATION_SCALE,
   FERRY_SECONDS_SCALE,
   FLAG,
-  FORMAT_VERSION,
+  DATA_VERSION,
   GRADE_LENGTH_SCALE,
   GRADE_SCALE,
   IbexError,
@@ -24,7 +24,6 @@ import {
 import type { Edge, Node, Point } from "../../routing/types";
 import { edgeSignals } from "../../routing/signals";
 
-const SEMANTIC_BLOCK_VERSION = 2;
 const SEMANTIC_SCALE = 1_000_000;
 const SEMANTIC_FIELDS = [
   "roughness",
@@ -82,7 +81,6 @@ export function encodeBlock(
   edges: Edge[],
   strings: StringTable,
   releaseTag: number,
-  options: { semantics?: boolean } = {},
 ): Uint8Array {
   const table = nodeTable(nodes, edges);
   if (table.length > MAX_BLOCK_NODES || edges.length > MAX_BLOCK_EDGES)
@@ -92,7 +90,7 @@ export function encodeBlock(
 
   const w = new ByteWriter(1 << 16);
   w.u32(BLOCK_MAGIC);
-  w.u16(options.semantics ? SEMANTIC_BLOCK_VERSION : FORMAT_VERSION);
+  w.u16(DATA_VERSION);
   w.u16(0);
   w.u32(releaseTag);
   w.varint(block.x);
@@ -157,12 +155,11 @@ export function encodeBlock(
     w.varint(fixed(edge.cyclingNetwork ?? 0, UNIT_SCALE));
     w.varint(fixed(edge.junction ?? 0, UNIT_SCALE));
     w.varint(fixed(edge.reward ?? 0, UNIT_SCALE));
-    if (options.semantics) {
-      const signals = edgeSignals(edge);
-      for (const field of SEMANTIC_FIELDS)
-        w.varint(fixed(signals[field], SEMANTIC_SCALE));
-      w.byte(signals.surfaceKnown ? 1 : 0);
-    }
+    // Riding signals are precomputed once here rather than per edge per search.
+    const signals = edgeSignals(edge);
+    for (const field of SEMANTIC_FIELDS)
+      w.varint(fixed(signals[field], SEMANTIC_SCALE));
+    w.byte(signals.surfaceKnown ? 1 : 0);
 
     if (mirror) {
       previous = edge;
@@ -244,7 +241,7 @@ export function decodeBlock(
   if (r.u32() !== BLOCK_MAGIC)
     throw new IbexError("magic", "Not an Ibex block");
   const version = r.u16();
-  if (version !== FORMAT_VERSION && version !== SEMANTIC_BLOCK_VERSION)
+  if (version !== DATA_VERSION)
     throw new IbexError("version", `Unsupported block version ${version}`);
   r.u16();
   if (r.u32() !== options.releaseTag)
@@ -297,22 +294,19 @@ export function decodeBlock(
     const cyclingNetwork = r.varint() / UNIT_SCALE;
     const junction = r.varint() / UNIT_SCALE;
     const reward = r.varint() / UNIT_SCALE;
-    let semantics: Edge["semantics"];
-    if (version === SEMANTIC_BLOCK_VERSION) {
-      const values = SEMANTIC_FIELDS.map(() => r.varint() / SEMANTIC_SCALE);
-      const known = r.byte();
-      if (values.some((value) => value < 0 || value > 1) || known > 1)
-        throw new IbexError("field", "Invalid precomputed riding signals");
-      semantics = {
-        version: 1,
-        roughness: values[0],
-        technicalUp: values[1],
-        technicalDown: values[2],
-        unpaved: values[3],
-        curvature: values[4],
-        surfaceKnown: known === 1,
-      };
-    }
+    const values = SEMANTIC_FIELDS.map(() => r.varint() / SEMANTIC_SCALE);
+    const known = r.byte();
+    if (values.some((value) => value < 0 || value > 1) || known > 1)
+      throw new IbexError("field", "Invalid precomputed riding signals");
+    const semantics: Edge["semantics"] = {
+      version: 1,
+      roughness: values[0],
+      technicalUp: values[1],
+      technicalDown: values[2],
+      unpaved: values[3],
+      curvature: values[4],
+      surfaceKnown: known === 1,
+    };
 
     if (flags & FLAG.mirrorPrevious) {
       const source = edges[edges.length - 1];
@@ -334,7 +328,7 @@ export function decodeBlock(
         cyclingNetwork,
         junction,
         reward,
-        ...(semantics ? { semantics } : {}),
+        semantics,
       });
       continue;
     }
@@ -389,7 +383,7 @@ export function decodeBlock(
         : undefined;
 
     const edge: Edge = {
-      ...(semantics ? { semantics } : {}),
+      semantics,
       id: edgeId,
       from: from.id,
       to: to.id,

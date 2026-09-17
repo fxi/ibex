@@ -1,10 +1,10 @@
 /**
  * Regenerate the small, explicitly synthetic cell release used by network-independent CI.
  *
- * This is the cell-format replacement for the pre-grid `public/packs/test` region pack.
- * It encodes the same synthetic road so browser tests keep routing over known geometry,
- * but ships it as real `.ibex` cells behind a catalogue, which is the only data path the
- * application still has.
+ * It is laid out exactly like a published data tree (see docs/data-format.md): a
+ * `latest.json` pointer and one release directory, so browser tests exercise the same
+ * pointer, catalogue and cell resolution as the deployed app. It encodes a known synthetic
+ * road so routes run over fixed geometry.
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -13,19 +13,20 @@ import { encodeBlock, stringTable } from "../src/offline/ibex/block";
 import { encodeIndex } from "../src/offline/ibex/index";
 import { crc32 } from "../src/offline/ibex/varint";
 import { releaseTag, type BlockRef } from "../src/offline/ibex/spec";
+import { DATA_VERSION } from "../src/offline/version";
 import { cellBBox, cellId, parseCellId, tileOf } from "../src/geo/grid";
 import { distance } from "../src/routing/engine";
 import {
-  COST_MODEL_VERSION,
   type Edge,
   type Node,
   type Point,
 } from "../src/routing/types";
 
-const directory = "public/packs/cell-fixture";
-const RELEASE = "fixture-g4-0000";
+const ROOT = "tests/fixtures/data";
+const RELEASE = "fixture";
+const directory = `${ROOT}/v${DATA_VERSION}/releases/${RELEASE}`;
 const tag = releaseTag(RELEASE);
-/** The same four points the pre-grid fixture used, all inside cell 9-264-181. */
+/** Four points inside cell 9-264-181. */
 const points: Point[] = [
   [6.146, 46.189],
   [6.17, 46.183],
@@ -102,9 +103,7 @@ for (const [key, list] of grouped) {
   const [x, y] = key.split("/").map(Number);
   const used = new Set(list.flatMap((e) => [e.from, e.to]));
   const table = nodes.filter((n) => used.has(n.id));
-  const raw = encodeBlock({ x, y }, table, list, strings, tag, {
-    semantics: true,
-  });
+  const raw = encodeBlock({ x, y }, table, list, strings, tag);
   const stored = deflateRawSync(raw, { level: 9 });
   blocks.push({
     x,
@@ -133,9 +132,7 @@ for (const c of chunks) {
   at += c.length;
 }
 const index = encodeIndex({
-  formatVersion: 1,
   release: RELEASE,
-  costModelVersion: COST_MODEL_VERSION,
   cell,
   blockZoom: 13,
   fieldZoom: 15,
@@ -147,7 +144,7 @@ const index = encodeIndex({
   meta: {},
 });
 
-await fs.rm(directory, { recursive: true, force: true });
+await fs.rm(ROOT, { recursive: true, force: true });
 await fs.mkdir(`${directory}/${id}`, { recursive: true });
 const files: { path: string; bytes: number; sha256: string }[] = [];
 for (const [path, bytes] of [
@@ -176,8 +173,7 @@ await fs.writeFile(
   `${directory}/${id}/manifest.json`,
   JSON.stringify(
     {
-      schemaVersion: 2,
-      format: "ibex-1",
+      dataVersion: DATA_VERSION,
       id,
       name: `${cell.zoom}/${cell.x}/${cell.y}`,
       version,
@@ -187,7 +183,6 @@ await fs.writeFile(
       blocks: blocks.length,
       bbox,
       osmTimestamp: "synthetic",
-      costModelVersion: COST_MODEL_VERSION,
       terrainCoverage: 1,
       attribution: "Synthetic test data — not a real cycling network",
       files,
@@ -201,11 +196,9 @@ await fs.writeFile(
   `${directory}/catalogue.json`,
   JSON.stringify(
     {
-      schemaVersion: 1,
+      dataVersion: DATA_VERSION,
       release: RELEASE,
       grid: { scheme: "xyz", zoom: 9, blockZoom: 13, fieldZoom: 15 },
-      costModelVersion: COST_MODEL_VERSION,
-      formatVersion: 1,
       osmTimestamp: "synthetic",
       generated: "1970-01-01T00:00:00.000Z",
       attribution: "Synthetic test data — not a real cycling network",
@@ -231,4 +224,18 @@ await fs.writeFile(
 
 console.log(
   `wrote ${directory}: cell ${id}, ${blocks.length} block(s), ${files.reduce((s, f) => s + f.bytes, 0)} bytes`,
+);
+
+await fs.writeFile(
+  `${ROOT}/v${DATA_VERSION}/latest.json`,
+  JSON.stringify(
+    {
+      dataVersion: DATA_VERSION,
+      release: RELEASE,
+      catalogue: `releases/${RELEASE}/catalogue.json`,
+      published: "1970-01-01T00:00:00.000Z",
+    },
+    null,
+    2,
+  ) + "\n",
 );

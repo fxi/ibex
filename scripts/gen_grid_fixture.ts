@@ -1,9 +1,9 @@
 /** Generate the two-cell development catalogue used by unit and browser tests. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cellBBox, cellId } from "../src/geo/grid";
-import { COST_MODEL_VERSION } from "../src/routing/types";
+import { DATA_VERSION } from "../src/offline/version";
 
-const directory = "public/packs/grid-fixture";
+const directory = "tests/fixtures/grid-fixture";
 const zoom = 9;
 // Two horizontally adjacent cells, so the shared meridian carries the cross-boundary edge.
 const cells = [
@@ -12,11 +12,9 @@ const cells = [
 ];
 mkdirSync(directory, { recursive: true });
 const catalogue = {
-  schemaVersion: 1,
-  release: "fixture-g4-0000",
+  dataVersion: DATA_VERSION,
+  release: "fixture",
   grid: { scheme: "xyz", zoom, blockZoom: 13, fieldZoom: 15 },
-  costModelVersion: COST_MODEL_VERSION,
-  formatVersion: 1,
   osmTimestamp: "synthetic",
   generated: "1970-01-01T00:00:00.000Z",
   attribution: "Synthetic test data — not a real cycling network",
