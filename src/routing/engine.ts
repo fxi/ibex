@@ -1,3 +1,4 @@
+import { distance } from "../geo/distance";
 import type { Profile } from "./profiles";
 import { toCompiled, type CompiledProfile } from "./compile";
 import {
@@ -55,16 +56,8 @@ export const emptyComponents = (): Components => ({
   attraction: 0,
   clamp: 0,
 });
-export function distance(a: Point, b: Point): number {
-  const r = Math.PI / 180;
-  return (
-    6371000 *
-    Math.hypot(
-      (a[0] - b[0]) * r * Math.cos(((a[1] + b[1]) * r) / 2),
-      (a[1] - b[1]) * r,
-    )
-  );
-}
+// Re-exported: the search, the importer and a dozen scripts all measure with the same one.
+export { distance };
 export class Heap<T> {
   private a: { key: number; value: T }[] = [];
   get size() {

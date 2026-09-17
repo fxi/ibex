@@ -1,4 +1,5 @@
 import type { Point } from "../routing/types";
+import { distance } from "../geo/distance";
 
 export type ImportedTrack = {
   name: string;
@@ -9,16 +10,6 @@ export type ImportedTrack = {
   ascentM: number | null;
   descentM: number | null;
 };
-
-/** Metres between two lon/lat points on a sphere. Matches the engine's `distance`. */
-function distance(a: Point, b: Point): number {
-  const R = 6371000;
-  const toRad = Math.PI / 180;
-  const dLat = (b[1] - a[1]) * toRad;
-  const dLon = (b[0] - a[0]) * toRad;
-  const lat = ((a[1] + b[1]) / 2) * toRad;
-  return Math.hypot(dLon * Math.cos(lat), dLat) * R;
-}
 
 /** Ignore elevation noise below this, so a flat ride does not accumulate false climb. */
 const ASCENT_THRESHOLD_M = 2;
