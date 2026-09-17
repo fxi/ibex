@@ -168,7 +168,7 @@ export function importedTrack(
     descentM: number | null;
   },
 ): Track {
-  const result = {
+  const result: RouteResult = {
     status: "ok",
     mode: "reference",
     geometry: imported.geometry,
@@ -182,6 +182,9 @@ export function importedTrack(
     descentM: imported.descentM,
     elevationProfile: imported.elevationProfile,
     edgeIds: [],
+    // An imported polyline has no edges, so it has no segments either. Saying so is what
+    // lets every reader trust the type instead of guarding with `?? []`.
+    segments: [],
     surfaceM: {},
     uncertainM: 0,
     metrics: {
@@ -191,7 +194,7 @@ export function importedTrack(
       tiles: 0,
       loadedBytes: 0,
     },
-  } as unknown as RouteResult;
+  };
   return {
     id: trackId(),
     kind: "imported",
@@ -217,6 +220,48 @@ export function acceptResult(
     : track;
 }
 const point = z.tuple([z.number().finite(), z.number().finite()]);
+/**
+ * A result read back from IndexedDB, which the app then treats as a `RouteResult` the
+ * router produced. Only the members the app reads are checked; unknown ones are kept
+ * (`loose`), because dropping the diagnostic extras a newer build wrote would be a silent
+ * downgrade rather than a validation.
+ */
+const storedResult = z
+  .object({
+    status: z.literal("ok"),
+    mode: z.enum(["reference", "corridor"]),
+    geometry: z.array(point).max(LIMITS.geometryPoints),
+    anchors: z.array(point).max(LIMITS.anchorsMax),
+    cost: z.number().finite(),
+    distanceM: z.number().finite().nonnegative(),
+    hikeABikeM: z.number().finite().nonnegative(),
+    ferryM: z.number().finite().nonnegative(),
+    ascentM: z.number().finite().nullable(),
+    descentM: z.number().finite().nullable(),
+    elevationProfile: z
+      .array(z.tuple([z.number(), z.number().nullable()]))
+      .max(LIMITS.geometryPoints),
+    edgeIds: z.array(z.number().int()).max(LIMITS.chunkEdges),
+    // Imported tracks were stored without this before it was part of the type; an empty
+    // list is what they mean, and is cheaper than dropping the user's track.
+    segments: z
+      .array(
+        z
+          .object({
+            start: z.number().int().nonnegative(),
+            end: z.number().int().nonnegative(),
+            surface: z.string(),
+            highway: z.string(),
+          })
+          .loose(),
+      )
+      .max(LIMITS.chunkEdges)
+      .default([]),
+    surfaceM: z.record(z.string(), z.number()),
+    uncertainM: z.number().finite().nonnegative(),
+  })
+  .loose()
+  .transform((r) => r as unknown as RouteResult);
 const storedTrack = z.object({
   id: z.string(),
   // Collections written before imports existed hold planned tracks only.
@@ -229,16 +274,7 @@ const storedTrack = z.object({
   revision: z.number().int().nonnegative(),
   resultRevision: z.number().int().optional(),
   packVersion: z.string().optional(),
-  result: z
-    .custom<RouteResult>((v) => {
-      const r = v as RouteResult | undefined;
-      return (
-        r?.status === "ok" &&
-        Array.isArray(r.geometry) &&
-        Array.isArray(r.elevationProfile)
-      );
-    })
-    .optional(),
+  result: storedResult.optional(),
 });
 export function restoreCollection(value: unknown): TrackCollection {
   const data = z

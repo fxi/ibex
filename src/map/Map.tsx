@@ -931,7 +931,7 @@ export function MapView({
               stale: t.resultRevision !== t.revision,
             };
             return rideFeatures(
-              t.result!.segments ?? [],
+              t.result!.segments,
               t.result!.geometry,
               meta,
             );

@@ -30,6 +30,7 @@ import { compileProfile } from "../src/routing/compile";
 import { exceedance } from "../src/routing/capability";
 import type { RideClass, RouteResult, RouteSegment } from "../src/routing/types";
 import { route } from "../src/routing/engine";
+import { importedTrack } from "../src/tracks";
 import { ROAD, TRAIL, voironsGraph } from "./helpers";
 
 // `segmentSpans` and `warmColor` live in rideStyle beside the table they belong to, but they
@@ -765,9 +766,20 @@ describe("route warnings", () => {
   });
 
   it("says nothing about an imported track, which has no segments at all", () => {
-    // `importedTrack` builds a result with no `segments` key; a GPX file is not re-routed,
-    // so there is nothing to judge.
-    const imported = { distanceM: 5000, elevationProfile: [] } as unknown as RouteResult;
+    // Built by the real importer rather than cast from a literal: `segments` is declared
+    // on RouteResult, and a stand-in without it hid that importedTrack never set it.
+    const imported = importedTrack(0, {
+      name: "Sunday loop",
+      geometry: [
+        [6.1, 46.1],
+        [6.2, 46.2],
+      ],
+      elevationProfile: [],
+      distanceM: 5000,
+      ascentM: null,
+      descentM: null,
+    }).result!;
+    expect(imported.segments).toEqual([]);
     expect(routeWarnings(imported, ROAD_CAPABILITY)).toEqual([]);
   });
 });

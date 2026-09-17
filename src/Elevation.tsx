@@ -109,7 +109,7 @@ export function Elevation({
   };
 
   const showing: Lane = detail ? lane : "surface";
-  const bands = surfaceBands(route.segments ?? [], route.distanceM);
+  const bands = surfaceBands(route.segments, route.distanceM);
   const present = new Set(bands.map((b) => b.ride));
   const hatched = SURFACE_STYLE.filter(
     (s) => present.has(s.ride) && s.profile.spacing,
@@ -123,7 +123,7 @@ export function Elevation({
     showing === "steep" && detail
       ? steepLaneBands(route.elevationProfile, detail.capability)
       : showing === "stress"
-        ? stressLaneBands(route.segments ?? [], route.distanceM)
+        ? stressLaneBands(route.segments, route.distanceM)
         : [];
 
   // Six user units of the 280-wide box: pins closer than that would be one smudge, so they

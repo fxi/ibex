@@ -472,7 +472,7 @@ export function routeWarnings(
   route: RouteResult,
   capability: CapabilityProfile,
 ): Warning[] {
-  const segments = route.segments ?? [];
+  const segments = route.segments;
   const spans = segmentSpans(segments, route.distanceM);
   const runs = gradeRuns(route.elevationProfile);
   const warnings: Warning[] = [];

@@ -240,7 +240,7 @@ function RouteSummary({
   // taking the rider's overview away from them.
   const show = (meters: number) => {
     if (route.geometry.length < 2) return;
-    const vertex = vertexAtM(route.segments ?? [], route.distanceM, meters);
+    const vertex = vertexAtM(route.segments, route.distanceM, meters);
     ctx.locate(pointAt(route.geometry, vertex));
   };
 
@@ -251,7 +251,7 @@ function RouteSummary({
     ...warnings.map((w): Pin => ({ meters: w.startM, kind: "warning" })),
     ...(vertices ?? []).map(
       (vertex): Pin => ({
-        meters: metersAtVertex(route.segments ?? [], route.distanceM, vertex),
+        meters: metersAtVertex(route.segments, route.distanceM, vertex),
         kind: "waypoint",
       }),
     ),
@@ -292,7 +292,7 @@ function RouteSummary({
           </span>
           <button
             onClick={() => {
-              const segments = route.segments ?? [];
+              const segments = route.segments;
               const a = Math.floor(
                 vertexAtM(segments, route.distanceM, range.startM),
               );
@@ -341,7 +341,7 @@ function SurfaceComposition({
   route: RouteResult;
   color: string;
 }) {
-  const entries = composition(route.segments ?? [], route.distanceM);
+  const entries = composition(route.segments, route.distanceM);
   if (!entries.length) return null;
   const summary = entries
     .map((e) => `${e.label} ${Math.round(e.share * 100)}%`)
@@ -476,7 +476,7 @@ function RouteWaypoints({
           const vertex = vertices?.[i];
           const meters =
             fresh && vertex !== undefined
-              ? metersAtVertex(fresh.segments ?? [], fresh.distanceM, vertex)
+              ? metersAtVertex(fresh.segments, fresh.distanceM, vertex)
               : undefined;
           const height =
             fresh && meters !== undefined
