@@ -3,7 +3,8 @@
 Normal routing runs one search per leg. Corridor comparisons and scenic destination
 sweeps no longer run implicitly. Profiles move to format 3: generated UUIDs, whole-ride
 `settings`, and way preferences stated for `base` with `uphill` and `downhill` overrides.
-Format 2 converts on load. See `profiles/README.md` for the format itself.
+Format 2 does not convert: it is rejected on load. See `profiles/README.md` for the format
+itself.
 
 ## Profiles
 

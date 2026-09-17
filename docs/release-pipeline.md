@@ -55,8 +55,8 @@ Geneva packs with newly built southern packs. Elevation sampling remains enabled
 ## Why each stage exists
 
 **`fetch_extracts.py`** replaces the Overpass query. The enlarged window returns multiple GB
-of JSON, past Overpass's `maxsize` and timeout; the four Geofabrik extracts are 1.8 GB and
-cached. `--prune` deletes them once `release.osm.pbf` exists.
+of JSON, past Overpass's `maxsize` and timeout; the eight Geofabrik extracts listed in
+`region_config.EXTRACTS` are cached. `--prune` deletes them once `release.osm.pbf` exists.
 
 **`clip_region.py`** merges the extracts _before_ clipping, then applies one `tags-filter`
 whose expressions are a direct translation of the old Overpass selection (the mapping is
@@ -89,6 +89,10 @@ writes `index.ibx` + `graph.ibx` + `manifest.json` per cell plus `catalogue.json
 release root. It fails loudly if a cell exceeds 50 MB rather than padding the claim.
 
 ## Measured, 2026-09-09 edition
+
+Historic: a 16-cell window, and release ids still carried the `g4-`/`-p5` prefixes that
+`package_cells.ts` no longer emits. The current window is 40 cells (`region_config.WINDOW`)
+and ids are `<yyyymmdd>-<hash>`.
 
 |          |                                                                           |
 | -------- | ------------------------------------------------------------------------- |
