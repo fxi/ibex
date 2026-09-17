@@ -61,7 +61,6 @@ export function useCatalogue({
 
   const dataWorker = useRef<Worker | undefined>(undefined);
   const installing = useRef<string | undefined>(undefined);
-  const removing = useRef<string | undefined>(undefined);
   const pending = useRef<string[]>([]);
   const catalogueRef = useRef<Catalogue | undefined>(undefined);
   catalogueRef.current = catalogue;
@@ -122,6 +121,9 @@ export function useCatalogue({
         nextInstall();
       }
       if (data.type === "error") {
+        // A cancelled download is not a failure to report: the user asked for it, and
+        // cancelDownloads has already cleared the queue and the progress bar.
+        if (data.aborted) return;
         const cell = installing.current;
         if (cell) {
           setFailedCells((previous) => new Map(previous).set(cell, data.error));
@@ -139,13 +141,15 @@ export function useCatalogue({
       }
       if (data.type === "removed") {
         changed.current();
-        const removed = removing.current;
+        // The worker names the pack it removed. A single "which one is going" ref could
+        // only ever hold the last of a bulk removal, so the rest stayed listed as ready —
+        // and stayed routable — with their files already gone.
+        const removed = data.cell as string | undefined;
         if (removed)
           setInstalled((previous) =>
             previous.filter((p) => p.manifest.id !== removed),
           );
         onStatus(removed ? `Removed ${removed}` : "Removed");
-        removing.current = undefined;
       }
     };
 
@@ -275,7 +279,6 @@ export function useCatalogue({
   }
 
   function removeCell(installedPack: Installed) {
-    removing.current = installedPack.manifest.id;
     dataWorker.current?.postMessage({
       id: 2,
       type: "remove",
