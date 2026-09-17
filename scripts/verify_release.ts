@@ -10,8 +10,9 @@ import { ROAD } from '../tests/helpers';
 import { cellId, tileOf } from '../src/geo/grid';
 import type { Installed } from '../src/offline/store';
 import type { Point } from '../src/routing/types';
+import { DEFAULT_RELEASE } from './local_release';
 
-const dir = process.argv[2] ?? 'data/build/geneva-toulon/packs';
+const dir = process.argv[2] ?? DEFAULT_RELEASE;
 const catalogue = catalogueSchema.parse(JSON.parse(fs.readFileSync(`${dir}/catalogue.json`, 'utf8')));
 const cities: Record<string, Point> = {
   Geneva: [6.143, 46.204], Lyon: [4.8357, 45.764], Valence: [4.891, 44.933],

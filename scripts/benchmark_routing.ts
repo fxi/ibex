@@ -1,17 +1,17 @@
 /**
  * End-to-end local pack loading plus cold/warm routing. Optional baseline module must
  * export compareOn (e.g. an isolated checkout's src/routing/legs.ts).
- * node --import tsx scripts/benchmark_routing.ts public/packs/geneva-grid [baseline-module]
+ * node --import tsx scripts/benchmark_routing.ts [packs dir] [baseline-module]
  */
 import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { compareOn } from "../src/routing/legs";
-import { loadReleaseGraph } from "./local_release";
+import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point } from "../src/routing/types";
 
-const packs = process.argv[2] ?? "public/packs/geneva-grid";
+const packs = process.argv[2] ?? DEFAULT_RELEASE;
 const baseline: typeof compareOn | undefined = process.argv[3]
   ? (await import(pathToFileURL(resolve(process.argv[3])).href)).compareOn
   : undefined;

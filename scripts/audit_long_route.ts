@@ -1,8 +1,8 @@
 /**
  * Long multi-waypoint route against the local release, whole-route versus leg-by-leg.
  *
- *   node --import tsx scripts/audit_long_route.ts legs  [profile]
- *   node --max-old-space-size=4096 --import tsx scripts/audit_long_route.ts whole [profile]
+ *   node --import tsx scripts/audit_long_route.ts legs  [profile] [packs dir]
+ *   node --max-old-space-size=4096 --import tsx scripts/audit_long_route.ts whole [profile] [packs dir]
  *
  * `whole` reproduces the former worker: one graph under the bbox of every waypoint and one
  * search across all legs. Run it with a browser-sized heap to see the crash.
@@ -18,9 +18,10 @@ import {
 } from "../src/routing/provider";
 import { selectedRoute } from "../src/routing/selection";
 import type { Point } from "../src/routing/types";
+import { DEFAULT_RELEASE } from "./local_release";
 import { loadProfile } from "./profile";
 
-const DIR = "public/packs/geneva-grid";
+const DIR = process.argv[4] ?? DEFAULT_RELEASE;
 const mode = process.argv[2] ?? "legs";
 const profile = await loadProfile(process.argv[3] ?? "gravel_50");
 const catalogue = catalogueSchema.parse(

@@ -17,8 +17,9 @@ import { CellGraphProvider, type PackReader } from "../src/routing/provider";
 import type { Installed } from "../src/offline/store";
 import type { BBox } from "../src/geo/grid";
 import type { Graph, Point } from "../src/routing/types";
+import { DEFAULT_RELEASE } from "./local_release";
 
-const DIR = process.argv[2] ?? "public/packs/geneva-grid";
+const DIR = process.argv[2] ?? DEFAULT_RELEASE;
 const OUT = process.argv[3] ?? "tests/fixtures/voirons-graph.json.gz";
 const BBOX: BBox = [6.3, 46.2, 6.38, 46.25];
 /** The unsampled road bridges the fixture exists to cover; see tests/voirons.test.ts. */

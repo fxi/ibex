@@ -1,45 +1,28 @@
-import { eligible } from "../src/routing/eligibility";
-/** Inspect selected ways and grade costs against the cached OSM snapshot. */
+/** Inspect selected ways and grade costs on a local release, merged as the app merges cells. */
 import fs from "node:fs/promises";
 import { dirname } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { eligible } from "../src/routing/eligibility";
 import { route, scoreEdge, snapAnchors, total } from "../src/routing/engine";
-import type { Graph, Point } from "../src/routing/types";
+import type { Point } from "../src/routing/types";
+import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
 import { loadProfile } from "./profile";
-const directory = process.argv[2] ?? "public/packs/geneva";
+
+const directory = process.argv[2] ?? DEFAULT_RELEASE;
 const prefix = process.argv[3] ?? "data/derived/routing-audit/current";
 await fs.mkdir(dirname(prefix), { recursive: true });
-const index = JSON.parse(
-  gunzipSync(await fs.readFile(`${directory}/index.bin`)).toString(),
-);
-const graph: Graph = {
-  schemaVersion: 1,
-  bbox: index.bbox,
-  nodes: [],
-  edges: [],
-  restrictions: index.restrictions,
-};
-const nodes = new Map<number, Graph["nodes"][number]>();
-for (const chunk of index.chunks) {
-  const g = JSON.parse(
-    gunzipSync(await fs.readFile(`${directory}/${chunk.path}`)).toString(),
-  );
-  for (const n of g.nodes) nodes.set(n.id, n);
-  graph.edges.push(...g.edges);
-}
-graph.nodes = [...nodes.values()];
-const tags: Record<string, Record<string, string>> = Object.fromEntries(
-  graph.edges.map((e) => [
-    e.way,
-    { highway: e.highway, surface: e.surface, ...e.tags },
-  ]),
-);
 const anchors: Point[] = process.argv[4]
   ? JSON.parse(process.argv[4])
   : [
       [6.151, 46.201],
       [6.37, 46.22],
     ];
+const graph = await loadReleaseGraph(directory, anchors);
+const tags: Record<string, Record<string, string>> = Object.fromEntries(
+  graph.edges.map((e) => [
+    e.way,
+    { highway: e.highway, surface: e.surface, ...e.tags },
+  ]),
+);
 for (const id of ["road_28", "gravel_40"]) {
   const profile = await loadProfile(id);
   const snapped = snapAnchors(

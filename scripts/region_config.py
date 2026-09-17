@@ -37,9 +37,6 @@ EXTRACTS = (
     "europe/italy/nord-ovest",
 )
 
-# The pre-grid single-region bbox, kept for the pipeline regression diff.
-LEGACY_BBOX = [5.80, 45.95, 6.55, 46.45]
-
 # Raised whenever the pipeline changes the edge data it publishes; it rides in the release
 # tag from each cell manifest, so incompatible generations cannot be joined.
 # 7 includes mapped mountain passes and saddles among scenic sources.

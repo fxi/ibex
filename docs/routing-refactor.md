@@ -111,7 +111,7 @@ junction charge. Timings for the three shipped profiles need re-measuring after 
 policy rollback:
 
 ```
-node --import tsx scripts/benchmark_routing.ts public/packs/geneva-grid [baseline-legs-module]
+node --import tsx scripts/benchmark_routing.ts <packs dir> [baseline-legs-module]
 ```
 
 The machine-readable report is written to `data/derived/routing-refactor.json`.

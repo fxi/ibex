@@ -5,8 +5,9 @@ import { CellGraphProvider, type PackReader } from "../src/routing/provider";
 import type { Installed } from "../src/offline/store";
 import type { BBox } from "../src/geo/grid";
 import type { Graph, Point } from "../src/routing/types";
+import { DEFAULT_RELEASE } from "./local_release";
 
-const DIR = process.argv[2] ?? "public/packs/geneva-grid";
+const DIR = process.argv[2] ?? DEFAULT_RELEASE;
 const OUT = process.argv[3] ?? "tests/fixtures/coudry-graph.json.gz";
 const BBOX: BBox = [6.225, 46.15, 6.36, 46.195];
 /** Both the preferred gravel corridor and the reported bad shortcut must survive. */

@@ -75,8 +75,7 @@ def main():
     parser.add_argument(
         "--bbox",
         default=None,
-        help="Clip to w,s,e,n instead of the release window; used for the "
-        "pre-grid regression comparison.",
+        help="Clip to w,s,e,n instead of the release window.",
     )
     parser.add_argument(
         "--only",

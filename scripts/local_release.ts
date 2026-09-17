@@ -4,7 +4,7 @@ import type { Installed } from "../src/offline/store";
 import { CellGraphProvider, searchArea } from "../src/routing/provider";
 import type { Graph, Point } from "../src/routing/types";
 
-export const DEFAULT_RELEASE = "data/build/geneva-toulon/packs";
+export const DEFAULT_RELEASE = "data/build/geneva-toulon-v7/packs";
 
 /**
  * Merge a local release's packs around the anchors exactly as the app merges installed
