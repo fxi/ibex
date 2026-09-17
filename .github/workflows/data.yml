@@ -18,6 +18,9 @@ on:
       keep:
         description: Releases to keep when pruning (the current one is always kept)
         default: "3"
+      confirm:
+        description: Type "delete" to carry out a prune; anything else only lists it
+        required: false
   schedule:
     # Weekly check that the public data still verifies (hashes, cache, CORS, Range).
     - cron: "17 5 * * 1"
@@ -43,11 +46,30 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+      # Inputs reach the shell through the environment: interpolating them into `run:`
+      # substitutes text before the shell parses it, in a job holding the S3 credentials.
       - name: Promote
         if: inputs.action == 'promote'
-        run: uv run scripts/publish_release.py --promote-id "${{ inputs.release }}"
+        env:
+          RELEASE: ${{ inputs.release }}
+        # A blank id used to promote nothing and still report success.
+        run: |
+          test -n "$RELEASE" || { echo "::error::promote needs a release id"; exit 1; }
+          uv run scripts/publish_release.py --promote-id "$RELEASE"
       - name: Prune
         if: inputs.action == 'prune'
-        run: uv run scripts/publish_release.py --prune "${{ inputs.keep }}"
+        env:
+          KEEP: ${{ inputs.keep }}
+        # Prints the plan; deletes only when the dispatcher typed "delete".
+        run: |
+          uv run scripts/publish_release.py --prune "$KEEP" \
+            ${{ inputs.confirm == 'delete' && '--yes' || '' }}
       - name: Verify
-        run: uv run scripts/verify_public_release.py "${{ vars.VITE_DATA_URL }}" ${{ github.event_name == 'schedule' && '--cells 4' || '' }}
+        env:
+          DATA_URL: ${{ vars.VITE_DATA_URL }}
+          EXPECT: ${{ inputs.action == 'promote' && inputs.release || '' }}
+        run: |
+          args=()
+          [ "${{ github.event_name }}" = "schedule" ] && args+=(--cells 4)
+          [ -n "$EXPECT" ] && args+=(--expect-release "$EXPECT")
+          uv run scripts/verify_public_release.py "$DATA_URL" ${args[@]+"${args[@]}"}
