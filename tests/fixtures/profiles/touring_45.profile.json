@@ -1,6 +1,6 @@
 {
-  "format_version": 2,
-  "id": "touring_45",
+  "format_version": 3,
+  "id": "cc94f058-4c6b-83c7-bdf6-217493b56f7b",
   "name": "Loaded touring",
   "description": "A heavy bike on a long day: gentle gradients, predictable surfaces, few surprises.",
   "setup": {
@@ -19,16 +19,22 @@
       "descend_confidence": 0.5
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "neutral",
-    "traffic_stress": "strongly_avoid",
-    "unpaved": "neutral",
-    "roughness": "avoid",
-    "technicality": "strongly_avoid",
     "climbing": "avoid",
-    "scenic": "prefer",
-    "urbanity": "avoid",
-    "cycle_infrastructure": "strongly_prefer"
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "neutral",
+      "surface_difficulty": "strongly_avoid",
+      "scenic": "prefer",
+      "urbanity": "avoid",
+      "cycle_infrastructure": "strongly_prefer"
+    },
+    "uphill": {},
+    "downhill": {}
   },
   "permissions": {
     "ferry": true,

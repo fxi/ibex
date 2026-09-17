@@ -1,9 +1,8 @@
 import { preference, savePreference } from "./offline/store";
-import {
-  parseProfile,
-  profileUuid,
-  type Profile,
-} from "./routing/profiles";
+import { parseProfile, type Profile } from "./routing/profiles";
+
+/** The shipped Gravel profile (`profiles/gravel_50.profile.json`) starts every new track. */
+export const DEFAULT_PROFILE_ID = "02aae4ad-e71c-4cd4-b24a-da1e9f145ab2";
 
 /**
  * Every `*.profile.json` in `profiles/` ships with the app. There is no master file and
@@ -21,7 +20,8 @@ export const shippedProfiles = (): Profile[] =>
     .map(([, p]) => parseProfile(p));
 
 export const defaultProfile = (): Profile =>
-  shippedProfiles().find((p) => p.id === profileUuid("gravel_50")) ?? shippedProfiles()[0];
+  shippedProfiles().find((p) => p.id === DEFAULT_PROFILE_ID) ??
+  shippedProfiles()[0];
 
 export async function loadModels(): Promise<Profile[]> {
   const value = await preference<unknown>("routing-profiles");

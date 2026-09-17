@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import {
-  migrateProfile,
   newProfileId,
   parseProfile,
-  profileUuid,
   serializeProfile,
   sameProfile,
 } from "../src/routing/profiles";
@@ -94,42 +91,15 @@ describe("the profile format", () => {
     expect(() => parseProfile({ ...GRAVEL, extra: true })).toThrow();
   });
 
-  it("converts format 2 deterministically, onto the same ids as before", () => {
-    const v2 = JSON.parse(
-      readFileSync(
-        new URL("./fixtures/profiles/gravel_40.profile.json", import.meta.url),
-        "utf8",
-      ),
-    );
-    expect(v2.format_version).toBe(2);
-    const v3 = parseProfile(v2);
-    expect(v3.id).toBe(profileUuid("gravel_40"));
-    expect(parseProfile(v2)).toEqual(v3);
-    expect(v3.settings).toEqual({
-      detour: v2.preferences.detour,
-      climbing: v2.preferences.climbing,
-      direction_changes: "neutral",
-    });
-    // The merge keeps whichever of roughness and technicality was stated more strongly.
-    const merged = (roughness: string, technicality: string) =>
-      parseProfile({
-        ...v2,
-        preferences: { ...v2.preferences, roughness, technicality },
-      }).preferences.base.surface_difficulty;
-    expect(merged("avoid", "neutral")).toBe("avoid");
-    expect(merged("avoid", "strongly_prefer")).toBe("strongly_prefer");
-    expect(merged("prefer", "avoid")).toBe("prefer");
-    // Already format 3: untouched.
-    expect(migrateProfile(v3)).toBe(v3);
+  it("rejects profiles in an older format", () => {
+    expect(() => parseProfile({ ...GRAVEL, format_version: 2 })).toThrow();
   });
 
-  it("gives new profiles random ids and old slugs stable ones", () => {
+  it("gives new profiles random ids", () => {
     const a = newProfileId(),
       b = newProfileId();
     expect(a).not.toBe(b);
     expect(() => parseProfile({ ...GRAVEL, id: a })).not.toThrow();
-    expect(profileUuid("gravel_50")).toBe(profileUuid("gravel_50"));
-    expect(profileUuid("gravel_50")).not.toBe(profileUuid("gravel_40"));
   });
 
   it("round-trips through its own serializer, key order included", () => {

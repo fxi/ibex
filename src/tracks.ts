@@ -2,7 +2,6 @@ import { z } from "zod";
 import { preference, savePreference } from "./offline/store";
 import { LIMITS } from "./offline/validate";
 import {
-  migrateProfile,
   parseProfile,
   profileSchema,
   type Profile,
@@ -226,8 +225,7 @@ const storedTrack = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   visible: z.boolean(),
   anchors: z.array(point).max(LIMITS.anchorsMax),
-  // Tracks saved before format 3 carry a format-2 snapshot; it converts, it is not lost.
-  profile: z.preprocess(migrateProfile, profileSchema),
+  profile: profileSchema,
   revision: z.number().int().nonnegative(),
   resultRevision: z.number().int().optional(),
   packVersion: z.string().optional(),
@@ -257,20 +255,8 @@ export function restoreCollection(value: unknown): TrackCollection {
 export async function loadTracks(): Promise<TrackCollection> {
   const saved = await preference<unknown>("ibex-tracks");
   if (saved !== undefined) return restoreCollection(saved);
-  // A first visit starts with no track. Anchors from an older single plan are still
-  // meaningful; its profile is not, so that track restarts on the default one.
-  const old = await preference<{ anchors: Point[] }>("plan");
-  const tracks: Track[] = [];
-  if (old?.anchors?.length)
-    tracks.push({
-      ...newTrack(),
-      anchors: z.array(point).max(LIMITS.anchorsMax).parse(old.anchors),
-    });
-  const collection: TrackCollection = {
-    version: 1,
-    activeId: tracks[0]?.id,
-    tracks,
-  };
+  // A first visit starts with no track.
+  const collection: TrackCollection = { version: 1, tracks: [] };
   await saveTracks(collection);
   return collection;
 }

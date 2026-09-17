@@ -1,7 +1,7 @@
 import { test as base, expect, type Page } from "@playwright/test";
 export { expect };
 
-/** The single cell in `public/packs/cell-fixture`, as the Data tab labels it. */
+/** The single cell in `tests/fixtures/data`, as the Data tab labels it. */
 export const FIXTURE_CELL = "9/264/181";
 /** The Data tab readiness line once at least one area is installed and routable. */
 export const SAVED_TEXT = "1 area ready for offline routing";
@@ -48,19 +48,30 @@ export async function planArve(page: Page) {
     .locator(".map")
     .evaluate((e) => !!(e as HTMLElement & { _map?: unknown })._map);
   if (!hasMap) {
-    // No basemap means no map clicks. Store the anchors as an older single plan instead,
-    // which a load with no saved collection migrates into a track.
+    // No basemap means no map clicks. Create the track through the UI, then write the
+    // anchors into the saved collection, which the reload restores.
+    await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+    await page
+      .getByRole("button", { name: "No track, add one to start" })
+      .click();
+    await expect(card).toBeVisible();
     await tracksSaved(page);
     await page.evaluate(async (anchors) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const r = indexedDB.open("cyclatractor-v1");
+        const r = indexedDB.open("ibex");
         r.onsuccess = () => resolve(r.result);
         r.onerror = () => reject(r.error);
       });
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction("preferences", "readwrite");
-        tx.objectStore("preferences").delete("ibex-tracks");
-        tx.objectStore("preferences").put({ anchors }, "plan");
+        const store = tx.objectStore("preferences");
+        const read = store.get("ibex-tracks");
+        read.onsuccess = () => {
+          const collection = read.result;
+          collection.tracks[0].anchors = anchors;
+          collection.tracks[0].revision += 1;
+          store.put(collection, "ibex-tracks");
+        };
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
@@ -115,7 +126,7 @@ export const test = base.extend<{ mapResources: void }>({
         const url = new URL(route.request().url());
         expect(url.pathname).not.toMatch(/\/style\.json$/);
         expect(url.searchParams.get("key")).toBe(
-          "cyclatractor-browser-test-key",
+          "ibex-browser-test-key",
         );
         if (url.pathname.endsWith("tiles.json")) {
           await route.fulfill({

@@ -1,6 +1,6 @@
 {
-  "format_version": 2,
-  "id": "wanderer",
+  "format_version": 3,
+  "id": "d0bb1082-5998-8059-9e97-dedb31b50a4c",
   "name": "Mountain wanderer",
   "description": "The long way round, on purpose. Trades a great deal of distance for quiet, height and a view.",
   "setup": {
@@ -19,16 +19,22 @@
       "descend_confidence": 0.7
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "strongly_prefer",
-    "traffic_stress": "strongly_avoid",
-    "unpaved": "strongly_prefer",
-    "roughness": "neutral",
-    "technicality": "neutral",
     "climbing": "strongly_prefer",
-    "scenic": "strongly_prefer",
-    "urbanity": "strongly_avoid",
-    "cycle_infrastructure": "neutral"
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "strongly_prefer",
+      "surface_difficulty": "neutral",
+      "scenic": "strongly_prefer",
+      "urbanity": "strongly_avoid",
+      "cycle_infrastructure": "neutral"
+    },
+    "uphill": {},
+    "downhill": {}
   },
   "permissions": {
     "ferry": true,

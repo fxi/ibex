@@ -1,10 +1,8 @@
 import { z } from "zod";
-import { sha256 } from "@noble/hashes/sha2.js";
 import {
   LEVELS,
   SETTING_KEYS,
   SIGNAL_KEYS,
-  STRENGTH,
   type Level,
   type SettingKey,
   type SignalKey,
@@ -20,7 +18,7 @@ import {
  * writes exactly what routed. A file is readable by whoever receives it.
  *
  * Format 3 separates whole-ride `settings` from way `preferences`, and states those for
- * `base` with optional `uphill` and `downhill` overrides. Format 2 files convert on load.
+ * `base` with optional `uphill` and `downhill` overrides.
  */
 export const FORMAT_VERSION = 3;
 
@@ -131,79 +129,6 @@ export function newProfileId(): string {
   return formatUuid(b);
 }
 
-/**
- * The id a format-2 slug becomes (UUID v8, name-based). Deterministic, so a saved track
- * on `gravel_50` still matches the shipped Gravel profile after conversion.
- */
-export function profileUuid(slug: string): string {
-  const b = sha256(new TextEncoder().encode(`cyclatractor/profile/${slug}`));
-  b[6] = (b[6] & 0x0f) | 0x80;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  return formatUuid(b.slice(0, 16));
-}
-
-/** The stronger of two levels, first wins a tie. Used to merge format-2 keys. */
-const stronger = (a?: Level, b?: Level) =>
-  a === undefined
-    ? b
-    : b === undefined
-      ? a
-      : Math.abs(STRENGTH[b]) > Math.abs(STRENGTH[a])
-        ? b
-        : a;
-
-/**
- * Convert a format-2 profile; anything else passes through untouched for the schema to
- * judge. Deterministic but lossy in one place: `roughness` and `technicality` merge into
- * `surface_difficulty` at whichever of the two was stated more strongly.
- */
-export function migrateProfile(input: unknown): unknown {
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    (input as { format_version?: unknown }).format_version !== 2
-  )
-    return input;
-  const {
-    preferences,
-    descent,
-    id,
-    ...rest
-  } = input as Record<string, unknown> & {
-    preferences?: Record<string, Level>;
-    descent?: Record<string, Level>;
-  };
-  const signals = (source: Record<string, Level> = {}) => {
-    const out: Partial<Record<SignalKey, Level>> = {};
-    for (const key of SIGNAL_KEYS) {
-      const value =
-        key === "surface_difficulty"
-          ? stronger(source.roughness, source.technicality)
-          : source[key];
-      if (value !== undefined) out[key] = value;
-    }
-    return out;
-  };
-  return {
-    ...rest,
-    format_version: FORMAT_VERSION,
-    id:
-      typeof id === "string" && z.uuid().safeParse(id).success
-        ? id
-        : profileUuid(String(id)),
-    settings: {
-      detour: preferences?.detour,
-      climbing: preferences?.climbing,
-      direction_changes: "neutral",
-    },
-    preferences: {
-      base: signals(preferences),
-      uphill: {},
-      downhill: signals(descent),
-    },
-  };
-}
-
 /** Overrides that actually differ from `base`, in canonical key order. */
 export function overrides(
   preferences: Preferences,
@@ -219,7 +144,7 @@ export function overrides(
 }
 
 /**
- * Convert, validate, canonicalize, then freeze all the way down.
+ * Validate, canonicalize, then freeze all the way down.
  *
  * Routing reads a profile on every edge of every search. Freezing is cheap insurance
  * that nothing downstream mutates a value mid-route and produces a path that no single
@@ -227,7 +152,7 @@ export function overrides(
  * dropped so that two profiles meaning the same thing serialize the same.
  */
 export function parseProfile(input: unknown): Profile {
-  const value = profileSchema.parse(migrateProfile(input));
+  const value = profileSchema.parse(input);
   value.preferences = {
     base: Object.freeze(value.preferences.base),
     uphill: Object.freeze(overrides(value.preferences, "uphill")),
@@ -243,7 +168,7 @@ export function parseProfile(input: unknown): Profile {
 }
 
 export const isProfile = (input: unknown): input is Profile =>
-  profileSchema.safeParse(migrateProfile(input)).success;
+  profileSchema.safeParse(input).success;
 
 /**
  * One canonical field order for the whole app.

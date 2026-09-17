@@ -1,6 +1,6 @@
 {
-  "format_version": 2,
-  "id": "bikepacking_45",
+  "format_version": 3,
+  "id": "10585dcf-5366-89a8-9f57-6c995c394caa",
   "name": "Gravel bikepacking",
   "description": "A loaded gravel bike on a multi-day traverse: stitched signed routes and quiet departmental roads, good gravel where it is described, rideable gradients, and steady progress rather than detours.",
   "setup": {
@@ -19,16 +19,22 @@
       "descend_confidence": 0.7
     }
   },
-  "preferences": {
+  "settings": {
     "detour": "avoid",
-    "traffic_stress": "strongly_avoid",
-    "unpaved": "prefer",
-    "roughness": "neutral",
-    "technicality": "avoid",
     "climbing": "neutral",
-    "scenic": "neutral",
-    "urbanity": "avoid",
-    "cycle_infrastructure": "strongly_prefer"
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "prefer",
+      "surface_difficulty": "avoid",
+      "scenic": "neutral",
+      "urbanity": "avoid",
+      "cycle_infrastructure": "strongly_prefer"
+    },
+    "uphill": {},
+    "downhill": {}
   },
   "permissions": {
     "ferry": true,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GRAVEL, ROAD } from "./helpers";
-import { profileUuid, serializeProfile } from "../src/routing/profiles";
+import { DEFAULT_PROFILE_ID } from "../src/models";
+import { serializeProfile } from "../src/routing/profiles";
 import {
   HISTORY_LIMIT,
   acceptResult,
@@ -29,8 +30,8 @@ describe("independent track revisions", () => {
       { ...structuredClone(ready), id: "road" },
       { profile: modelSnapshot(ROAD) },
     );
-    expect(gravel.profile.id).toBe(profileUuid("gravel_50"));
-    expect(road.profile.id).toBe(profileUuid("road_28"));
+    expect(gravel.profile.id).toBe(DEFAULT_PROFILE_ID);
+    expect(road.profile.id).toBe(ROAD.id);
     expect(road.resultRevision).not.toBe(road.revision);
     expect(road.result).toEqual(result);
     expect(ready.revision).toBe(ready.resultRevision);
