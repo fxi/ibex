@@ -20,7 +20,7 @@ import {
   streetViewURL,
   type Basemap,
 } from "./style";
-import type { Track } from "../tracks";
+import { freshResult, type Track } from "../tracks";
 import { HEATMAP_URL } from "../config";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
 import {
@@ -243,14 +243,8 @@ export function MapView({
     const layoutFor = () => {
       const s = snapshot.current;
       const track = s.tracks.find((t) => t.id === s.activeId);
-      if (
-        track?.kind !== "planned" ||
-        !track.visible ||
-        track.resultRevision !== track.revision ||
-        track.result?.status !== "ok"
-      )
-        return;
-      const route = track.result;
+      const route = track && freshResult(track);
+      if (track?.kind !== "planned" || !track.visible || !route) return;
       const zoom = Math.round(m.getZoom());
       if (layout?.route === route && layout.zoom === zoom) return layout;
       const vertices = anchorVertices(route, s.anchors.length);
@@ -285,12 +279,12 @@ export function MapView({
     const locate = (point: maplibregl.Point) => {
       const s = snapshot.current;
       const track = s.tracks.find((t) => t.id === s.activeId);
+      const route = track && freshResult(track);
       if (
         !s.editable ||
         track?.kind !== "planned" ||
         !track.visible ||
-        track.resultRevision !== track.revision ||
-        track.result?.status !== "ok" ||
+        !route ||
         s.anchors.length < 2
       )
         return;
@@ -298,7 +292,7 @@ export function MapView({
         const q = m.project(p);
         return [q.x, q.y];
       };
-      const line = track.result.geometry.map(project);
+      const line = route.geometry.map(project);
       const nearest = nearestPosition(line, [point.x, point.y]);
       const l = layoutFor();
       return {
@@ -928,7 +922,7 @@ export function MapView({
               trackId: t.id,
               trackColor: t.color,
               active: t.id === s.activeId,
-              stale: t.resultRevision !== t.revision,
+              stale: !freshResult(t),
             };
             return rideFeatures(
               t.result!.segments,

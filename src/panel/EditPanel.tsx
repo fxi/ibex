@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { Elevation } from "../Elevation";
 import { serializeProfile } from "../routing/profiles";
-import { modelSnapshot } from "../tracks";
-import { exportTrack } from "./TracksPanel";
+import { exportTrack, freshResult, modelSnapshot } from "../tracks";
+
 import { surfaceStyle, type Span } from "../map/rideStyle";
 import {
   composition,
@@ -75,7 +75,7 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
     );
 
   const planned = track.kind === "planned";
-  const stale = !!route && track.resultRevision !== track.revision;
+  const stale = !!route && !freshResult(track);
   /**
    * Which listed model the track is on, matched by value rather than by name: with no
    * inheritance a profile is just its fields, and two identical profiles built in a
@@ -209,7 +209,6 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
         )}
         <RouteWaypoints
           track={track}
-          route={route}
           onLocate={ctx.locate}
           onEdit={planned ? (anchors) => tracks.edit({ anchors }) : undefined}
         />
@@ -234,7 +233,7 @@ function RouteSummary({
   range?: Span;
   onRange: (range?: Span) => void;
 }) {
-  const stale = track.resultRevision !== track.revision;
+  const stale = !freshResult(track);
   const warnings = routeWarnings(route, capability);
   // A row says where a thing is in kilometres; this puts the same place on the map without
   // taking the rider's overview away from them.
@@ -443,12 +442,10 @@ function RouteWarnings({
  */
 function RouteWaypoints({
   track,
-  route,
   onLocate,
   onEdit,
 }: {
   track: Track;
-  route?: RouteResult;
   onLocate: (point: Point) => void;
   onEdit?: (anchors: Point[]) => void;
 }) {
@@ -462,8 +459,7 @@ function RouteWaypoints({
 
   // Distances only mean something while the route still matches the waypoints; after an
   // edit they would describe points that have moved.
-  const fresh =
-    route && track.resultRevision === track.revision ? route : undefined;
+  const fresh = freshResult(track);
   const vertices = fresh
     ? anchorVertices(fresh, track.anchors.length)
     : undefined;

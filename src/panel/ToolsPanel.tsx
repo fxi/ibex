@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import { parseGPX } from "../importers/gpx";
-import { importedTrack } from "../tracks";
-import { exportTrack } from "./TracksPanel";
+import { exportTrack, freshResult, importedTrack } from "../tracks";
+
 import type { PanelContext } from "./context";
 
 /** Files larger than this are not hand-recorded rides; refuse rather than hang. */
@@ -14,10 +14,7 @@ export function ToolsPanel({ ctx }: { ctx: PanelContext }) {
   const input = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState("");
 
-  const exportable =
-    collection?.tracks.filter(
-      (t) => t.result && t.resultRevision === t.revision,
-    ) ?? [];
+  const exportable = collection?.tracks.filter(freshResult) ?? [];
 
   async function importFiles(files: File[]) {
     setError("");

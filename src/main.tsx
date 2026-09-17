@@ -24,6 +24,7 @@ import {
 import { LIMITS } from "./offline/validate";
 import type { Profile } from "./routing/profiles";
 import { DATA_POINTER_URL } from "./config";
+import { freshResult } from "./tracks";
 import { useTracks } from "./state/useTracks";
 import { useCatalogue } from "./state/useCatalogue";
 import { useRouting } from "./state/useRouting";
@@ -158,8 +159,7 @@ function App() {
    */
   const reshape = (grab: RouteGrab, point: Point, pinches?: Pinches) => {
     if (!active) return;
-    const route =
-      active.resultRevision === active.revision ? active.result : undefined;
+    const route = freshResult(active);
     const vertices = route && anchorVertices(route, active.anchors.length);
     const edit = applyLocalEdit(
       active.anchors,

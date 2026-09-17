@@ -7,6 +7,7 @@ import {
   type Profile,
 } from "./routing/profiles";
 import { defaultProfile } from "./models";
+import { download, exportGPX } from "./gpx";
 import type { Point, RouteResult } from "./routing/types";
 import { emptyComponents } from "./routing/engine";
 
@@ -207,6 +208,31 @@ export function importedTrack(
     resultRevision: 0,
     result,
   };
+}
+
+/**
+ * The track's result, but only while it still describes the track as it stands now. A
+ * result outlives the edit that invalidated it so the map can keep drawing it greyed out,
+ * which makes "is this current" the question every reader actually has — it was written
+ * out by hand at eleven call sites, in three spellings, two of which forgot the status.
+ */
+export function freshResult(track: Track): RouteResult | undefined {
+  return track.result &&
+    track.result.status === "ok" &&
+    track.resultRevision === track.revision
+    ? track.result
+    : undefined;
+}
+
+/** Save a track as GPX, if it has a result worth saving. */
+export function exportTrack(track: Track) {
+  const result = freshResult(track);
+  if (result)
+    download(
+      `${track.name.replace(/[^a-z0-9_-]/gi, "-")}.gpx`,
+      exportGPX(result, track.name),
+      "application/gpx+xml",
+    );
 }
 
 export function acceptResult(

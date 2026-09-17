@@ -10,18 +10,9 @@ import {
   SquarePen,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
-import { download, exportGPX } from "../gpx";
-import type { Track } from "../tracks";
-import type { PanelContext } from "./context";
 
-export function exportTrack(t: Track) {
-  if (t.result && t.resultRevision === t.revision)
-    download(
-      `${t.name.replace(/[^a-z0-9_-]/gi, "-")}.gpx`,
-      exportGPX(t.result, t.name),
-      "application/gpx+xml",
-    );
-}
+import { exportTrack, freshResult } from "../tracks";
+import type { PanelContext } from "./context";
 
 /**
  * The tracks there are, and which one is active.
@@ -92,7 +83,7 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                       {!t.visible ? "Hidden · " : ""}
                       {t.kind === "imported"
                         ? "Reference"
-                        : t.resultRevision !== t.revision
+                        : !freshResult(t)
                           ? "Needs computation"
                           : "Ready"}
                     </small>
@@ -138,7 +129,7 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                         Fit to map
                       </Menu.Item>
                       <Menu.Item
-                        disabled={!t.result || t.resultRevision !== t.revision}
+                        disabled={!freshResult(t)}
                         onSelect={() => exportTrack(t)}
                       >
                         Export GPX
