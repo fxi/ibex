@@ -1,3 +1,4 @@
+import { APP_VERSION } from "./version";
 import type { RouteResult } from "./routing/types";
 
 const escapeXML = (text: string) =>
@@ -13,7 +14,7 @@ const escapeXML = (text: string) =>
  * Write a route as GPX. Elevation is emitted when the profile covers the whole route, so
  * an exported file can be re-imported without inventing heights it never had.
  */
-export function exportGPX(route: RouteResult, name = "Cyclatractor route"): string {
+export function exportGPX(route: RouteResult, name = "Ibex route"): string {
   // The profile is sampled along the route, not per vertex, so heights are matched by
   // cumulative distance rather than by index.
   const known = route.elevationProfile.filter(
@@ -44,7 +45,7 @@ export function exportGPX(route: RouteResult, name = "Cyclatractor route"): stri
     }</trkpt>`;
   });
 
-  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Cyclatractor" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${escapeXML(
+  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Ibex ${APP_VERSION}" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${escapeXML(
     name,
   )}</name><trkseg>${points.join("")}</trkseg></trk></gpx>`;
 }

@@ -21,6 +21,7 @@ import {
   type Basemap,
 } from "./style";
 import type { Track } from "../tracks";
+import { HEATMAP_URL } from "../config";
 import { CELL_COLORS, type MapCell } from "../offline/cells";
 import {
   CENTER_COLOR,
@@ -947,10 +948,10 @@ export function MapView({
           ? (route?.corridor ?? []).filter((p) => p.length > 1).map(line)
           : [],
       });
-      if (s.history && !m.getSource("history")) {
+      if (s.history && HEATMAP_URL && !m.getSource("history")) {
         m.addSource("history", {
           type: "vector",
-          url: "pmtiles://https://fxi-io-media.sos-ch-gva-2.exo.io/layers/heatmap.pmtiles",
+          url: `pmtiles://${HEATMAP_URL}`,
         });
         m.addLayer(
           {
@@ -981,7 +982,7 @@ export function MapView({
           s.history ? "visible" : "none",
         );
     }
-    m.on("cyclatractor-update", update);
+    m.on("ibex-update", update);
     return () => {
       disposed = true;
       cancelPress();
@@ -1016,7 +1017,7 @@ export function MapView({
   // Redrawing the geojson sources is separate from the markers, and every rendered input
   // has to be listed here or its layer silently stops updating.
   useEffect(() => {
-    map.current?.fire("cyclatractor-update");
+    map.current?.fire("ibex-update");
   }, [
     editable,
     anchors,

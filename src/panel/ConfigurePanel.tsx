@@ -10,6 +10,8 @@ import {
   type Profile,
 } from "../routing/profiles";
 import { ProfileForm } from "./ProfileForm";
+import { HEATMAP_URL } from "../config";
+import { APP_VERSION } from "../version";
 import type { PanelContext } from "./context";
 
 /** A file name for an exported profile. The id is a UUID, so it comes from the name. */
@@ -299,14 +301,16 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
           />
           Show routing diagnostics on the map
         </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={ctx.history}
-            onChange={(e) => ctx.setHistory(e.target.checked)}
-          />
-          Your rides · online reference layer
-        </label>
+        {HEATMAP_URL && (
+          <label>
+            <input
+              type="checkbox"
+              checked={ctx.history}
+              onChange={(e) => ctx.setHistory(e.target.checked)}
+            />
+            Your rides · online reference layer
+          </label>
+        )}
         {ctx.debug &&
           (shownComparison ? (
             <>
@@ -349,6 +353,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
             </p>
           ))}
       </fieldset>
+      <p className="hint">Ibex {APP_VERSION}</p>
     </>
   );
 }
