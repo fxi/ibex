@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from prepare_tracks import distance
+from region_config import RELEASE_ROOT
 from shapely.geometry import LineString, Point
 from shapely.strtree import STRtree
 
@@ -75,7 +76,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=80)
     parser.add_argument(
-        "--graph", default="data/build/geneva-toulon/cells/9-264-181/graph.json"
+        "--graph", default=f"{RELEASE_ROOT}/cells/9-264-181/graph.json"
     )
     parser.add_argument("--tracks", default="data/derived/tracks.geojson")
     args = parser.parse_args()

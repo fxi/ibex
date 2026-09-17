@@ -37,6 +37,11 @@ EXTRACTS = (
     "europe/italy/nord-ovest",
 )
 
+# Where a local build lives: `<root>/cells` is the builder's output and the packer's input,
+# `<root>/packs` the packaged release. The TypeScript side declares the same root as
+# `DEFAULT_RELEASE_ROOT` in local_release.ts, and test_region_config.py holds the two equal.
+RELEASE_ROOT = "data/build/geneva-toulon-v7"
+
 # Raised whenever the pipeline changes the edge data it publishes; it rides in the release
 # tag from each cell manifest, so incompatible generations cannot be joined.
 # 7 includes mapped mountain passes and saddles among scenic sources.

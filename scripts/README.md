@@ -14,7 +14,8 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `extract_cells.py` | One pbf per z9 cell plus halo |
 | | `build_cells.py` | Parallel, resumable per-cell builds; calls `build_region.py` by path |
 | | `build_region.py` | **lib** + per-cell graph builder (see its docstring) |
-| | `package_cells.ts` | Cell builds → `catalogue.json` + `.ibx` packs at the current `DATA_VERSION` |
+| | `package_cells.ts` | Cell builds → `catalogue.json` + `.ibx` packs at the current `DATA_VERSION`; refuses an incomplete window unless `--partial` |
+| | `cost_model_version.py` | **lib**: reads `COST_MODEL_VERSION` from `src/routing/types.ts` |
 | | `fetch_attribution.py`, `fetch_water.py` | Terrain attribution, water layer |
 | | `region_config.py` | **lib**: window, halo, zooms, extract list — the only place a bbox is defined |
 | | `grid.py`, `osm_source.py`, `profile_features.py`, `terrain_profile.py`, `profile.ts` | **lib** helpers for the builder and audits |
