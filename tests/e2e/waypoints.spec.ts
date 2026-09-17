@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, startTrack, test } from "./fixtures";
 
 /**
  * Drop a waypoint at a fraction of the map's width. Kept to the left 55% and the upper
@@ -22,6 +22,7 @@ test("a waypoint can be inserted between two others and renumbers the rest", asy
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
+  await startTrack(page);
   // The map only takes waypoints while the Edit tab is open.
   await page.getByRole("tab", { name: "Edit", exact: true }).click();
 
@@ -58,6 +59,7 @@ test("a waypoint can be removed from its marker menu", async ({ page }) => {
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
+  await startTrack(page);
   await page.getByRole("tab", { name: "Edit", exact: true }).click();
 
   await tapMap(page, 0.12);

@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, startTrack, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const editorJSON = (page: Page) =>
@@ -43,6 +43,8 @@ test("creates, edits, persists and deletes a custom profile", async ({
   page,
 }) => {
   await page.goto("./");
+  // Saving a model applies it to the active track, so there has to be one.
+  await startTrack(page);
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
 
   // Shipped profiles are read-only, so editing one starts from a copy.

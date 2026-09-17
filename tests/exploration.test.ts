@@ -17,7 +17,12 @@ const request: RouteRequest = {
     [6.3533, 46.1632],
     [6.2316, 46.1833],
   ],
-  profile: loadProfile("gravel_50"),
+  // The detour these tests describe is only worth buying when cycle infrastructure is
+  // preferred, so the preference is pinned here rather than inherited from the shipped
+  // profile, which is tuned as a product and has already moved it to `neutral` once.
+  profile: withPreferences(loadProfile("gravel_50"), {
+    cycle_infrastructure: "prefer",
+  }),
 };
 const baseline = route(graph, request, "reference");
 

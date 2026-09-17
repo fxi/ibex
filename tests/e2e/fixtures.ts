@@ -31,6 +31,17 @@ export async function saveMapData(page: Page) {
   }
   await process.click();
 }
+/**
+ * Create the empty track a test needs to have something active, and leave the page on the
+ * Tracks tab with its card open. The app starts with no track at all, so anything about
+ * the active track — editing waypoints, applying a model — has to make one first.
+ */
+export async function startTrack(page: Page) {
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("button", { name: "No track, add one to start" }).click();
+  await expect(page.locator(".track-card.open")).toBeVisible();
+}
+
 /** Two waypoints along the Arve, inside the fixture cell. */
 export const ARVE: [number, number][] = [
   [6.146, 46.189],

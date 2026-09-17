@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, startTrack, test } from "./fixtures";
 
 const GPX = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
@@ -53,8 +53,9 @@ test("reports a bad import without adding a track", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
-  // Tracks load asynchronously; count only once the default track is on screen.
-  await expect(page.locator(".track-card")).toHaveCount(1);
+  // The app starts with no track, and an empty list would pass this on its own. Start one
+  // so a failed import has something it could wrongly add to.
+  await startTrack(page);
   const before = await page.locator(".track-card").count();
 
   await page.getByRole("tab", { name: "Tools", exact: true }).click();
