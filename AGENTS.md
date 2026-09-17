@@ -30,16 +30,13 @@ npm run data:stage -- <packs dir>        # serve a local release at /ibex/data/
 
 ## Known failing tests
 
-As of 2026-09-17, these fail on `main`, and not because of release or tooling work:
+None as of 2026-09-17: vitest and both e2e browsers are green on `main`. Keep it that way,
+because `deploy.yml` runs the checks before the Pages deploy.
 
-- vitest: 4 in `tests/bikepacking.test.ts`, 1 in `tests/exploration.test.ts` (Coudry).
-- e2e: `profiles.spec.ts:42`, `tools.spec.ts:51`, `waypoints.spec.ts:17` and `:55`, in both
-  browsers. They expect a track on first visit; the app now starts with none.
-
-They block the deploy, because `deploy.yml` runs the checks first. Resolving them is a
-product decision: ask before changing expectations or cost behaviour. When a change of
-yours shows failures, compare against this list, or against a worktree of the previous
-commit, before assuming you caused them. Update this section when the list changes.
+When a change of yours shows failures, they are most likely yours. Compare against a
+worktree of the previous commit before concluding otherwise. Tests that encode a product
+decision — a cost, a preference, a routing outcome — are not to be relaxed to make them
+pass: ask instead. Record any newly accepted failure in this section.
 
 ## Data format rules
 
