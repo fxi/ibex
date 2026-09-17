@@ -1,6 +1,7 @@
 """Continuous way profiles: short topology edges must not become DEM pixel steps."""
-from bisect import bisect_right
 import math
+from bisect import bisect_right
+
 from prepare_tracks import distance
 
 

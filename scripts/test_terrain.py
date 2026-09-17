@@ -1,13 +1,16 @@
 import unittest
+
 from PIL import Image
-from terrain_profile import bilinear_height, way_profile, slice_profile, structure_grade
 from prepare_tracks import distance
+from terrain_profile import bilinear_height, slice_profile, structure_grade, way_profile
+
 
 class TerrainTests(unittest.TestCase):
     def test_interpolates_pixel_height(self):
         image = Image.new('RGB',(2,2))
         for x in range(2):
-            for y in range(2): image.putpixel((x,y),(128,100*x,0))
+            for y in range(2):
+                image.putpixel((x,y),(128,100*x,0))
         self.assertAlmostEqual(bilinear_height(image,1,1),50)
 
     def test_short_split_edges_do_not_create_grade_spikes(self):

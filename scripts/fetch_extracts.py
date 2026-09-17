@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import httpx
-
 from region_config import EXTRACTS
 
 BASE = "https://download.geofabrik.de"

@@ -1,5 +1,7 @@
 import unittest
+
 from match_tracks import restriction_checker
+
 
 class RestrictionTests(unittest.TestCase):
     def test_only_prefixes_and_unrelated_arrivals(self):

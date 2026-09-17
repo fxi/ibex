@@ -17,7 +17,6 @@ from array import array
 from pathlib import Path
 
 import osmium
-
 from build_region import permitted
 
 

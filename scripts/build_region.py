@@ -16,15 +16,22 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
-from PIL import Image
 from grid import cell_bbox, cell_id, mercator_x, mercator_y, tile_of
+from PIL import Image
 from prepare_tracks import BBOX, distance
+from profile_features import (
+    cycling_memberships,
+    ferry_ways,
+    on_cycling_network,
+    tagged_polygons,
+    urban_fraction,
+    urban_index,
+)
 from region_config import HALO_KM, PREPROCESSOR_VERSION, TERRAIN_ZOOM, halo_degrees
 from shapely.geometry import Point
 from shapely.ops import unary_union
 from shapely.prepared import prep
-from profile_features import tagged_polygons, urban_index, urban_fraction, cycling_memberships, on_cycling_network, ferry_ways
-from terrain_profile import bilinear_height, way_profile, slice_profile, structure_grade
+from terrain_profile import bilinear_height, slice_profile, structure_grade, way_profile
 
 DENIED = {"no", "private", "use_sidepath"}
 PAVED = {"asphalt", "concrete", "concrete:plates", "paving_stones", "paved"}

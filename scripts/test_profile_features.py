@@ -7,7 +7,14 @@ from pathlib import Path
 
 from build_region import build
 from prepare_tracks import distance
-from profile_features import cycling_memberships, duration_seconds, ferry_ways, on_cycling_network, urban_fraction, urban_index
+from profile_features import (
+    cycling_memberships,
+    duration_seconds,
+    ferry_ways,
+    on_cycling_network,
+    urban_fraction,
+    urban_index,
+)
 
 
 def way(id, nodes, coords, tags):
