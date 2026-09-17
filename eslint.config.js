@@ -3,7 +3,6 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
-      "ibex/**",
       "node_modules/**",
       "public/**",
       "data/**",
@@ -12,5 +11,11 @@ export default tseslint.config(
     ],
   },
   ...tseslint.configs.recommended,
-  { rules: { "@typescript-eslint/no-explicit-any": "off" } },
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      // `const { dropped, ...rest } = value` is how a key is omitted.
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
+    },
+  },
 );
