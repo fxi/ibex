@@ -10,11 +10,13 @@ import { eligible, traversalSegments } from "../src/routing/eligibility";
 import { route, scoreEdge, total, turnCost } from "../src/routing/engine";
 import { SETTING_KEYS, SIGNAL_KEYS } from "../src/routing/vocabulary";
 import { matchBike, matchRider, BIKE_PRESETS } from "../src/routing/presets";
+import { DEFAULT_PROFILE_ID } from "../src/models";
 import type { Edge, Graph, Point } from "../src/routing/types";
 import {
   GRAVEL,
   PROFILES,
   ROAD,
+  SHIPPED,
   TOURING,
   TRAIL,
   withPermissions,
@@ -48,8 +50,27 @@ const edge = (overrides: Partial<Edge> = {}): Edge => ({
 });
 
 describe("the profile format", () => {
+  /**
+   * What the app ships, named. `gravel_50_bikepacking` was added as `.json` rather than
+   * `.profile.json`, so the bundler's glob never saw it and the feature commit shipped
+   * nothing for days; `gravel_50_easy_dh` shipped without a doc, a test or a description
+   * of its own. Neither was visible to any test, because nothing asserted the set.
+   */
+  it("ships exactly the profiles the README documents", () => {
+    expect(SHIPPED.map((p) => p.name).sort()).toEqual([
+      "Gravel",
+      "Gravel Bikepacking",
+      "MTB",
+      "Road",
+    ]);
+    // Every one is reachable by the id the app pins, and says something of its own.
+    expect(new Set(SHIPPED.map((p) => p.id)).size).toBe(SHIPPED.length);
+    expect(new Set(SHIPPED.map((p) => p.description)).size).toBe(SHIPPED.length);
+    expect(SHIPPED.some((p) => p.id === DEFAULT_PROFILE_ID)).toBe(true);
+  });
+
   it("is complete: every shipped profile parses with nothing inherited", () => {
-    for (const p of PROFILES) {
+    for (const p of [...SHIPPED, ...PROFILES]) {
       expect(p.format_version).toBe(3);
       expect(Object.keys(p.settings)).toEqual([...SETTING_KEYS]);
       expect(Object.keys(p.preferences.base).sort()).toEqual(

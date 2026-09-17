@@ -2,7 +2,7 @@
   "format_version": 3,
   "id": "63a4a2b2-39dd-488a-97af-768b580de3cf",
   "name": "Gravel Bikepacking",
-  "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense. Heavy load",
+  "description": "Loaded touring on gravel: climbs on easy ground, descends on smooth, and stays off anything rough with the bags on.",
   "setup": {
     "preset": "custom",
     "bike": {

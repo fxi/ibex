@@ -4,10 +4,19 @@ import { parseProfile, serializeProfile } from "../src/routing/profiles";
 import type { Edge, Graph, Point } from "../src/routing/types";
 import { loadProfile } from "./helpers";
 
-// The three shipped profiles, held to what they promise a rider in one sentence each.
+/**
+ * Shipped profiles, held to what they promise a rider in one sentence each.
+ *
+ * These are product-contract tests, not engine tests: they read the files a rider actually
+ * picks, so retuning one deliberately is *supposed* to break them. A failure here means
+ * "a shipped profile changed meaning" and the promise in profiles/README.md has to change
+ * with it — it does not mean the router regressed. Tests that must not move with product
+ * tuning pin their own preferences instead (see tests/exploration.test.ts).
+ */
 const GRAVEL = loadProfile("gravel_50");
 const MTB = loadProfile("trail_60");
 const ROAD = loadProfile("road_28");
+const BIKEPACKING = loadProfile("gravel_50_bikepacking");
 
 const way = (
   highway: string,
@@ -79,6 +88,30 @@ describe("gravel", () => {
     expect(cost(easyGravel(0.04), smoothDown)).toBeLessThan(
       cost(tarmac(0.04), smoothDown),
     );
+  });
+});
+
+describe("gravel bikepacking", () => {
+  // "Loaded touring on gravel: climbs on easy ground, descends on smooth, and stays off
+  // anything rough with the bags on." Unlike shipped Gravel, this one does carry the
+  // downhill override, so the promise is testable against the file itself.
+  it("climbs on easy gravel", () => {
+    expect(cost(easyGravel(0.04), BIKEPACKING)).toBeLessThan(
+      cost(tarmac(0.04), BIKEPACKING),
+    );
+  });
+
+  it("comes down on smooth ground", () => {
+    expect(cost(tarmac(-0.04), BIKEPACKING)).toBeLessThan(
+      cost(easyGravel(-0.04), BIKEPACKING),
+    );
+  });
+
+  it("stays off rough ground loaded, uphill and down", () => {
+    for (const grade of [0.04, -0.04])
+      expect(cost(singletrack(grade), BIKEPACKING)).toBeGreaterThan(
+        cost(easyGravel(grade), BIKEPACKING),
+      );
   });
 });
 

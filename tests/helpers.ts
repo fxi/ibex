@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { parseProfile, type Profile } from "../src/routing/profiles";
+import { shippedProfiles } from "../src/models";
 import type { Graph } from "../src/routing/types";
 import {
   SETTING_KEYS,
@@ -29,7 +30,16 @@ export const ROAD = loadProfile("road_28");
 export const TOURING = loadProfile("touring_45");
 export const TRAIL = loadProfile("trail_60");
 export const WANDERER = loadProfile("wanderer");
+/**
+ * A deliberately varied set for tests that want several different riders. Three of these
+ * are fixtures, so it is *not* what the app ships — use SHIPPED for that. Conflating the
+ * two left the default profile untested by everything claiming to cover "every shipped
+ * profile".
+ */
 export const PROFILES = [GRAVEL, ROAD, TOURING, TRAIL, WANDERER];
+
+/** Exactly what the app ships, read the way the app reads it. */
+export const SHIPPED: Profile[] = shippedProfiles();
 
 /**
  * A profile with some settings or base preferences overridden, for tests that vary one

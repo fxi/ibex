@@ -1,17 +1,23 @@
 # Routing profiles
 
-Three profiles ship, one sentence each. Picking one is the whole decision; everything
+Four profiles ship, one sentence each. Picking one is the whole decision; everything
 below is for whoever wants to build their own.
 
 | Profile | File | Promise |
 | --- | --- | --- |
-| Gravel | `gravel_50` | Climb on quiet, easy gravel; come down on smooth, quiet roads. |
+| Gravel | `gravel_50` | Climb on quiet, easy gravel; ride the descents it earns. |
+| Gravel Bikepacking | `gravel_50_bikepacking` | Loaded: climb on easy ground, descend on smooth, stay off anything rough. |
 | MTB | `trail_60` | Climb like gravel; come down on singletrack. |
 | Road | `road_28` | Calm, sealed roads only. No gravel. |
 
-`tests/rideIntent.test.ts` holds each of them to that sentence. Other profiles used by
-tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`)
-live in `tests/fixtures/profiles/` and do not ship.
+`tests/rideIntent.test.ts` holds each of them to that sentence, and
+`tests/profiles.test.ts` holds this table to the set that actually ships — a profile whose
+filename does not end in `.profile.json` is invisible to the bundler and ships nothing.
+
+Gravel's promise stops at the climb on purpose: it carries no `downhill` override yet, so
+it does not prefer sealed descents. `gravel_50_bikepacking` is the one that does. Other
+profiles used by tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`,
+`gravel_50_easy_dh`) live in `tests/fixtures/profiles/` and do not ship.
 
 Normal routing runs one search per leg. The corridor comparison and scenic-destination
 sweep run only for explicit diagnostic requests. See
@@ -29,11 +35,9 @@ Ids are UUIDs and nobody types them. A new or duplicated profile gets a random o
 people's "my gravel" cannot overwrite each other or a shipped profile. Exports are named
 after the profile's name instead.
 
-Format 2 files, saved profiles and track snapshots still load: they convert on read.
-A format-2 slug becomes a fixed name-based UUID (`profileUuid` in
-`src/routing/profiles.ts`), so a track saved on `gravel_50` still matches shipped Gravel.
-The conversion is deterministic but lossy in one place: `roughness` and `technicality`
-merge into `surface_difficulty` at whichever was stated more strongly.
+Only `format_version: 3` loads. There is no conversion from format 2: `parseProfile`
+rejects any other version outright, and `loadModels` discards a saved profile it cannot
+parse rather than guessing what it meant.
 
 > Profiles written for the old format (`version: 1`, a `bike` key, `attraction` /
 > `capabilities` / `access` / `costs` groups) cannot be converted. Their meaning lived in

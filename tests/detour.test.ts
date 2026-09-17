@@ -4,7 +4,13 @@ import { eligible } from "../src/routing/eligibility";
 import { compileProfile } from "../src/routing/compile";
 import { LEVELS } from "../src/routing/vocabulary";
 import type { Point } from "../src/routing/types";
-import { GRAVEL, PROFILES, voironsGraph, withPreferences } from "./helpers";
+import {
+  GRAVEL,
+  PROFILES,
+  SHIPPED,
+  voironsGraph,
+  withPreferences,
+} from "./helpers";
 
 const graph = voironsGraph();
 
@@ -132,7 +138,9 @@ describe("detour actually detours", () => {
 
 describe("no preference may make a route impossible", () => {
   it("routes every shipped profile between every pair", () => {
-    for (const profile of PROFILES)
+    // The shipped set, not the varied fixture set: the guarantee is about what a rider
+    // can actually pick, and the default profile was in neither list before.
+    for (const profile of [...SHIPPED, ...PROFILES])
       for (const [i, anchors] of pairs.entries()) {
         const r = route(graph, { profile, anchors }, "reference");
         expect(r.status, `${profile.id} / pair ${i}`).toBe("ok");
@@ -161,7 +169,7 @@ describe("no preference may make a route impossible", () => {
       (e) => (e.bridge || e.tunnel) && e.grades === null,
     );
     expect(structures.length).toBeGreaterThan(0);
-    for (const profile of PROFILES)
+    for (const profile of [...SHIPPED, ...PROFILES])
       expect(
         structures.every((e) => eligible(e, profile)),
         profile.id,
