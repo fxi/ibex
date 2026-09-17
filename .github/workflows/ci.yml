@@ -1,20 +1,54 @@
 name: Checks
-on: [push, pull_request]
+# Pushes to main run these checks through deploy.yml, which gates the deploy on them.
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: uv run ruff check scripts
       - run: uv run python -m unittest discover -s scripts -p 'test_*.py'
       - run: npm run build:test
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(npx playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium webkit
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
       - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

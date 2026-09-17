@@ -1,0 +1,53 @@
+name: Data
+# Manage published routing data (docs/data-format.md). Building and uploading a release
+# stays local (it needs the ~8 GB pipeline); this promotes, prunes and verifies.
+#
+# Secrets: S3_ENDPOINT, S3_KEY, S3_SECRET, S3_BUCKET
+# Variables: S3_PREFIX (optional), S3_PUBLIC_URL, VITE_DATA_URL, APP_ORIGIN
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [verify, promote, prune]
+        default: verify
+      release:
+        description: Release id to promote (e.g. 20260914-a3540b2d)
+        required: false
+      keep:
+        description: Releases to keep when pruning (the current one is always kept)
+        default: "3"
+  schedule:
+    # Weekly check that the public data still verifies (hashes, cache, CORS, Range).
+    - cron: "17 5 * * 1"
+permissions:
+  contents: read
+concurrency:
+  group: data
+  cancel-in-progress: false
+jobs:
+  data:
+    if: vars.VITE_DATA_URL != ''
+    runs-on: ubuntu-latest
+    env:
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_KEY: ${{ secrets.S3_KEY }}
+      S3_SECRET: ${{ secrets.S3_SECRET }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_PREFIX: ${{ vars.S3_PREFIX }}
+      S3_PUBLIC_URL: ${{ vars.S3_PUBLIC_URL }}
+      APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Promote
+        if: inputs.action == 'promote'
+        run: uv run scripts/publish_release.py --promote-id "${{ inputs.release }}"
+      - name: Prune
+        if: inputs.action == 'prune'
+        run: uv run scripts/publish_release.py --prune "${{ inputs.keep }}"
+      - name: Verify
+        run: uv run scripts/verify_public_release.py "${{ vars.VITE_DATA_URL }}" ${{ github.event_name == 'schedule' && '--cells 4' || '' }}

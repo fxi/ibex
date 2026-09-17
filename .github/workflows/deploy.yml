@@ -1,0 +1,60 @@
+name: Deploy app
+# Builds the app and publishes it to GitHub Pages, served at /<repository name>/.
+# Routing data is not part of the app: it is published separately (see data.yml).
+#
+# Configure once (scripts/gh-setup.sh does it from .env):
+#   secret   VITE_MAPTILER_API_KEY
+#   variable VITE_DATA_URL       required; the deploy is skipped until it is set, so forks
+#                                without data do not fail
+#   variable VITE_HEATMAP_URL    optional
+# and enable Pages with source "GitHub Actions".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  build:
+    needs: checks
+    if: vars.VITE_DATA_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_MAPTILER_API_KEY: ${{ secrets.VITE_MAPTILER_API_KEY }}
+          VITE_DATA_URL: ${{ vars.VITE_DATA_URL }}
+          VITE_HEATMAP_URL: ${{ vars.VITE_HEATMAP_URL }}
+      - name: Refuse a bundle that carries data
+        run: |
+          size=$(du -sm dist | cut -f1)
+          echo "dist is ${size} MB"
+          test "$size" -lt 20
+          test -z "$(find dist -name '*.ibx' -print -quit)"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
