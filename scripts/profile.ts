@@ -11,7 +11,13 @@ export const loadProfile = async (id: string): Promise<Profile> => {
   return parseProfile(JSON.parse(await fs.readFile(path, "utf8")));
 };
 
-export const SHIPPED_IDS = ["gravel_50", "trail_60", "road_28"];
+/** Kept in step with `profiles/*.profile.json`; tests/profiles.test.ts holds that set. */
+export const SHIPPED_IDS = [
+  "gravel_50",
+  "gravel_50_bikepacking",
+  "trail_60",
+  "road_28",
+];
 
 export const PROFILE_IDS = [
   ...SHIPPED_IDS,

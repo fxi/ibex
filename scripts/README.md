@@ -27,6 +27,7 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `download_map_style.py` | Save the MapTiler style as `src/map/custom-style.json` |
 | Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local release's merged packs |
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
+| | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_coudry.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
 | Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests) |
