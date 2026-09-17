@@ -10,7 +10,7 @@ below is for whoever wants to build their own.
 | Road | `road_28` | Calm, sealed roads only. No gravel. |
 
 `tests/rideIntent.test.ts` holds each of them to that sentence. Other profiles used by
-tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`, `bikepacking_45`)
+tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`)
 live in `tests/fixtures/profiles/` and do not ship.
 
 Normal routing runs one search per leg. The corridor comparison and scenic-destination

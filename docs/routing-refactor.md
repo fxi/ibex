@@ -125,6 +125,3 @@ extrapolated to continental single-leg routing. Published regional packs are unc
 
 Scenic data remains a proxy: mapped passes and viewpoints do not establish an
 unobstructed view, and altitude alone is not rewarded.
-
-`tests/bikepacking.test.ts` predates this work. Four of its assertions ask for roughness
-and pushing heuristics the engine does not implement, and still fail.
