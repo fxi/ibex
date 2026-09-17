@@ -56,8 +56,14 @@ What a bump does:
   `--data-version <N> --prune <keep> --yes`.
 
 The release id is `<yyyymmdd>-<hash>`, where the hash covers `DATA_VERSION`, the cost model
-version, the preprocessor version and every cell's source digest. Changing any of them
-produces a new id, so an existing release is never overwritten.
+version, the preprocessor version, and every cell's source digest and terrain provenance
+(source and coverage). Changing any of them produces a new id, so an existing release is
+never overwritten — including by a rebuild whose DEM tiles failed, which carries different
+grades from the same OSM input.
+
+Packaging refuses a build that is missing any cell of its window, comparing what it finds
+against the `window.json` that `build_cells.py` writes beside the cells. A deliberate subset
+is packaged with `--partial`, which is never a release.
 
 Profiles (`format_version`) and the saved track collection (`version`) are versioned
 separately, because they live in the user's browser rather than in the data tree.

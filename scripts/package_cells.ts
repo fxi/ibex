@@ -16,6 +16,7 @@ import { encodeIndex } from "../src/offline/ibex/index";
 import { crc32 } from "../src/offline/ibex/varint";
 import { releaseTag, type BlockRef } from "../src/offline/ibex/spec";
 import { DATA_VERSION } from "../src/offline/version";
+import { DEFAULT_RELEASE_ROOT } from "./local_release";
 import {
   COST_MODEL_VERSION,
   type Edge,
@@ -23,8 +24,12 @@ import {
   type Node,
 } from "../src/routing/types";
 
-const input = process.argv[2] ?? "data/build/geneva-toulon-v7/cells";
-const output = process.argv[3] ?? "data/build/geneva-toulon-v7/packs";
+const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith("--")));
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const input = positional[0] ?? `${DEFAULT_RELEASE_ROOT}/cells`;
+const output = positional[1] ?? `${DEFAULT_RELEASE_ROOT}/packs`;
+/** Package what is there, for a deliberate subset build. Never for a release. */
+const partial = flags.has("--partial");
 const BLOCK_ZOOM = 13;
 const FIELD_ZOOM = 15;
 const CELL_BYTE_LIMIT = 50_000_000;
@@ -44,13 +49,22 @@ if (!entries.length) throw new Error(`No built cells under ${input}`);
 
 // Manifests only: a cell's graph.json is hundreds of megabytes, so they are read and
 // released one at a time below rather than all held at once.
+// A release is the whole window or it is nothing. A cell that was skipped still produces a
+// well-formed catalogue with its own valid release id, which then publishes — and verifies —
+// as if it were complete, leaving holes a rider only finds when a route fails.
+const expected: string[] | undefined = await fs
+  .readFile(`${input}/window.json`, "utf8")
+  .then((text) => JSON.parse(text).cellIds as string[])
+  .catch(() => undefined);
+const incomplete: string[] = [];
+
 const cells: CellBuild[] = [];
 for (const id of entries) {
   const manifestPath = `${input}/${id}/manifest.json`;
   try {
     await fs.access(manifestPath);
   } catch {
-    console.warn(`skipping ${id}: no manifest, build incomplete`);
+    incomplete.push(id);
     continue;
   }
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
@@ -61,6 +75,21 @@ for (const id of entries) {
   cells.push({ id, manifest });
 }
 
+const missing = expected
+  ? expected.filter((id) => !cells.some((cell) => cell.id === id))
+  : [];
+const gaps = [...new Set([...incomplete, ...missing])].sort();
+if (gaps.length && !partial)
+  throw new Error(
+    `Build is incomplete: ${gaps.length} cell(s) missing a manifest — ${gaps.join(" ")}. ` +
+      `Finish the build (scripts/build_cells.py), or pass --partial for a deliberate subset.`,
+  );
+if (gaps.length) console.warn(`--partial: packaging without ${gaps.join(" ")}`);
+if (!expected && !partial)
+  console.warn(
+    `No window.json in ${input}: packaging ${cells.length} cells as found, completeness unverified.`,
+  );
+
 // Repack older builds honestly: adding cached signals does not retroactively extract
 // the mountain-pass sources introduced by preprocessor 7.
 const preprocessors = new Set(cells.map((cell) => cell.manifest.source?.preprocessorVersion));
@@ -70,10 +99,14 @@ const preprocessorVersion = [...preprocessors][0];
 
 // One generation id for the whole release. Packs from different generations cannot route
 // together, and the id is derived so it changes whenever the inputs do.
+// Terrain rides in the digest as well as OSM: a build whose DEM tiles partly failed carries
+// different grades, and without this it would claim the same id — and the same permanently
+// cached S3 prefix — as a later, complete rebuild of the same OSM input.
 const sources = cells
   .map(
     (c) =>
-      `${c.id}:${c.manifest.source?.osmSha256 ?? ""}:${c.manifest.osmTimestamp}`,
+      `${c.id}:${c.manifest.source?.osmSha256 ?? ""}:${c.manifest.osmTimestamp}` +
+      `:${c.manifest.terrainSource ?? "none"}:${c.manifest.terrainCoverage ?? 0}`,
   )
   .sort()
   .join("|");

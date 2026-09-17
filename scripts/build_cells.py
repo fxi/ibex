@@ -14,7 +14,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from grid import cell_id
-from region_config import GRID_ZOOM, WINDOW, parse_window, release_cells
+from region_config import (
+    GRID_ZOOM,
+    RELEASE_ROOT,
+    WINDOW,
+    parse_window,
+    release_cells,
+)
 
 
 def build_one(job):
@@ -65,7 +71,7 @@ def build_one(job):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--extracts", default="data/pbf/cells")
-    parser.add_argument("--output", default="data/build/cells")
+    parser.add_argument("--output", default=f"{RELEASE_ROOT}/cells")
     parser.add_argument("--window", default=None)
     parser.add_argument("--jobs", type=int, default=3)
     parser.add_argument("--split-nodes", default="data/derived/split-nodes.bin")
@@ -87,6 +93,11 @@ def main():
             "split ways inconsistently and their edge ids will not match"
         )
     ids = [cell_id(zoom, x, y) for x, y in release_cells(window, zoom)]
+    # The window travels with the build so packaging can tell a complete release from a
+    # partial one. `--only` builds a subset of it; it does not redefine it.
+    (output_root / "window.json").write_text(
+        json.dumps({"zoom": zoom, "window": list(window), "cellIds": ids}, indent=2) + "\n"
+    )
     if args.only:
         wanted = set(args.only)
         ids = [i for i in ids if i in wanted]
