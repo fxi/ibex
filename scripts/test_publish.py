@@ -6,9 +6,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from data_version import DATA_VERSION, data_version
 from publish_release import collect, pointer, release_root
 
 FIXTURE = Path(__file__).resolve().parent.parent / "tests/fixtures/data/v1"
+
+
+class DataVersionSource(unittest.TestCase):
+    """The Python side must not keep its own copy: a stale one prunes the live tree."""
+
+    def test_reads_the_typescript_declaration(self):
+        self.assertIsInstance(DATA_VERSION, int)
+        self.assertGreaterEqual(DATA_VERSION, 1)
+        self.assertEqual(DATA_VERSION, data_version())
+
+    def test_matches_what_the_fixture_release_was_built_with(self):
+        pointer_file = json.loads((FIXTURE / "latest.json").read_text())
+        self.assertEqual(pointer_file["dataVersion"], DATA_VERSION)
 
 
 class PublishLayout(unittest.TestCase):

@@ -47,10 +47,13 @@ What a bump does:
   until they update, so the old tree stays until those clients have moved on.
 - On start-up, the app removes installed cells whose manifest fails `cellManifestSchema`,
   which includes any other data version, and tells the user to download again.
-- Checklist: bump `DATA_VERSION`, update `DATA_VERSION` in
-  `scripts/verify_public_release.py`, regenerate the fixtures
-  (`scripts/create_cell_fixture.ts`, `scripts/gen_grid_fixture.ts`), repackage, publish
-  and promote under the new directory.
+- Checklist: bump `DATA_VERSION` in `src/offline/version.ts` — the only place it is
+  written; the Python scripts read it through `scripts/data_version.py` — regenerate the
+  fixtures (`scripts/create_cell_fixture.ts`, `scripts/gen_grid_fixture.ts`), repackage,
+  publish and promote under the new directory.
+- The old tree is not touched by a later `--prune`, because `--data-version` defaults to
+  the current value. Deleting `v<N>/` once its clients are gone takes an explicit
+  `--data-version <N> --prune <keep> --yes`.
 
 The release id is `<yyyymmdd>-<hash>`, where the hash covers `DATA_VERSION`, the cost model
 version, the preprocessor version and every cell's source digest. Changing any of them

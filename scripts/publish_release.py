@@ -14,7 +14,12 @@ with the same size: a release directory never changes, so a rerun only fills gap
     uv run scripts/publish_release.py --release <packs dir> --publish   # upload
     uv run scripts/publish_release.py --release <packs dir> --publish --promote
     uv run scripts/publish_release.py --promote-id <release>            # repoint only
-    uv run scripts/publish_release.py --prune 3                         # keep 3 newest
+    uv run scripts/publish_release.py --prune 3                         # list what would go
+    uv run scripts/publish_release.py --prune 3 --yes                   # keep 3 newest
+
+`--data-version` defaults to the current `DATA_VERSION`, read from `src/offline/version.ts`.
+An older tree is only ever touched by naming its version explicitly, so a bump cannot turn
+a prune into the deletion of the data deployed clients are still reading.
 """
 
 import argparse
@@ -25,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from data_version import DATA_VERSION
 from dotenv import load_dotenv
 
 IMMUTABLE = "public, max-age=31536000, immutable"
@@ -75,11 +81,12 @@ def collect(directory: Path):
             raise ValueError(f"Cell {cell['id']} version disagrees with the catalogue")
         for file in manifest["files"]:
             path = manifest_path.parent / file["path"]
+            with path.open("rb") as handle:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
             if (
                 path.parent != manifest_path.parent
                 or path.stat().st_size != file["bytes"]
-                or hashlib.file_digest(path.open("rb"), "sha256").hexdigest()
-                != file["sha256"]
+                or digest != file["sha256"]
             ):
                 raise ValueError(f"Integrity check failed: {path}")
             uploads.append(
@@ -123,14 +130,24 @@ def main():
         "--promote-id", help="Point latest.json at an already uploaded release id"
     )
     parser.add_argument(
-        "--data-version", type=int, default=1, help="With --promote-id or --prune"
+        "--data-version",
+        type=int,
+        default=DATA_VERSION,
+        help="With --promote-id or --prune (default: the current DATA_VERSION)",
     )
     parser.add_argument("--prune", type=int, metavar="KEEP", help="Delete older releases")
+    parser.add_argument(
+        "--yes", action="store_true", help="Carry out --prune instead of listing it"
+    )
     parser.add_argument("--inspect", action="store_true")
     parser.add_argument("--create-bucket", action="store_true")
     parser.add_argument("--configure-cors", action="store_true")
     args = parser.parse_args()
-    load_dotenv(Path(".env"))
+    # This workspace's .env wins over an ambient value, as it does for the MapTiler key in
+    # vite.config.ts: a stray exported S3_BUCKET from another project would otherwise send
+    # a few hundred MB of public objects to the wrong bucket. CI has no .env, so nothing
+    # here overrides what the workflow puts in the environment.
+    load_dotenv(Path(".env"), override=True)
     prefix = os.getenv("S3_PREFIX", "")
 
     catalogue, uploads = None, []
@@ -152,6 +169,12 @@ def main():
         data_version = args.data_version
     if args.promote and not catalogue:
         parser.error("--promote needs --release (or use --promote-id)")
+    # An empty value used to fall through as "nothing to promote" and exit 0, so a
+    # dispatched promotion with a blank release id reported success and moved nothing.
+    if args.promote_id is not None and not args.promote_id.strip():
+        parser.error("--promote-id needs a release id")
+    if args.prune is not None and args.prune < 1:
+        parser.error("--prune must keep at least one release")
     if args.publish and not catalogue:
         parser.error("--publish needs --release")
     remote = (
@@ -177,6 +200,8 @@ def main():
     bucket = os.environ["S3_BUCKET"]
     root = data_root(prefix, data_version)
     public = (os.getenv("S3_PUBLIC_URL") or "").rstrip("/")
+    # Say where this is pointed before anything is written, not only under --inspect.
+    print(f"{urlparse(os.environ['S3_ENDPOINT']).hostname} bucket={bucket} root={root}")
 
     if args.inspect:
         print(
@@ -250,25 +275,35 @@ def main():
             print(f"VITE_DATA_URL={public}/{root.rsplit('/', 1)[0]}")
 
     if args.prune is not None:
-        if args.prune < 1:
-            parser.error("--prune must keep at least one release")
         current = None
         if exists(client, bucket, f"{root}/latest.json"):
             body = client.get_object(Bucket=bucket, Key=f"{root}/latest.json")["Body"]
             current = json.loads(body.read())["release"]
         known = releases(client, bucket, root)
         keep = set(known[-args.prune :]) | ({current} if current else set())
-        for release in known:
-            if release in keep:
+        doomed = [release for release in known if release not in keep]
+        # Deleting a published release is irreversible and the objects are public, so the
+        # whole plan is printed — which data root, which ids, how many objects — and
+        # nothing goes until --yes says so.
+        print(f"Prune plan for {root}: keep {sorted(keep)}")
+        paginator = client.get_paginator("list_objects_v2")
+        for release in doomed:
+            pages = list(
+                paginator.paginate(Bucket=bucket, Prefix=f"{root}/releases/{release}/")
+            )
+            objects = [{"Key": o["Key"]} for page in pages for o in page.get("Contents", [])]
+            if not args.yes:
+                print(f"Would prune {release}: {len(objects)} objects.")
                 continue
-            paginator = client.get_paginator("list_objects_v2")
-            for page in paginator.paginate(
-                Bucket=bucket, Prefix=f"{root}/releases/{release}/"
-            ):
-                objects = [{"Key": o["Key"]} for o in page.get("Contents", [])]
-                if objects:
-                    client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
-            print(f"Pruned {release}.")
+            for start in range(0, len(objects), 1000):
+                client.delete_objects(
+                    Bucket=bucket, Delete={"Objects": objects[start : start + 1000]}
+                )
+            print(f"Pruned {release}: {len(objects)} objects.")
+        if not doomed:
+            print("Nothing to prune.")
+        elif not args.yes:
+            print("Dry run. Pass --yes to delete.")
 
 
 if __name__ == "__main__":

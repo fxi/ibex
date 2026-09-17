@@ -18,7 +18,8 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `fetch_attribution.py`, `fetch_water.py` | Terrain attribution, water layer |
 | | `region_config.py` | **lib**: window, halo, zooms, extract list — the only place a bbox is defined |
 | | `grid.py`, `osm_source.py`, `profile_features.py`, `terrain_profile.py`, `profile.ts` | **lib** helpers for the builder and audits |
-| Publish | `publish_release.py` | Verify a packs dir; `--publish`, `--promote`, `--promote-id`, `--prune`, `--create-bucket` on S3 ([data-format.md](../docs/data-format.md)) |
+| Publish | `publish_release.py` | Verify a packs dir; `--publish`, `--promote`, `--promote-id`, `--prune` (lists unless `--yes`), `--create-bucket` on S3 ([data-format.md](../docs/data-format.md)) |
+| | `data_version.py` | **lib**: reads `DATA_VERSION` from `src/offline/version.ts` so Python keeps no copy |
 | | `verify_release.ts` | Decode every block of a local release and route Marseille→Toulon |
 | | `verify_public_release.py` | Verify published data from its root URL: pointer, hashes, cache headers, CORS, Range |
 | | `stage_release.ts` | `npm run data:stage`: link a local release under `data/publish/` for the dev server |

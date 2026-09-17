@@ -17,9 +17,8 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
+from data_version import DATA_VERSION
 from dotenv import load_dotenv
-
-DATA_VERSION = 1
 
 
 def main():
@@ -27,6 +26,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("url", help="Data root or its v<N>/latest.json")
     parser.add_argument("--cells", type=int, default=0, help="Verify only the first N")
+    parser.add_argument(
+        "--expect-release",
+        help="Fail unless the pointer names this release (use after promoting)",
+    )
     parser.add_argument(
         "--origin",
         default=os.getenv("APP_ORIGIN") or "https://fxi.io",
@@ -60,6 +63,12 @@ def main():
         pointer = response.json()
         if pointer["dataVersion"] != DATA_VERSION:
             raise ValueError(f"Pointer is for data version {pointer['dataVersion']}")
+        # Verifying whatever the pointer happens to name would pass just as well after a
+        # promotion that moved nothing, which is the failure this guards.
+        if args.expect_release and pointer["release"] != args.expect_release:
+            raise ValueError(
+                f"Pointer names {pointer['release']}, expected {args.expect_release}"
+            )
         catalogue_url = urljoin(latest, pointer["catalogue"])
         response = get(client, catalogue_url)
         if not immutable(response):
