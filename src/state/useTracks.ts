@@ -165,9 +165,12 @@ export function useTracks({
       .then(() => {
         if (revision === saveRevision.current) setSaving(false);
       })
-      .catch(() =>
-        onError("Tracks could not be saved. Check available browser storage."),
-      );
+      .catch(() => {
+        // Leaving `saving` set would keep the beforeunload prompt armed for the rest of
+        // the session: every navigation asks "Leave site?" because of one failed write.
+        if (revision === saveRevision.current) setSaving(false);
+        onError("Tracks could not be saved. Check available browser storage.");
+      });
   }, [collection]);
 
   useEffect(() => {
