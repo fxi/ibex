@@ -46,7 +46,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
   // identical profiles built in a different field order still count as the same model.
   const sameModel = (p: Profile) =>
     !!active && serializeProfile(p) === serializeProfile(active.profile);
-  const useModel = (p: Profile) => edit({ profile: modelSnapshot(p) });
+  const applyModel = (p: Profile) => edit({ profile: modelSnapshot(p) });
 
   const shipped = shippedProfiles();
   const isShipped = (p: Profile) => shipped.some((q) => q.id === p.id);
@@ -85,7 +85,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       ];
       await saveModels(next);
       reloadModels();
-      useModel(parsed);
+      applyModel(parsed);
       setEditing(undefined);
       setJson(undefined);
       setNotice(`Saved ${parsed.name}.`);
@@ -138,7 +138,7 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
               className="model-row"
               aria-pressed={sameModel(p)}
               disabled={!!editing}
-              onClick={() => useModel(p)}
+              onClick={() => applyModel(p)}
               title={p.description}
             >
               {isShipped(p) ? <Bike /> : <Mountain />}
