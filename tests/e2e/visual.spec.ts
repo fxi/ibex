@@ -28,7 +28,7 @@ test("missing local key makes no MapTiler requests and keeps routing usable", as
     await route.fulfill({
       response,
       body: (await response.text()).replaceAll(
-        "cyclatractor-browser-test-key",
+        "ibex-browser-test-key",
         "",
       ),
     });

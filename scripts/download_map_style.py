@@ -16,7 +16,7 @@ url = "https://api.maptiler.com/maps/01984598-44d5-70a4-b028-6ce2d6f3027a/style.
 response = httpx.get(
     url,
     params={"key": key},
-    headers={"Referer": "http://localhost:5173/cyclatractor/"},
+    headers={"Referer": "http://localhost:5173/ibex/"},
     timeout=60,
 )
 if response.status_code != 200:

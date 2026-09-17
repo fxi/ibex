@@ -66,7 +66,7 @@ test("dragging the handle resizes the panel and the size is remembered", async (
       page.evaluate(
         () =>
           new Promise<number | undefined>((resolve) => {
-            const open = indexedDB.open("cyclatractor-v1");
+            const open = indexedDB.open("ibex");
             open.onerror = () => resolve(undefined);
             open.onsuccess = () => {
               const get = open.result

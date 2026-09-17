@@ -42,13 +42,13 @@ http
     }
     try {
       const url = new URL(req.url, "http://127.0.0.1:4173");
-      if (!url.pathname.startsWith("/cyclatractor/")) {
+      if (!url.pathname.startsWith("/ibex/")) {
         res.writeHead(404);
         res.end();
         return;
       }
       const relative =
-        decodeURIComponent(url.pathname.slice("/cyclatractor/".length)) ||
+        decodeURIComponent(url.pathname.slice("/ibex/".length)) ||
         "index.html";
       const file = path.resolve(root, relative);
       if (!file.startsWith(root + path.sep)) {

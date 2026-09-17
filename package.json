@@ -1,9 +1,14 @@
 {
-  "name": "cyclatractor",
+  "name": "ibex",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -12,7 +17,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "benchmark": "tsx scripts/benchmark.ts",
-    "build:test": "node --import tsx scripts/build_browser_tests.ts"
+    "build:test": "node --import tsx scripts/build_browser_tests.ts",
+    "data:stage": "node --import tsx scripts/stage_release.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

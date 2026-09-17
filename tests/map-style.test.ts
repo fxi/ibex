@@ -88,7 +88,7 @@ it("opens the OSM editor at a map point, never below an editable zoom", () => {
   );
 });
 it("reads only the specified local dotenv file without expansion or ambient fallback", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cyclatractor-env-"));
+  const dir = mkdtempSync(join(tmpdir(), "ibex-env-"));
   directories.push(dir);
   const file = pathToFileURL(join(dir, ".env"));
   const previous = process.env.VITE_MAPTILER_API_KEY;

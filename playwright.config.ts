@@ -4,7 +4,7 @@ export default defineConfig({
   timeout: 180000,
   workers: 1,
   use: {
-    baseURL: "http://127.0.0.1:4173/cyclatractor/",
+    baseURL: "http://127.0.0.1:4173/ibex/",
     trace: "retain-on-failure",
   },
   projects: [
@@ -13,7 +13,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "node scripts/test-server.mjs",
-    url: "http://127.0.0.1:4173/cyclatractor/",
+    url: "http://127.0.0.1:4173/ibex/",
     reuseExistingServer: false,
     timeout: 30000,
   },

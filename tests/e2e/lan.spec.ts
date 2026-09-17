@@ -9,7 +9,7 @@ test("installs and routes on insecure LAN HTTP without StorageManager or Web Cry
   test.skip(!address, "No LAN interface available");
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`http://${address}:4173/cyclatractor/`);
+  await page.goto(`http://${address}:4173/ibex/`);
   expect(await page.evaluate(() => isSecureContext)).toBe(false);
   expect(await page.evaluate(() => typeof navigator.storage)).toBe("undefined");
   await saveMapData(page);
