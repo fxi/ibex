@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+from cost_model_version import COST_MODEL_VERSION
 from grid import cell_bbox, cell_id, mercator_x, mercator_y, tile_of
 from PIL import Image
 from prepare_tracks import BBOX, distance
@@ -291,7 +292,20 @@ def read_source(source):
     )
 
 
-def build(source, output, terrain=True, cell=None, split_nodes=None):
+# A cell whose DEM tiles partly failed carries no grades on the affected edges, which reads
+# as flat ground where there is a climb. Recording that in the manifest was not enough: the
+# build has to refuse it, because nothing downstream looks.
+MIN_TERRAIN_COVERAGE = 0.98
+
+
+def build(
+    source,
+    output,
+    terrain=True,
+    cell=None,
+    split_nodes=None,
+    min_terrain_coverage=MIN_TERRAIN_COVERAGE,
+):
     elements, osm_timestamp, source_layers = read_source(source)
     print(f"Preparing profile features for {len(elements)} OSM elements", flush=True)
     ferries = ferry_ways(elements, distance)
@@ -410,7 +424,11 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
     for way in roads:
         tags = way["tags"]
         sequence = way["nodes"]
+        # One unresolved node discards the whole way, including the parts that are located.
+        # Rare with complete_ways extracts, which is exactly why it is counted: if it ever
+        # stops being rare, nothing else here would say so.
         if any(node not in positions for node in sequence):
+            counts["waysMissingPositions"] += 1
             continue
         offsets, profile = way_profile(sequence, positions, elevations, tags.get("incline"))
         # A structure is never sampled along its length, only across it, and the rise is
@@ -843,19 +861,29 @@ def build(source, output, terrain=True, cell=None, split_nodes=None):
     version = hashlib.sha256("".join(f["sha256"] for f in files).encode()).hexdigest()[
         :16
     ]
+    coverage = round(
+        sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3
+    )
+    # Before the manifest, which is the sentinel build_cells.py resumes on: a cell that
+    # fails here leaves no manifest and is rebuilt, rather than being packaged as sound.
+    if terrain and coverage < min_terrain_coverage:
+        raise SystemExit(
+            f"Terrain coverage {coverage} is below {min_terrain_coverage}: DEM tiles were "
+            f"unavailable for part of this cell. Rebuild once they fetch, or pass "
+            f"--min-terrain-coverage to accept the gap deliberately."
+        )
+    name = cell_id(*cell) if cell else "region"
     manifest = {
         "schemaVersion": 1,
-        "id": "geneva",
-        "name": "Geneva basin",
+        "id": name,
+        "name": name,
         "version": version,
-        "bbox": BBOX,
+        "bbox": graph_bbox,
         "osmTimestamp": osm_timestamp,
-        "costModelVersion": 4,
+        "costModelVersion": COST_MODEL_VERSION,
         "source": {"osmSha256": hashlib.sha256(source.read_bytes()).hexdigest(), "osmFile": source.name, "preprocessorVersion": PREPROCESSOR_VERSION, "layers": source_layers},
         "terrainSource": f"Mapterhorn Terrarium z{TERRAIN_ZOOM}" if terrain else None,
-        "terrainCoverage": round(
-            sum(e["grades"] is not None for e in edges) / max(1, len(edges)), 3
-        ),
+        "terrainCoverage": coverage,
         "attribution": "© OpenStreetMap contributors · ODbL 1.0 | Terrain: Mapterhorn (see source attribution)",
         "files": files,
         "build": {
@@ -877,6 +905,12 @@ if __name__ == "__main__":
     parser.add_argument("--input", required=True, help="Cell extract (.osm.pbf)")
     parser.add_argument("--output", required=True, help="Cell build directory")
     parser.add_argument("--no-terrain", action="store_true")
+    parser.add_argument(
+        "--min-terrain-coverage",
+        type=float,
+        default=MIN_TERRAIN_COVERAGE,
+        help="Fail the build below this share of edges carrying grades",
+    )
     parser.add_argument(
         "--split-nodes",
         default=None,
@@ -909,4 +943,11 @@ if __name__ == "__main__":
 
         split_nodes = load(args.split_nodes)
         print(f"Loaded {len(split_nodes):,} release-wide split nodes", flush=True)
-    build(source, Path(args.output), not args.no_terrain, cell, split_nodes)
+    build(
+        source,
+        Path(args.output),
+        not args.no_terrain,
+        cell,
+        split_nodes,
+        args.min_terrain_coverage,
+    )
