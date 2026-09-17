@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { serializeProfile } from "../routing/profiles";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import {
   Route,
@@ -7,17 +6,12 @@ import {
   MoreHorizontal,
   Eye,
   EyeOff,
-  RefreshCw,
   Trash2,
-  Download,
-  Undo2,
-  Redo2,
+  SquarePen,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
-import { SURFACE_STYLE, rideTotals } from "../map/rideStyle";
-import { SurfaceSample } from "./SurfaceSample";
 import { download, exportGPX } from "../gpx";
-import { modelSnapshot, type Track } from "../tracks";
+import type { Track } from "../tracks";
 import type { PanelContext } from "./context";
 
 export function exportTrack(t: Track) {
@@ -29,25 +23,18 @@ export function exportTrack(t: Track) {
     );
 }
 
+/**
+ * The tracks there are, and which one is active.
+ *
+ * Identity only: a card names a track, colours it and says where it stands. Everything that
+ * changes the route — its profile, its waypoints, computing it, undoing an edit — lives in
+ * the Edit tab, which the pencil on each card opens. Keeping the two apart lets the list
+ * stay a list however many tracks it holds, and makes "the map is editable" mean one tab.
+ */
 export function TracksPanel({ ctx }: { ctx: PanelContext }) {
-  const { tracks, routing, fit, models, canCompute } = ctx;
-  const { collection, active, updateTrack, edit, select, add, duplicate } =
-    tracks;
+  const { tracks, fit, setTab } = ctx;
+  const { collection, active, updateTrack, select, add, duplicate } = tracks;
   const [confirming, setConfirming] = useState<string>();
-
-  const stale = active?.result && active.resultRevision !== active.revision;
-  /**
-   * Which listed model a track is on, matched by value rather than by name.
-   *
-   * Compared through the canonical serializer: with no inheritance a profile is just its
-   * fields, and two identical profiles built in a different key order are the same model.
-   */
-  const same = (track: Track, id: string) => {
-    const model = models.find((m) => m.id === id);
-    return (
-      !!model && serializeProfile(track.profile) === serializeProfile(model)
-    );
-  };
 
   return (
     <>
@@ -110,6 +97,17 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                           : "Ready"}
                     </small>
                   </span>
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`Edit ${t.name}`}
+                  title="Edit"
+                  onClick={() => {
+                    select(t.id);
+                    setTab("edit");
+                  }}
+                >
+                  <SquarePen size={18} />
                 </button>
                 <Menu.Root>
                   <Menu.Trigger
@@ -176,72 +174,6 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
 
               {open && (
                 <div className="track-body">
-                  {t.kind === "imported" ? (
-                    <p className="hint">
-                      An imported track is kept exactly as recorded. Duplicate
-                      it to plan a new route along the same way.
-                    </p>
-                  ) : (
-                    // One choice and one action: which kind of ride, and go.
-                    <div className="track-profile">
-                      <select
-                        aria-label="Profile"
-                        value={models.find((m) => same(t, m.id))?.id ?? ""}
-                        onChange={(e) => {
-                          const chosen = models.find(
-                            (m) => m.id === e.target.value,
-                          );
-                          if (chosen) edit({ profile: modelSnapshot(chosen) });
-                        }}
-                      >
-                        {/* An edited model matches nothing in the list until it is saved. */}
-                        <option value="">{t.profile.name} (custom)</option>
-                        {models.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="icon-button primary"
-                        aria-label="Reprocess waypoints"
-                        title={
-                          routing.busy ? "Computing…" : "Reprocess waypoints"
-                        }
-                        aria-busy={routing.busy}
-                        disabled={!canCompute}
-                        onClick={routing.compute}
-                      >
-                        <RefreshCw
-                          size={18}
-                          className={routing.busy ? "spin" : ""}
-                        />
-                      </button>
-                    </div>
-                  )}
-                  {t.result && (
-                    <dl className="track-stats">
-                      <div>
-                        <dt>Distance</dt>
-                        <dd>{(t.result.distanceM / 1000).toFixed(1)} km</dd>
-                      </div>
-                      <div>
-                        <dt>Elevation gain</dt>
-                        <dd>
-                          {t.result.ascentM === null
-                            ? "—"
-                            : `${Math.round(t.result.ascentM)} m`}
-                        </dd>
-                      </div>
-                    </dl>
-                  )}
-                  {/* The run is started here now, so its outcome is reported here too. */}
-                  {!routing.busy && ctx.status && (
-                    <p className="hint" role="status">
-                      {ctx.status}
-                    </p>
-                  )}
-
                   <div className="track-name">
                     <input
                       type="color"
@@ -265,114 +197,6 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                       }
                     />
                   </div>
-
-                  {t.kind === "planned" && !t.anchors.length && (
-                    <p className="hint">Tap the map to add waypoints.</p>
-                  )}
-
-                  {/* The coordinates are for fixing a stray point, not for reading: the map
-                      is where waypoints are edited, so the list stays folded away. */}
-                  {t.kind === "planned" && t.anchors.length > 0 && (
-                    <details className="waypoints">
-                      <summary>{`Waypoints · ${t.anchors.length}`}</summary>
-                      <p className="hint">
-                        Tap the map to add waypoints. Drag markers to move them;
-                        long-press or right-click one to insert or remove.
-                      </p>
-                      {t.anchors.map((p, i) => (
-                        <div className="waypoint" key={i}>
-                          <b>{i + 1}</b>
-                          <span>
-                            {p[1].toFixed(4)}, {p[0].toFixed(4)}
-                          </span>
-                          <button
-                            aria-label={`Remove waypoint ${i + 1}`}
-                            onClick={() =>
-                              edit({
-                                anchors: t.anchors.filter((_, j) => j !== i),
-                              })
-                            }
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <button onClick={() => edit({ anchors: [] })}>
-                        Reset waypoints
-                      </button>
-                    </details>
-                  )}
-
-                  {t.result && (
-                    <div className="result">
-                      <Elevation route={t.result} />
-                      <RideLegend
-                        segments={t.result.segments ?? []}
-                        color={t.color}
-                      />
-                      {stale && (
-                        <p>
-                          Waypoints or profile changed. Reprocess to update this
-                          route.
-                        </p>
-                      )}
-                      <p>
-                        {t.result.hikeABikeM > 0 &&
-                          `${(t.result.hikeABikeM / 1000).toFixed(2)} km hike-a-bike. `}
-                        {t.result.ferryM > 0 &&
-                          `${(t.result.ferryM / 1000).toFixed(2)} km by ferry; check service times. `}
-                        {Math.round(
-                          (100 * t.result.uncertainM) /
-                            Math.max(1, t.result.distanceM),
-                        )}
-                        % with uncertain map attributes.
-                      </p>
-                    </div>
-                  )}
-
-                  {(t.result || t.kind === "planned") && (
-                    <div className="track-actions">
-                      {t.result && (
-                        <button
-                          className="icon-button"
-                          aria-label="Export your route"
-                          title="Export GPX"
-                          disabled={!!stale}
-                          onClick={() => exportTrack(t)}
-                        >
-                          <Download size={18} />
-                        </button>
-                      )}
-                      {/* Map edits add pinch waypoints and are easy to overdo, so each step
-                          can be taken back, route and all. */}
-                      {t.kind === "planned" && (
-                        <div
-                          className="button-group"
-                          role="group"
-                          aria-label="Edit history"
-                        >
-                          <button
-                            className="icon-button"
-                            aria-label="Undo"
-                            title="Undo (Ctrl+Z)"
-                            disabled={!tracks.canUndo}
-                            onClick={() => tracks.undo()}
-                          >
-                            <Undo2 size={18} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            aria-label="Redo"
-                            title="Redo (Ctrl+Shift+Z)"
-                            disabled={!tracks.canRedo}
-                            onClick={() => tracks.redo()}
-                          >
-                            <Redo2 size={18} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </article>
@@ -380,32 +204,5 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
         })}
       </div>
     </>
-  );
-}
-
-/**
- * What the route is made of, in the same colours the map draws. Only classes actually
- * present are listed, so a plain tarmac ride does not carry a legend it does not need.
- */
-function RideLegend({
-  segments,
-  color,
-}: {
-  segments: import("../routing/types").RouteSegment[];
-  color: string;
-}) {
-  const totals = rideTotals(segments);
-  const present = SURFACE_STYLE.filter((s) => (totals.get(s.ride) ?? 0) > 0);
-  if (present.length < 2) return null;
-  return (
-    <ul className="ride-legend">
-      {present.map((s) => (
-        <li key={s.ride}>
-          <SurfaceSample ride={s.ride} color={color} width={26} />
-          {s.label}
-          <b>{((totals.get(s.ride) ?? 0) / 1000).toFixed(1)} km</b>
-        </li>
-      ))}
-    </ul>
   );
 }

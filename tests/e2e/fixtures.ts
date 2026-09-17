@@ -38,8 +38,9 @@ export const ARVE: [number, number][] = [
 ];
 
 /**
- * Start a track on the Tracks tab and place the Arve waypoints, as map clicks, then fit
- * the map to them. Expects a fresh page with no track yet.
+ * Start a track and place the Arve waypoints as map clicks on the Edit tab — the only tab
+ * where the map takes edits — then fit the map to them. Leaves the page on the Edit tab,
+ * where computing, exporting and undo live. Expects a fresh page with no track yet.
  */
 export async function planArve(page: Page) {
   const card = page.locator(".track-card.open");
@@ -68,12 +69,14 @@ export async function planArve(page: Page) {
     await page.reload();
     await page.getByRole("tab", { name: "Tracks", exact: true }).click();
     await expect(card).toContainText(`${ARVE.length} waypoints`);
+    await page.getByRole("tab", { name: "Edit", exact: true }).click();
     return;
   }
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page
     .getByRole("button", { name: "No track, add one to start" })
     .click();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   // One click per render: the map handler appends to the anchors it last saw.
   for (const [i, [lng, lat]] of ARVE.entries()) {
     await page.locator(".map").evaluate(
@@ -87,10 +90,14 @@ export async function planArve(page: Page) {
       },
       [lng, lat],
     );
-    await expect(card).toContainText(`${i + 1} waypoints`);
+    await expect(
+      page.getByRole("heading", { name: `Waypoints · ${i + 1}` }),
+    ).toBeVisible();
   }
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await card.getByRole("button", { name: /^Actions for / }).click();
   await page.getByRole("menuitem", { name: "Fit to map" }).click();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
 }
 
 /** Resolves once the track collection has been written, so a reload keeps it. */

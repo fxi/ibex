@@ -31,15 +31,18 @@ test("imports a GPX file as a reference track that exports again", async ({
   await expect(card).toContainText("Imported");
   await expect(card).toContainText("Reference");
 
-  // A reference track is never routed, so it offers no routing controls.
+  // It draws on the map.
+  await expect(card.locator(".sparkline")).toBeVisible();
+
+  // A reference track is never routed, so its Edit tab offers no routing controls.
+  await card.getByRole("button", { name: "Edit Sunday loop" }).click();
+  await expect(page.getByText(/kept exactly as recorded/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Reprocess waypoints" }),
   ).toHaveCount(0);
   await expect(page.locator(".waypoint")).toHaveCount(0);
-  await expect(page.getByText(/kept exactly as recorded/)).toBeVisible();
 
-  // It draws on the map and exports back out under its own name.
-  await expect(card.locator(".sparkline")).toBeVisible();
+  // It exports back out under its own name.
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
   expect((await download).suggestedFilename()).toBe("Sunday-loop.gpx");

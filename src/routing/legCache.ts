@@ -23,7 +23,7 @@ import {
 } from "./types";
 
 /** Bump when leg routing changes in a way the key cannot see. */
-const LEG_FORMAT = 2;
+const LEG_FORMAT = 3;
 
 /** Installed data a leg can read: the release and the version of every cell under its area. */
 export function legData(

@@ -109,7 +109,7 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   await expect(page.getByText(/Search:.*states explored/)).toBeVisible({
     timeout: 90000,
   });
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
@@ -118,7 +118,7 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible({ timeout: 90000 });

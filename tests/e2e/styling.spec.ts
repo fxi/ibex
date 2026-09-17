@@ -38,11 +38,95 @@ test("a computed route is drawn as its rideability classes", async ({
     timeout: 90000,
   });
 
-  // The fixture mixes paved and gravel, so the legend appears and names both.
-  const legend = page.locator(".ride-legend");
-  await expect(legend).toBeVisible();
-  await expect(legend).toContainText("Paved");
-  await expect(legend).toContainText("Gravel");
+  // The fixture mixes paved and gravel, so the composition names both. What the route is
+  // made of is read in the Edit tab, next to the controls that shaped it.
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
+  const composition = page.locator(".composition-legend");
+  await expect(composition).toBeVisible();
+  await expect(composition).toContainText("Paved");
+  await expect(composition).toContainText("Gravel");
+  await expect(composition).toContainText("%");
+  await expect(page.locator(".composition-bar")).toBeVisible();
+
+  // One signal at a time under the curve, and the caption says which one, so the prose and
+  // the picture cannot drift apart.
+  const switcher = page.locator(".lane-switcher");
+  const caption = page.locator(".stats .elevation figcaption");
+  await expect(switcher.getByRole("button")).toHaveCount(3);
+  await expect(caption).toContainText("Surface:");
+  const steep = switcher.getByRole("button", { name: "Steep", exact: true });
+  await steep.click();
+  await expect(steep).toHaveAttribute("aria-pressed", "true");
+  await expect(caption).toContainText("Steep:");
+
+  // Traffic stress reaches the chart only because the engine now stores it per segment.
+  const traffic = switcher.getByRole("button", { name: "Traffic", exact: true });
+  await traffic.click();
+  await expect(traffic).toHaveAttribute("aria-pressed", "true");
+  await expect(steep).toHaveAttribute("aria-pressed", "false");
+  await expect(caption).toContainText("Traffic:");
+
+  // The waypoint list moved here from the card: numbered like the markers, each with its
+  // distance along the route and a way to drop it.
+  const rows = page.locator(".stats .waypoint");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("km");
+  await expect(
+    page.getByRole("button", { name: "Remove waypoint 2", exact: true }),
+  ).toBeVisible();
+
+  // Waypoints and warnings are marked along the top of the detailed profile, and nowhere
+  // near the card's sparkline.
+  expect(await page.locator(".stats .elevation .pin-head").count()).toBeGreaterThan(0);
+
+  // Pointing at a row puts exactly one mark on the map. The dot is a circle layer rather
+  // than a DOM marker, so it pans and zooms with the map and nothing tracks a transform.
+  // Read through getStyle(), the public API this spec already uses for layers, rather than
+  // a source's private fields: an internal that happens to be undefined would make the
+  // "nothing marked yet" check pass for the wrong reason.
+  const cursorFeatures = () =>
+    page.evaluate(() => {
+      const source = (
+        document.querySelector(".map") as HTMLElement & {
+          _map?: {
+            getStyle: () => {
+              sources: Record<string, { data?: { features?: unknown[] } }>;
+            };
+          };
+        }
+      )?._map?.getStyle()?.sources?.cursor;
+      return source?.data?.features?.length ?? -1;
+    });
+  expect(await cursorFeatures()).toBe(0);
+  const locate = page.locator(".locate-button").first();
+  if (await locate.count()) {
+    await locate.click();
+    await expect.poll(cursorFeatures).toBe(1);
+  }
+
+  // A drag across the chart narrows to a stretch, where a press points at a place: the two
+  // share one overlay and are told apart by how far the pointer travelled.
+  const chart = page.locator(".stats .elevation svg");
+  // An earlier locate click may have scrolled the panel down to the waypoint list.
+  await chart.scrollIntoViewIfNeeded();
+  const chartBox = (await chart.boundingBox())!;
+  const midY = chartBox.y + chartBox.height / 2;
+  await page.mouse.move(chartBox.x + chartBox.width * 0.3, midY);
+  await page.mouse.down();
+  await page.mouse.move(chartBox.x + chartBox.width * 0.75, midY, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  const controls = page.locator(".range-controls");
+  await expect(controls).toContainText("Showing");
+  await controls.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(controls).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  // The card's sparkline is the same component without the detail prop: no switcher, so
+  // the exclusion is structural rather than something a stylesheet could undo.
+  await expect(page.locator(".sparkline")).toBeVisible();
+  await expect(page.locator(".sparkline .lane-switcher")).toHaveCount(0);
 
   const features = await routeFeatures(page);
   expect(features.length).toBeGreaterThan(1);

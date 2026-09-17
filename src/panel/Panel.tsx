@@ -7,17 +7,20 @@ import {
   Settings,
   RefreshCw,
   ChevronDown,
+  SquarePen,
 } from "lucide-react";
 import { TracksPanel } from "./TracksPanel";
 import { DataPanel } from "./DataPanel";
 import { ToolsPanel } from "./ToolsPanel";
 import { ConfigurePanel } from "./ConfigurePanel";
 import { SymbologyPanel } from "./SymbologyPanel";
+import { EditPanel } from "./EditPanel";
 import type { PanelContext } from "./context";
 import type { PanelHeight } from "../state/usePanelHeight";
 
 const tabs = [
   ["tracks", "Tracks", Route],
+  ["edit", "Edit", SquarePen],
   ["data", "Data", Layers],
   ["tools", "Tools", Wrench],
   ["symbology", "Legend", Palette],
@@ -107,6 +110,9 @@ export function Panel({
           )}
           <Tabs.Content value="tracks">
             <TracksPanel ctx={ctx} />
+          </Tabs.Content>
+          <Tabs.Content value="edit">
+            <EditPanel ctx={ctx} />
           </Tabs.Content>
           <Tabs.Content value="data">
             <DataPanel ctx={ctx} />

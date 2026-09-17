@@ -13,7 +13,14 @@ test("panel geometry is stable across tabs and survives collapsing", async ({
   const start = await boxOf(page);
 
   // The whole point of the explicit height: content no longer moves the panel.
-  for (const name of ["Data", "Tools", "Legend", "Configure", "Tracks"]) {
+  for (const name of [
+    "Edit",
+    "Data",
+    "Tools",
+    "Legend",
+    "Configure",
+    "Tracks",
+  ]) {
     await page.getByRole("tab", { name, exact: true }).click();
     const box = await boxOf(page);
     expect(Math.round(box.height)).toBe(Math.round(start.height));

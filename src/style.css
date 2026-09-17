@@ -599,7 +599,7 @@ main,
   gap: 4px;
   border: 0;
   background: transparent;
-  /* Five tabs have to fit a narrow phone, so they share the width instead of each
+  /* Six tabs have to fit a narrow phone, so they share the width instead of each
      claiming a fixed minimum and overflowing. */
   flex: 1 1 0;
   min-width: 0;
@@ -1024,29 +1024,6 @@ progress {
 .elevation figcaption span {
   display: block;
 }
-.ride-legend {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 0;
-  padding: 0;
-  font-size: 12px;
-}
-.ride-legend li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.ride-legend b {
-  color: var(--muted);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.ride-legend .symbology-sample {
-  height: 12px;
-  flex-shrink: 0;
-}
 
 /* ---------- Data ---------- */
 .connection-row {
@@ -1458,6 +1435,226 @@ button.link {
   font-size: 12px;
   margin: 2px 0 0;
   line-height: 1.45;
+}
+
+/* ---------- Stats tab ---------- */
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.stats-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.stats h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A press on the chart points at a place, a drag across it narrows to a stretch. */
+.elevation.interactive svg {
+  cursor: crosshair;
+  /* The drag is the gesture, so the page must not read it as a scroll instead. */
+  touch-action: none;
+}
+.elevation .brush-highlight {
+  fill: var(--accent);
+  fill-opacity: 0.14;
+}
+.range-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.range-controls span {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.range-controls button {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* Marks along the top of the profile. Decorative: the warning and waypoint rows are the
+   reachable way to the same places, so these carry no pointer target of their own. */
+.elevation .pin-stem {
+  stroke: var(--faint);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+.elevation .pin-head {
+  fill: var(--muted);
+}
+.elevation .pin-head.pin-warning {
+  fill: #ff7043;
+}
+
+/* One signal at a time under the curve; the pressed button says which. */
+.lane-switcher {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+}
+.lane-switcher button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lane-switcher button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--border-strong);
+}
+
+/* One bar for the glance, the list underneath for the numbers. */
+.composition-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--field);
+}
+.composition-bar i {
+  /* Widths are shares of the route and can be tiny; never let one collapse to nothing. */
+  min-width: 2px;
+}
+.composition-legend {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 12px;
+}
+.composition-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.composition-legend .symbology-hatch {
+  flex-shrink: 0;
+}
+.composition-legend span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composition-legend b {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.locate-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex-shrink: 0;
+  border-color: transparent;
+  background: none;
+  color: var(--faint);
+}
+.locate-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.route-warnings ul,
+.route-waypoints ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.route-warnings li {
+  display: grid;
+  /* Pill, place, locate button on one line; the detail runs underneath all three. */
+  grid-template-columns: auto 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  font-size: 12px;
+}
+/* Yellow through red is reserved for how hard or how busy a stretch is; the three rungs are
+   the rider's own capability thresholds, not a house scale. */
+.severity {
+  justify-self: start;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #1a1206;
+  background: #e8c35a;
+}
+.severity.hard {
+  background: #ff7043;
+  color: #1a0d06;
+}
+.severity.severe {
+  background: #e0463a;
+  color: #fff;
+}
+.warning-where {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.warning-detail {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+.route-warnings details {
+  margin-top: 8px;
+}
+.route-warnings details ul {
+  margin-top: 8px;
+}
+
+/* Rows reuse the numbered `.waypoint` badge, so a row and its map marker read as one. */
+.route-waypoints .waypoint {
+  margin: 0;
+}
+.route-waypoints .waypoint span {
+  color: var(--text);
+}
+.route-waypoints .waypoint small {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* `.waypoint button` pads its remove button; the locate icon keeps its square box. */
+.waypoint .locate-button {
+  padding: 0;
+}
+.reset-waypoints {
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 12px;
 }
 
 /* ---------- Responsive ---------- */

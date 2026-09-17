@@ -22,6 +22,8 @@ test("a waypoint can be inserted between two others and renumbers the rest", asy
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
+  // The map only takes waypoints while the Edit tab is open.
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
 
   await tapMap(page, 0.12);
   await tapMap(page, 0.5);
@@ -45,6 +47,7 @@ test("a waypoint can be inserted between two others and renumbers the rest", asy
   ).toHaveAttribute("aria-label", "Waypoint 3");
   await expect(page.getByText(/insert waypoint/i)).toHaveCount(0);
 
+  // The Edit tab lists the same points, beside each one's distance and height.
   const panelWaypoints = page.locator(".waypoint");
   await expect(panelWaypoints).toHaveCount(3);
 });
@@ -55,6 +58,7 @@ test("a waypoint can be removed from its marker menu", async ({ page }) => {
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
   await expect(page.locator(".map")).toHaveAttribute("data-ready", "true");
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
 
   await tapMap(page, 0.12);
   await tapMap(page, 0.32);

@@ -51,6 +51,7 @@ const catalogueURL = absoluteURL(
 
 function App() {
   const [tab, setTab] = useState("tracks");
+  const [cursor, setCursor] = useState<Point>();
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [command, setCommand] = useState<MapCommand>();
@@ -181,6 +182,12 @@ function App() {
   const fit = (points: Point[]) => {
     if (points.length) setCommand({ id: Date.now(), kind: "fit", points });
   };
+  // The mark is state and the nudge is a one-shot instruction, so they are carried
+  // separately: a re-render must not clear the dot, and the camera must not re-ease.
+  const locate = (point?: Point) => {
+    setCursor(point);
+    if (point) setCommand({ id: Date.now(), kind: "locate", points: [point] });
+  };
   const moveCamera = (kind: "zoomIn" | "zoomOut" | "resetNorth") =>
     setCommand({ id: Date.now(), kind });
   const rotated = Math.abs(camera.bearing) > 0.5 || camera.pitch > 0.5;
@@ -198,6 +205,7 @@ function App() {
     canCompute,
     status,
     fit,
+    locate,
     setError,
     setStatus,
     setTab,
@@ -209,10 +217,14 @@ function App() {
     reloadModels,
   };
 
+  // Editing is a mode, and the Edit tab is that mode: only there does the map take waypoint
+  // taps, drags and marker menus, so browsing tracks or reading the legend cannot move one.
+  const editing = tab === "edit";
+
   return (
     <main>
       <MapView
-        editable={tab === "tracks"}
+        editable={editing}
         onInclude={(index, point, pinches) => {
           if (active?.kind !== "planned") return;
           reshape({ kind: "insert", index, position: index }, point, pinches);
@@ -234,12 +246,13 @@ function App() {
         onCell={(id) => data.toggleCell(id)}
         bottomInset={panel.open ? panel.height + 90 : 90}
         command={command}
+        cursor={cursor}
         onCamera={setCamera}
         onMenu={(index, x, y) => {
-          if (tab === "tracks") setMenu({ index, x, y });
+          if (editing) setMenu({ index, x, y });
         }}
         onPoint={(point) => {
-          if (tab !== "tracks" || !active) return;
+          if (!editing || !active) return;
           if (active.anchors.length >= LIMITS.anchorsMax) {
             setError(`A track supports up to ${LIMITS.anchorsMax} waypoints.`);
             return;

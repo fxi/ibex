@@ -301,7 +301,7 @@ test("Street View is offered anywhere on the map", async ({ page }) => {
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
   await expect(page.getByText(routeReady)).toBeVisible();
-  // Off the Tracks tab the include action is gone, so only Street View can appear.
+  // Off the Edit tab the include action is gone, so only Street View can appear.
   await page.getByRole("tab", { name: "Legend", exact: true }).click();
   const point = await page.locator(".map").evaluate(async (element) => {
     const map = (element as HTMLElement & { _map: any })._map;

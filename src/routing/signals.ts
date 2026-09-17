@@ -1,5 +1,11 @@
 import type { Edge, Point } from "./types";
-import { isFerry, isStreet, PAVED_SURFACES, SAC_LEVELS } from "./tagging";
+import {
+  isFerry,
+  isStreet,
+  PAVED_SURFACES,
+  SAC_LEVELS,
+  STREETS,
+} from "./tagging";
 
 /**
  * What a way is like under a wheel, read once from its tags.
@@ -50,6 +56,19 @@ const SURFACE_ROUGHNESS: Record<string, number> = {
   sand: 0.95,
   mud: 0.95,
 };
+
+/**
+ * How rough a stretch of finished route was, from its `surface` and road class alone.
+ *
+ * `edgeSignals` weighs `surface` against `smoothness` and `tracktype` and keeps the worst
+ * credible evidence, but a `RouteSegment` persists only `surface` and `highway`. So this is
+ * the surface reading on its own, with the same hierarchy fallback for an untagged way —
+ * enough to say how hard a stretch was to ride, which is what a warning needs, and
+ * deliberately not a second opinion on what the cost model already charged.
+ */
+export const surfaceRoughness = (surface: string, highway: string): number =>
+  SURFACE_ROUGHNESS[surface] ??
+  (STREETS.has(highway) ? 0.1 : highway === "track" ? 0.35 : 0.45);
 
 const SMOOTHNESS_ROUGHNESS: Record<string, number> = {
   excellent: 0.02,

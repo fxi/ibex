@@ -907,6 +907,9 @@ function appendSegments(
       highway: edge.highway,
       ...(sac === undefined ? {} : { sac }),
       grade: startRun.grade,
+      // Constant per edge, so segments split out of one edge share it. Two decimals because
+      // stress is a road-class proxy: more digits would be noise in every stored route.
+      stress: Math.round(effectiveStress(edge) * 100) / 100,
       lengthM,
     });
   };

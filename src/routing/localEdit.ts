@@ -31,7 +31,7 @@ const same = (a: Point, b: Point) =>
   Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
 
 /** The point at fractional `position` along `geometry`. */
-function pointAt(geometry: Point[], position: number): Point {
+export function pointAt(geometry: Point[], position: number): Point {
   const i = Math.max(0, Math.min(Math.floor(position), geometry.length - 2));
   const t = position - i;
   const a = geometry[i],

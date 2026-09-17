@@ -86,6 +86,41 @@ export const CENTER_COLOR = "#fffdf5";
 export const FALLBACK_COLOR = "#8fa3b8";
 
 /**
+ * Yellow through red: the half of the palette reserved for how hard or how busy a stretch
+ * is.
+ *
+ * The track colours in `src/tracks.ts` are deliberately all cool, so a warm tint anywhere
+ * on screen means difficulty and never identity. Hike-a-bike's existing orange is the
+ * third stop rather than a fifth warm hex, which makes the profile's cross-hatch and a
+ * fully-charged difficulty band the same colour by construction instead of by luck.
+ */
+export const WARM_RAMP = ["#e8c35a", "#f0a43c", "#ff7043", "#e0463a"] as const;
+
+const channel = (hex: string, at: number) =>
+  parseInt(hex.slice(at, at + 2), 16);
+
+/** Linear in sRGB. The stops are close enough together that a fancier space buys nothing. */
+const mix = (from: string, to: string, t: number) =>
+  `#${[1, 3, 5]
+    .map((i) =>
+      Math.round(channel(from, i) + (channel(to, i) - channel(from, i)) * t)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+
+/**
+ * A point on `WARM_RAMP`, from 0 (only just worth mentioning) to 1 (as bad as the scale
+ * goes). Clamped, so a signal that runs past its own ceiling simply saturates.
+ */
+export function warmColor(t: number): string {
+  const scaled = Math.max(0, Math.min(1, t)) * (WARM_RAMP.length - 1);
+  const low = Math.floor(scaled);
+  if (low >= WARM_RAMP.length - 1) return WARM_RAMP[WARM_RAMP.length - 1];
+  return mix(WARM_RAMP[low], WARM_RAMP[low + 1], scaled - low);
+}
+
+/**
  * The track's own colour, with a fallback so a feature missing the property cannot take
  * the whole layer down.
  */
@@ -185,17 +220,42 @@ export function surfaceBands(
   segments: RouteSegment[],
   distanceM: number,
 ): { ride: RideClass; startM: number; endM: number }[] {
+  const bands: { ride: RideClass; startM: number; endM: number }[] = [];
+  for (const { segment, startM, endM } of segmentSpans(segments, distanceM)) {
+    const last = bands[bands.length - 1];
+    if (last && last.ride === segment.ride) last.endM = endM;
+    else bands.push({ ride: segment.ride, startM, endM });
+  }
+  return bands;
+}
+
+export type Span = { startM: number; endM: number };
+export type SegmentSpan = Span & { segment: RouteSegment; index: number };
+
+/**
+ * Every segment's own stretch of the route, in metres — the one place vertex indices become
+ * distances.
+ *
+ * `RouteSegment` addresses `geometry` by vertex while `elevationProfile` is measured in
+ * metres, and the two disagree: segment lengths are summed from straight-line spans
+ * between vertices, which drifts from the router's own distance. Rescaling by
+ * `distanceM / Σ lengthM` lands the last segment exactly on `distanceM`, so anything drawn
+ * from segments lines up with the profile drawn from the other. Keeping that in one
+ * function means a band, a warning and a pin cannot each round it differently.
+ */
+export function segmentSpans(
+  segments: RouteSegment[],
+  distanceM: number,
+): SegmentSpan[] {
   const total = segments.reduce((sum, s) => sum + s.lengthM, 0);
   if (!total || !distanceM) return [];
   const scale = distanceM / total;
-  const bands: { ride: RideClass; startM: number; endM: number }[] = [];
+  const spans: SegmentSpan[] = [];
   let cursor = 0;
-  for (const s of segments) {
-    const end = cursor + s.lengthM * scale;
-    const last = bands[bands.length - 1];
-    if (last && last.ride === s.ride) last.endM = end;
-    else bands.push({ ride: s.ride, startM: cursor, endM: end });
-    cursor = end;
+  for (const [index, segment] of segments.entries()) {
+    const endM = cursor + segment.lengthM * scale;
+    spans.push({ segment, index, startM: cursor, endM });
+    cursor = endM;
   }
-  return bands;
+  return spans;
 }

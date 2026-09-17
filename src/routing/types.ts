@@ -109,8 +109,15 @@ export type RouteSegment = {
   highway: string;
   /** OSM `sac_scale`, when the way carries one. */
   sac?: string;
-  /** Fractional grade, positive uphill, or null where elevation is unknown. */
+  /**
+   * Fractional grade of this segment's *first* grade run, positive uphill, or null where
+   * elevation is unknown. Deliberately not length-weighted, which would hide a short steep
+   * ramp inside a long segment; read `RouteResult.elevationProfile` for the grade at a
+   * given distance.
+   */
   grade: number | null;
+  /** Traffic stress as ridden, 0..1, calmed where a cycle route is signed. */
+  stress: number;
   lengthM: number;
 };
 export type RouteStatus =

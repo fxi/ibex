@@ -13,7 +13,9 @@ test("independent tracks persist, require explicit computation, and export only 
   await saveMapData(page);
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
   await planArve(page);
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-state")).toHaveText("Needs computation");
+  await page.getByRole("button", { name: "Edit Track 1", exact: true }).click();
   await page
     .getByRole("button", { name: "Reprocess waypoints", exact: true })
     .click();
@@ -48,6 +50,8 @@ test("independent tracks persist, require explicit computation, and export only 
   await expect(
     page.getByRole("button", { name: "Select Track 1 copy", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  // Export sits with the route it exports, in the Edit tab.
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   const event = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
   const file = await event;

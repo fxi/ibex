@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { distance, route } from "../src/routing/engine";
+import { ENGINE } from "../src/routing/vocabulary";
 import { rideClass } from "../src/routing/eligibility";
 import type { Edge, Graph, Point, RouteResult } from "../src/routing/types";
 import type { Profile } from "../src/routing/profiles";
@@ -106,6 +107,25 @@ describe("route segments", () => {
       .filter((s) => s.ride === "walk")
       .reduce((sum, s) => sum + s.lengthM, 0);
     expect(walked).toBeCloseTo(result.hikeABikeM, 0);
+  });
+
+  it("carries the traffic stress it was ridden at", () => {
+    const result = run(chain({}, {}, {}));
+    expect(result.status).toBe("ok");
+    // The edge factory rides at 0.1, and a segment reports what it was ridden at rather
+    // than leaving the reader to look the edge up again.
+    expect(result.segments.every((s) => s.stress === 0.1)).toBe(true);
+  });
+
+  it("reports stress calmed where a cycle route is signed", () => {
+    const result = run(chain({}, { cyclingNetwork: 1 }, {}));
+    expect(result.status).toBe("ok");
+    // Signed route membership is what tells the calm departmental road from the lorry
+    // route beside it, so the stored value is stress *as ridden*, not the raw edge tag.
+    const calmed = Math.round(0.1 * ENGINE.network_calming * 100) / 100;
+    const values = new Set(result.segments.map((s) => s.stress));
+    expect(values).toContain(calmed);
+    expect(calmed).toBeLessThan(0.1);
   });
 
   it("marks a ferry crossing", () => {

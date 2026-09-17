@@ -18,6 +18,12 @@ export type PanelContext = {
   status: string;
   /** Moves the map to fit the given points. */
   fit: (points: Point[]) => void;
+  /**
+   * Marks one point on the map and brings it into view without changing the zoom, so
+   * pointing at a section of the route never costs the rider their overview. No argument
+   * clears the mark.
+   */
+  locate: (point?: Point) => void;
   setError: (message: string) => void;
   setStatus: (message: string) => void;
   setTab: (tab: string) => void;

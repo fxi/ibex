@@ -60,7 +60,7 @@ const STREET_CLASSES = new Set([
 /** One-shot imperative camera instruction. `id` makes repeats of the same action distinct. */
 export type MapCommand = {
   id: number;
-  kind: "fit" | "zoomIn" | "zoomOut" | "resetNorth";
+  kind: "fit" | "zoomIn" | "zoomOut" | "resetNorth" | "locate";
   points?: Point[];
 };
 const empty = { type: "FeatureCollection" as const, features: [] };
@@ -90,6 +90,7 @@ export function MapView({
   activeId,
   cells,
   command,
+  cursor,
   bottomInset,
   basemap,
 }: {
@@ -116,6 +117,11 @@ export function MapView({
   onCamera: (camera: { bearing: number; pitch: number }) => void;
   /** A grid cell was clicked while the Data tab is showing the grid. */
   onCell: (id: string) => void;
+  /**
+   * One point marked on the map, or nothing. State rather than a command, so a re-render
+   * cannot drop the mark the way a one-shot camera instruction would.
+   */
+  cursor?: Point;
 }) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<maplibregl.Map | undefined>(undefined),
@@ -680,6 +686,7 @@ export function MapView({
         "reference",
         "route",
         "edit-preview",
+        "cursor",
       ])
         m.addSource(id, { type: "geojson", data: empty });
       // Grid cells come from one source with data-driven paint, so a state change is a
@@ -841,6 +848,23 @@ export function MapView({
         filter: ["==", ["geometry-type"], "Point"],
         paint: {
           "circle-radius": 8,
+          "circle-color": ["get", "color"],
+          "circle-stroke-color": CENTER_COLOR,
+          "circle-stroke-width": 3,
+        },
+      });
+      // Last of all: pointing at a section from the Stats tab has to be visible on top of
+      // whatever it lands on. A circle layer rather than a DOM marker, so it pans and
+      // zooms with the map and nothing has to be kept in sync with a transform.
+      m.addLayer({
+        id: "cursor-dot",
+        type: "circle",
+        source: "cursor",
+        paint: {
+          "circle-radius": 7,
+          // The track's colour inside a white ring, like a pinch dot: the fallback colour
+          // is itself `CENTER_COLOR`, so filling with that would hide the dot in its own
+          // ring on a track that has no colour yet.
           "circle-color": ["get", "color"],
           "circle-stroke-color": CENTER_COLOR,
           "circle-stroke-width": 3,
@@ -1016,6 +1040,15 @@ export function MapView({
         pitch: 0,
         duration: instant ? 0 : 400,
       });
+    // Handled before the shared `points` path below, which treats a single point as a
+    // flyTo at zoom 13 — that is right for "fit one thing" and wrong here, where the
+    // rider is reading the route and would lose the overview they are reading it against.
+    if (command.kind === "locate") {
+      const target = command.points?.[0];
+      if (target && !m.getBounds().contains(target))
+        m.easeTo({ center: target, duration: instant ? 0 : 400 });
+      return;
+    }
     const points = command.points ?? [];
     if (!points.length) return;
     if (points.length === 1)
@@ -1045,6 +1078,35 @@ export function MapView({
       });
     }
   }, [command]);
+  // Fed separately from `update()`, which owns the route sources: the two change on
+  // different beats, and pointing at a section must not wait on a routing result. A
+  // basemap switch re-runs `style.load`, which re-adds every source empty, so the mark is
+  // cleared until the next locate — cheaper than keeping a second copy of it in sync.
+  // Held as a string so the effect re-runs when the colour actually changes. Depending on
+  // the tracks array instead would re-send the mark on every render, since the array is
+  // rebuilt each time.
+  const cursorColor =
+    tracks.find((t) => t.id === activeId)?.color ?? CENTER_COLOR;
+  useEffect(() => {
+    const source = map.current?.getSource("cursor") as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (!source) return;
+    source.setData(
+      cursor
+        ? {
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                properties: { color: cursorColor },
+                geometry: { type: "Point", coordinates: cursor },
+              },
+            ],
+          }
+        : empty,
+    );
+  }, [cursor, cursorColor]);
   return (
     <>
       <div ref={container} className="map" aria-label="Route map" />
