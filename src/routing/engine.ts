@@ -1,3 +1,6 @@
+import { buildHeuristic } from "./heuristic";
+import { buildAdjacency } from "./adjacency";
+import { compileRestrictions, restrictionAllows } from "./restrictions";
 import {
   buildField,
   cell,
@@ -217,52 +220,6 @@ export function ferryBoardingCost(
     ? ENGINE.ferry_boarding_meters
     : 0;
 }
-
-function restrictionAllows(
-  rules: Graph["restrictions"],
-  history: string[],
-  at: number,
-  next: Edge,
-  previous?: Edge,
-): boolean {
-  for (const rule of rules) {
-    if (rule.via !== undefined && rule.via !== at) continue;
-    // Via-way only restrictions constrain every departure in the sequence,
-    // not just the final turn. History retains progress across split edges.
-    if (rule.only && rule.via === undefined) {
-      for (let length = 1; length < rule.ways.length; length++) {
-        if (
-          history.length < length ||
-          !rule.ways
-            .slice(0, length)
-            .every((way, i) => history[history.length - length + i] === way)
-        )
-          continue;
-        if (next.way !== history.at(-1) && next.way !== rule.ways[length])
-          return false;
-      }
-      continue;
-    }
-    const prefix = rule.ways.slice(0, -1);
-    if (
-      history.length < prefix.length ||
-      !prefix.every((w, i) => history[history.length - prefix.length + i] === w)
-    )
-      continue;
-    if (rule.via === undefined && next.way === history.at(-1)) continue;
-    const matches =
-      next.way === rule.ways.at(-1) &&
-      (!(
-        rule.uTurn &&
-        rule.via !== undefined &&
-        rule.ways.length === 2 &&
-        rule.ways[0] === rule.ways[1]
-      ) ||
-        previous?.from === next.to);
-    if (rule.only ? !matches : matches) return false;
-  }
-  return true;
-}
 type SearchState = {
   node: number;
   history: string[];
@@ -402,18 +359,7 @@ export function route(
   }
   graph = snap.graph;
   result.anchors = snap.points;
-  const adjacency = new Map<number, Edge[]>();
-  for (const edge of graph.edges) {
-    const list = adjacency.get(edge.from) || [];
-    list.push(edge);
-    adjacency.set(edge.from, list);
-  }
-  const reverse = new Map<number, Edge[]>();
-  for (const edge of graph.edges) {
-    const origins = reverse.get(edge.to) ?? [];
-    origins.push(edge);
-    reverse.set(edge.to, origins);
-  }
+  const { adjacency, reverse } = buildAdjacency(graph.edges);
   // Distinct neighbours of a node, for `turnCost`: three or more is a real intersection.
   const degrees = new Map<number, number>();
   const degree = (node: number) => {
@@ -458,37 +404,10 @@ export function route(
         buildField(graph, { ...request, anchors: snap.points }))
       : undefined;
   if (f) result.corridor = f.paths.map((p) => p.map((id) => center(f, id)));
-  // Only restriction prefixes affect future legality. Remembering arbitrary
-  // previous roads multiplies equivalent search states across the entire region.
-  const restrictionPrefixes = new Set<string>();
-  let historyLength = 1;
-  for (const rule of graph.restrictions) {
-    for (let length = 1; length < rule.ways.length; length++)
-      restrictionPrefixes.add(JSON.stringify(rule.ways.slice(0, length)));
-    historyLength = Math.max(historyLength, rule.ways.length - 1);
-  }
-  const nextHistory = (previous: string[], way: string): string[] => {
-    if (previous.at(-1) === way) return previous;
-    const candidate = [...previous, way].slice(-historyLength);
-    for (let start = 0; start < candidate.length - 1; start++) {
-      const suffix = candidate.slice(start);
-      if (restrictionPrefixes.has(JSON.stringify(suffix))) return suffix;
-    }
-    return [way];
-  };
+  const { byWay: rulesByWay, nextHistory } = compileRestrictions(
+    graph.restrictions,
+  );
   const tiles = new Set<string>();
-  const rulesByWay = new Map<string, Graph["restrictions"]>();
-  for (const rule of graph.restrictions) {
-    const keys =
-      rule.only && rule.via === undefined
-        ? rule.ways.slice(0, -1)
-        : [rule.ways[rule.ways.length - 2]];
-    for (const key of new Set(keys)) {
-      const list = rulesByWay.get(key) ?? [];
-      list.push(rule);
-      rulesByWay.set(key, list);
-    }
-  }
   // The corridor used to be a fixed [2, 5, 12] ladder that only widened when the search
   // failed, never because a better line lay just outside it — a second, independent
   // reason routes came out direct. It now opens as wide as the rider asked to wander,
@@ -500,90 +419,16 @@ export function route(
       ? [fixedRadius]
       : [corridor, corridor * 2.5, Infinity]
     : [Infinity];
-  // A fixed projection gives a true Euclidean metric. Bound every graph edge against
-  // its endpoint chord, including rounded lengths, then apply the minimum cost rate.
-  // Unlike the corridor this cannot exclude a better route outside a guessed area.
-  const longitudeScale = Math.cos((snap.points[0][1] * Math.PI) / 180);
-  const positions = new Map(graph.nodes.map((node) => [node.id, node.p]));
-  const chord = (a: Point, b: Point) =>
-    ((6371000 * Math.PI) / 180) *
-    Math.hypot((a[0] - b[0]) * longitudeScale, a[1] - b[1]);
-  let lengthScale = 1;
-  if (request.search !== "dijkstra")
-    for (const edge of graph.edges) {
-      const from = positions.get(edge.from),
-        to = positions.get(edge.to);
-      if (!from || !to) {
-        lengthScale = 0;
-        break;
-      }
-      const d = chord(from, to);
-      const gradedLength =
-        edge.grades?.reduce((sum, [length]) => sum + length, 0) ?? edge.length;
-      if (d > 0)
-        lengthScale = Math.min(
-          lengthScale,
-          Math.min(edge.length, gradedLength) / d,
-        );
-    }
-  const floor =
-    Math.min(1, toCompiled(request.profile).detour.rate_floor) *
-    (request.attraction ? 0.35 : 1) *
-    lengthScale *
-    0.999999;
-  const remaining = new Float64Array(snap.nodes.length);
-  for (let i = snap.nodes.length - 2; i >= 0; i--)
-    remaining[i] =
-      remaining[i + 1] + chord(snap.points[i], snap.points[i + 1]) * floor;
-  const estimates = snap.nodes.map(() => new Map<number, number>());
-  // A relaxed node graph ignores turn restrictions and transition charges, so its
-  // distances are valid lower bounds for the richer search. Stop at the source; nodes
-  // not settled yet are at least as far away as the frontier. This is especially
-  // effective where a cheap geometric estimate cannot see a mountain or river barrier.
-  const potential = new Map<number, number>();
-  let frontier = 0;
-  if (
-    request.search !== "dijkstra" &&
-    snap.nodes.length === 2 &&
-    graph.edges.length > 10000
-  ) {
-    const pending = new Map<number, number>([[snap.nodes[1], 0]]);
-    const heap = new Heap<number>();
-    heap.push(0, snap.nodes[1]);
-    const limit = Math.min(
-      100000,
-      Math.floor((request.maxSettled ?? 1500000) / 4),
-    );
-    while (heap.size && potential.size < limit) {
-      const item = heap.pop()!;
-      if (item.key !== pending.get(item.value) || potential.has(item.value))
-        continue;
-      potential.set(item.value, item.key);
-      frontier = item.key;
-      if (item.value === snap.nodes[0]) break;
-      for (const edge of reverse.get(item.value) ?? []) {
-        const next = item.key + total(cost_(edge));
-        if (next < (pending.get(edge.from) ?? Infinity)) {
-          pending.set(edge.from, next);
-          heap.push(next, edge.from);
-        }
-      }
-    }
-    result.metrics.preparedStates = potential.size;
-  }
-  const estimate = (node: number, leg: number) => {
-    if (request.search === "dijkstra" || leg >= snap.nodes.length) return 0;
-    const cache = estimates[leg];
-    const hit = cache.get(node);
-    if (hit !== undefined) return hit;
-    const point = positions.get(node);
-    const geometric = point
-      ? chord(point, snap.points[leg]) * floor + remaining[leg]
-      : 0;
-    const h = Math.max(geometric, potential.get(node) ?? frontier);
-    cache.set(node, h);
-    return h;
-  };
+  const { estimate, scale: heuristicScale, preparedStates } = buildHeuristic(
+    graph,
+    snap,
+    request,
+    reverse,
+    cost_,
+  );
+  result.metrics.heuristicScale = +heuristicScale.toFixed(6);
+  if (preparedStates !== undefined)
+    result.metrics.preparedStates = preparedStates;
   for (const radius of radii) {
     const allowed =
       f && Number.isFinite(radius) ? corridorCells(f, radius) : undefined;
@@ -648,7 +493,13 @@ export function route(
           newCost =
             settledCost +
             total(cost_(edge)) +
-            // The state key carries the arrival node, so the previous edge is known.
+            // Turn and ferry-boarding charges need the edge arrived on. The state key
+            // carries that edge's *departure* node, not its identity, so two parallel
+            // edges between the same pair of nodes — a service road beside a street, a
+            // split carriageway — share one state and only the cheaper survives. A turn at
+            // such a junction can therefore be priced against the wrong one of the two.
+            // Deliberate: widening the key with the edge id multiplies the state space
+            // everywhere to fix a difference of a few metres at a handful of junctions.
             turnCost(state.edge, edge, turnProfile, degree(state.node)) +
             ferryBoardingCost(edge, state.edge, request.profile);
         if (newCost < (cost.get(nextKey) ?? Infinity)) {

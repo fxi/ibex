@@ -163,6 +163,13 @@ export type RouteResult = {
     explored: number;
     /** Relaxed node states used to prepare the search lower bound. */
     preparedStates?: number;
+    /**
+     * How strong the A* lower bound was, in [0, 1]. One odd edge — a length short against
+     * its endpoint chord — drops this towards 0 and degrades the search towards Dijkstra.
+     * It cannot be clamped without breaking admissibility, so it is reported instead: a
+     * route that suddenly costs 10x the time says so here.
+     */
+    heuristicScale?: number;
     expansions: number;
     tiles: number;
     loadedBytes: number;
