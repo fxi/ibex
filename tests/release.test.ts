@@ -226,9 +226,8 @@ describe.skipIf(!present)("generated release", () => {
     /**
      * The reported four-waypoint track, verbatim. It failed with "No route connects these
      * waypoints under this model" because the leg from Monnetier to the Prieuré crosses
-     * the Menoge on small road bridges, and every bridge is published without grades —
-     * which the eligibility check used to treat as impassable whenever the model set a
-     * grade limit. Mountain wanderer sets both, so it could not cross a bridge anywhere.
+     * the Menoge on small road bridges. Terrain grades below those decks made the
+     * structures unusable to a grade-limited model, so it could not cross a bridge.
      */
     it.skipIf(!hasCells)(
       "solves the reported Voirons track under a grade-limited model",

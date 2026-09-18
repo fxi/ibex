@@ -442,8 +442,8 @@ describe("capability replaces exclusion", () => {
   });
 
   it("never treats a missing grade as impassable", () => {
-    // Bridges and tunnels are left unsampled on purpose; three of them once stranded a
-    // whole massif from every profile that set a grade limit.
+    // Missing terrain must remain traversable. Structures normally encode an explicit
+    // flat grade, but older or partial data can still contain null.
     const bridge = edge({ grades: null, bridge: true });
     for (const p of PROFILES) expect(eligible(bridge, p), p.id).toBe(true);
   });

@@ -163,9 +163,9 @@ the line, and the segments are what make that choice inspectable.
   runtime from the merged graph, which is correct and seam-free because it is one field over
   one graph. Per-cell rasters remain an optimisation: they would avoid decoding blocks
   outside the corridor. The index reserves the section.
-- **`ascentM` is null on most routes.** `completeElevation` goes false if any non-ferry edge
-  lacks `grades`, and bridges/tunnels have none by design. Pre-existing on the pre-grid pack
-  too (terrain coverage 0.986); not introduced here.
+- **`ascentM` can be null on routes through terrain gaps.** `completeElevation` goes false
+  if any non-ferry edge lacks `grades`. Pre-existing on the pre-grid pack too (terrain
+  coverage 0.986); not introduced here.
 - **The route worker is recreated per computation**, so the provider's block cache does not
   survive. Making it persistent is what would make the LRU worth having.
 - **`readRange` on the IndexedDB backend reads the whole file** before slicing. OPFS is used

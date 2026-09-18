@@ -144,9 +144,7 @@ function segmentMode(
         ? exceedance(s.technicalDown, k.technical_down)
         : exceedance(climbingTechnical(s.technicalUp, grade, k), k.technical_up);
     // An unmeasured grade is a gap in the terrain data, never evidence that the way is
-    // impassable. Bridges and tunnels are deliberately left unsampled — the DEM reads the
-    // ground under a deck and the mountain over a bore — so treating a missing grade as
-    // unrideable deletes cut vertices. Treat it as flat and let cost decide.
+    // impassable. Treat it as flat and let cost decide.
     const slope =
       grade === null
         ? 0

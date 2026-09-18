@@ -2,7 +2,13 @@ import unittest
 
 from PIL import Image
 from prepare_tracks import distance
-from terrain_profile import bilinear_height, slice_profile, structure_grade, way_profile
+from terrain_profile import (
+    CLAMP,
+    bilinear_height,
+    slice_profile,
+    structure_grade,
+    way_profile,
+)
 
 
 class TerrainTests(unittest.TestCase):
@@ -40,25 +46,24 @@ class TerrainTests(unittest.TestCase):
         _,incline=way_profile([0,1],positions,{},'-15%')
         self.assertEqual(incline[0][2],-.15)
 
+    def test_sampled_terrain_outranks_a_mis_signed_incline(self):
+        # Chemin des Voirons drops 158 m in the way's node order, despite incline=20%.
+        positions={0:[6.3513801,46.2076049],1:[6.3486891,46.2117206]}
+        _,samples=way_profile([0,1],positions,{0:1380.5,1:1222.6},'20%')
+        self.assertTrue(all(g < 0 for _,_,g in samples))
+        rise=sum((b-a)*g for a,b,g in samples)
+        self.assertAlmostEqual(rise,-157.9,delta=8)
+
+    def test_incline_still_fills_a_terrain_hole(self):
+        positions={0:[6,46],1:[6.001,46]}
+        _,samples=way_profile([0,1],positions,{0:100},'12%')
+        self.assertEqual(samples,[(0.0,distance(positions[0],positions[1]),.12)])
+
 class StructureTests(unittest.TestCase):
-    def test_portal_rise_becomes_the_deck_grade(self):
-        # A 100 m viaduct climbing 8 m is an 8% deck, sampled across rather than along.
-        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:408},100),.08)
+    def test_untagged_structure_is_flat(self):
+        self.assertEqual(structure_grade(), 0)
+        self.assertEqual(structure_grade("unknown"), 0)
 
-    def test_short_deck_spreads_its_rise_over_the_smoothing_window(self):
-        # Nine metres of bridge between portals a metre apart is not a 1-in-9 wall; the
-        # rise belongs to the approach ramps, so it is damped the way every way is.
-        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:401},9),1/80)
-        self.assertLess(structure_grade([0,1],{0:400,1:403},5),.05)
-
-    def test_tagged_incline_outranks_the_terrain_model(self):
-        self.assertAlmostEqual(structure_grade([0,1],{0:400,1:408},100,'-6%'),-.06)
-
-    def test_unknown_portal_height_reports_no_grade(self):
-        self.assertIsNone(structure_grade([0,1],{0:400},100))
-        self.assertIsNone(structure_grade([0,1],{},100))
-        self.assertIsNone(structure_grade([0,1],{0:400,1:401},0))
-
-    def test_grade_stays_within_the_shared_clamp(self):
-        self.assertEqual(structure_grade([0,1],{0:0,1:1000},100),.45)
-        self.assertEqual(structure_grade([0,1],{0:1000,1:0},100),-.45)
+    def test_numeric_incline_describes_the_structure(self):
+        self.assertAlmostEqual(structure_grade("-6%"), -.06)
+        self.assertEqual(structure_grade("100%"), CLAMP)

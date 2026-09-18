@@ -646,12 +646,10 @@ def build(
             counts["waysMissingPositions"] += 1
             continue
         offsets, profile = way_profile(sequence, positions, elevations, tags.get("incline"))
-        # A structure is never sampled along its length, only across it, and the rise is
-        # taken between the way's own portals rather than a segment's ends: a bridge split
-        # at an intermediate junction has a mid-deck node whose DEM height is the ground
-        # under it. One grade therefore serves every segment of the way.
+        # A structure is never sampled from the DEM: it sees the valley below a bridge and
+        # the mountain above a tunnel. One tagged-or-flat grade serves every segment.
         structure = (
-            structure_grade(sequence, elevations, offsets[-1], tags.get("incline"))
+            structure_grade(tags.get("incline"))
             if tags.get("bridge", "no") != "no" or tags.get("tunnel", "no") != "no"
             else None
         )
@@ -694,7 +692,7 @@ def build(
                 )
             else:
                 grade_samples = slice_profile(profile, profile_start, profile_end)
-            # A structure's grade is inferred from its portals, not measured along it.
+            # A structure's grade is tagged or flat, never measured from terrain.
             estimated = grade_samples is None or bridge or tunnel
             highway = tags["highway"]
             stress = {

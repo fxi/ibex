@@ -34,23 +34,16 @@ def numeric_incline(incline):
     return max(-CLAMP, min(CLAMP, grade)) if math.isfinite(grade) else None
 
 
-def structure_grade(ids, elevations, length, incline=None):
+def structure_grade(incline=None):
     """One constant grade across a bridge or tunnel.
 
-    The DEM reads the ground under a deck and the mountain over a bore, so sampling along a
-    structure is meaningless — but its portals stand on real ground, so the rise between
-    them is the gradient a rider actually climbs. Spreading that rise over at least the
-    same 80 m window `way_profile` smooths with is what keeps it honest: the median
-    structure is 9 m long, and dividing a metre of DEM noise by 9 m invents a 1-in-9 wall.
-    Anything longer than the window keeps its own gradient, so a viaduct stays a viaduct.
+    A DEM sees the valley below a bridge and the mountain above a tunnel, including at
+    portals that fall inside the same coarse terrain pixel. Only an explicit numeric OSM
+    incline can describe the structure itself; without one, flat is the safe routing
+    model.
     """
     tagged = numeric_incline(incline)
-    if tagged is not None:
-        return tagged
-    if length < 0.1 or any(node not in elevations for node in (ids[0], ids[-1])):
-        return None
-    rise = elevations[ids[-1]] - elevations[ids[0]]
-    return max(-CLAMP, min(CLAMP, rise / max(length, WINDOW)))
+    return tagged if tagged is not None else 0.0
 
 
 def way_profile(ids, positions, elevations, incline=None):
@@ -60,12 +53,12 @@ def way_profile(ids, positions, elevations, incline=None):
     length = offsets[-1]
     if length < 0.1:
         return offsets, None
-    # Numeric OSM incline applies in the way's coordinate direction.
-    tagged = numeric_incline(incline)
-    if tagged is not None:
-        return offsets, [(0.0, length, tagged)]
+    # Numeric incline tags are often unsigned steepness in practice. Where the DEM can
+    # describe the road, prefer its direction and shape; keep the tag only as a fallback
+    # for missing terrain.
     if any(node not in elevations for node in ids):
-        return offsets, None
+        tagged = numeric_incline(incline)
+        return offsets, [(0.0, length, tagged)] if tagged is not None else None
 
     def height(at):
         index = min(len(ids)-2, max(0, bisect_right(offsets, at)-1))

@@ -200,10 +200,10 @@ destination unreachable.
 | Capability | A very steep loose climb | Cost rises steeply, and keeps rising. Never excluded |
 
 The old model made grade, MTB scale, SAC scale, smoothness, tracktype and surface into
-hard limits that deleted edges, so a preference could return `no-path`. Three unsampled
-road bridges once stranded the whole Voirons massif from every profile that set a grade
-limit. `tests/detour.test.ts` now asserts the opposite guarantee: every shipped profile,
-every detour level and every combination of permissions must find a route.
+hard limits that deleted edges, so a preference could return `no-path`. Three road bridges
+with unusable terrain grades once stranded the whole Voirons massif. Structures are now
+tagged or flat, and `tests/detour.test.ts` asserts the broader guarantee: every shipped
+profile, detour level and combination of permissions must find a route.
 
 ## How a way is priced
 
