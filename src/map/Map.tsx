@@ -1,5 +1,5 @@
-import { insertionIndex, nearestPosition, snapToLines } from "./routeEditing";
-import { MarkerLayer, type MarkerCallbacks } from "./markers";
+import { insertionIndex, nearestPosition } from "./routeEditing";
+import { LONG_PRESS_MS, MarkerLayer, type MarkerCallbacks } from "./markers";
 import {
   anchorVertices,
   pinchesAround,
@@ -12,21 +12,14 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import type { Comparison, Point, RouteResult } from "../routing/types";
-import {
-  mapResourceURL,
-  mapStyle,
-  osmEditURL,
-  streetViewURL,
-  type Basemap,
-} from "./style";
+import { mapResourceURL, mapStyle, type Basemap } from "./style";
 import { freshResult, type Track } from "../tracks";
 
 import type { MapCell } from "../offline/cells";
 import { CENTER_COLOR } from "./rideStyle";
 import { addAppLayers, empty, MIN_SELECT_ZOOM } from "./layers";
+import { createContextMenu } from "./contextMenu";
 import { syncSources } from "./sources";
-/** How far, in pixels, a right-click reaches to snap Street View onto a way. */
-const SNAP_PX = 16;
 /**
  * Screen distance between route handles. Laid out per whole zoom level, so handles hold
  * still while the map pans and only regroup when the zoom level changes.
@@ -37,19 +30,6 @@ const HANDLE_CLEAR_PX = 16;
 /** Handles drawn at most, for a route winding back and forth across the whole screen. */
 const MAX_HANDLES = 400;
 const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
-/** Basemap road classes a panorama can stand on: not rail, lifts or ferry lines. */
-const STREET_CLASSES = new Set([
-  "motorway",
-  "trunk",
-  "primary",
-  "secondary",
-  "tertiary",
-  "minor",
-  "service",
-  "track",
-  "path",
-  "busway",
-]);
 
 /** One-shot imperative camera instruction. `id` makes repeats of the same action distinct. */
 export type MapCommand = {
@@ -214,7 +194,6 @@ export function MapView({
     });
     let dragging = false;
     let handleGrab: RouteGrab = { kind: "insert", index: 1, position: 0 };
-    let contextPopup: maplibregl.Popup | undefined;
     // Handles are laid out for one route at one zoom level (see routing/localEdit), and
     // kept until either changes.
     let layout:
@@ -473,7 +452,7 @@ export function MapView({
     };
     const begin = (grab: RouteGrab) => {
       dragging = true;
-      contextPopup?.remove();
+      contextMenu.close();
       editing = { grab, pinches: pinchesFor(grab) };
       highlight(editing.pinches);
     };
@@ -507,88 +486,14 @@ export function MapView({
       onDrag: (_, p) => preview(p),
       onMove: (i, p) => handlers.current.onMove(i, p, finishEdit()?.pinches),
     };
-    // Street View and the OSM editor snap to a visible track first, then to a drawn road or
-    // trail, so a loose right-click still lands on the way. Satellite draws no roads; there, and away from
-    // any way, the click itself is used and Google picks the closest panorama.
-    const streetPoint = (point: maplibregl.Point): Point => {
-      const project = (p: Point): Point => {
-        const q = m.project(p);
-        return [q.x, q.y];
-      };
-      const at: Point = [point.x, point.y];
-      const tracks = snapshot.current.tracks
-        .filter((t) => t.visible && t.result?.status === "ok")
-        .map((t) => t.result!.geometry.map(project));
-      const roads = m
-        .queryRenderedFeatures([
-          [point.x - SNAP_PX, point.y - SNAP_PX],
-          [point.x + SNAP_PX, point.y + SNAP_PX],
-        ])
-        .filter(
-          (f) =>
-            f.sourceLayer === "trail" ||
-            (f.sourceLayer === "transportation" &&
-              STREET_CLASSES.has(f.properties.class)),
-        )
-        .flatMap((f): Point[][] =>
-          f.geometry.type === "LineString"
-            ? [f.geometry.coordinates as Point[]]
-            : f.geometry.type === "MultiLineString"
-              ? (f.geometry.coordinates as Point[][])
-              : [],
-        )
-        .map((line) => line.map(project));
-      const snapped =
-        snapToLines(tracks, at, SNAP_PX) ??
-        snapToLines(roads, at, SNAP_PX) ??
-        at;
-      const q = m.unproject(snapped);
-      return [q.lng, q.lat];
-    };
-    const openContextMenu = (point: maplibregl.Point) => {
-      const hit = locate(point);
-      const street = streetPoint(point);
-      handle.remove();
-      contextPopup?.remove();
-      const location = m.unproject(point);
-      const menu = document.createElement("div");
-      menu.className = "map-context-menu";
-      const action = (label: string, run: () => void, disabled = false) => {
-        const button = document.createElement("button");
-        button.textContent = label;
-        button.disabled = disabled;
-        button.addEventListener("click", (event) => {
-          event.stopPropagation();
-          contextPopup?.remove();
-          run();
-        });
-        menu.append(button);
-      };
-      // Including is a change to the route, where dragging a handle is an adjustment to it:
-      // one waypoint and no pinches, so the whole stretch from the previous waypoint to the
-      // next is routed again. Legs it does not touch are still reused.
-      if (hit)
-        action("Include in route", () =>
-          handlers.current.onInclude(hit.index, [location.lng, location.lat]),
-        );
-      action("Edit in OSM", () =>
-        window.open(
-          osmEditURL(street, m.getZoom()),
-          "_blank",
-          "noopener,noreferrer",
-        ),
-      );
-      action("Open in Street View", () =>
-        window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
-      );
-      contextPopup = new maplibregl.Popup({
-        closeButton: false,
-        className: "map-context-popup",
-      })
-        .setLngLat(location)
-        .setDOMContent(menu)
-        .addTo(m);
-    };
+    const contextMenu = createContextMenu({
+      map: m,
+      tracks: () => snapshot.current.tracks,
+      locate,
+      onInclude: (index, point) => handlers.current.onInclude(index, point),
+      beforeOpen: () => handle.remove(),
+    });
+    const openContextMenu = (point: maplibregl.Point) => contextMenu.open(point);
     m.on("contextmenu", (e) => {
       e.preventDefault();
       openContextMenu(e.point);
@@ -616,7 +521,9 @@ export function MapView({
         longPressed = true;
         suppressClickUntil = Date.now() + 1000;
         openContextMenu(e.point);
-      }, 500);
+        // Same gesture as a waypoint marker's long-press, but over maplibre's touch
+        // events rather than a DOM element, so only the duration is shared.
+      }, LONG_PRESS_MS);
     });
     m.on("touchmove", (e) => {
       if (e.points.length !== 1 || !pressPoint || e.point.dist(pressPoint) > 8)
@@ -664,7 +571,7 @@ export function MapView({
     });
     function update() {
       if (!dragging) handle.remove();
-      contextPopup?.remove();
+      contextMenu.close();
       syncHandles();
       syncSources(m, snapshot.current);
     }
@@ -674,7 +581,7 @@ export function MapView({
       cancelPress();
       handle.remove();
       handleMarkers.forEach(({ marker }) => marker.remove());
-      contextPopup?.remove();
+      contextMenu.close();
       window.removeEventListener("online", changeConnection);
       window.removeEventListener("offline", changeConnection);
       markers.current?.destroy();

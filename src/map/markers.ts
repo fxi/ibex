@@ -13,7 +13,7 @@ export type MarkerCallbacks = {
 };
 
 /** Milliseconds a press must be held before it counts as a long-press, not a tap. */
-const LONG_PRESS_MS = 500;
+export const LONG_PRESS_MS = 500;
 
 type Managed = {
   marker: maplibregl.Marker;
