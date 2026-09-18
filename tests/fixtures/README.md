@@ -34,7 +34,9 @@ their area, run by `tests/gold.test.ts`. Each `<name>.json` carries the line, ev
 waypoint it was drawn through, the few that express intent, the profile, and
 `min_shared`, the share of the line the router must ride from the intent alone. They are
 planned lines snapped to OSM vertices, not recorded rides. `<name>-graph.json.gz` is the
-public OSM/Mapterhorn graph within 1 km of the line, same attribution as above. Add one:
+public OSM/Mapterhorn graph within 2.5 km of the line, same attribution as above:
+narrower, it hid the alternatives the app weighs (`gold_route.ts audit <name> intent
+<packs>` checks the two agree). Add one:
 
     node --import tsx scripts/gold_route.ts import <drawn.gpx> <name> [profile] [intent]
     node --import tsx scripts/gen_graph_fixture.ts gold/<name>

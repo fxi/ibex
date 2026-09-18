@@ -40,19 +40,27 @@ const REGIONS: Record<string, Region> = {
   },
 };
 
-/** A kilometre either side of a gold line holds its alternatives: see `scripts/gold_route.ts`. */
-const GOLD_RADIUS_M = 1000;
+/**
+ * The corridor must hold every alternative the app would weigh, or the fixture hides the
+ * router's mistakes. At 1 km the Voirons tour scored 91.8% on its fixture and 63.2% in
+ * the app: the climb the router prefers, through Machilly, lies 1.5-2 km off the line.
+ * 2.5 km is where the fixture first agrees with the full packs; `gold_route.ts audit`
+ * with a packs directory checks that it still does.
+ */
+const GOLD_RADIUS_M = 2500;
 
 function goldRegion(path: string): Region {
   const line: Point[] = JSON.parse(readFileSync(path, "utf8")).line;
-  // 0.015 degrees is more than the corridor radius at these latitudes.
-  const pad = 0.015;
+  // Wide enough that the bbox never clips the corridor.
+  const lat = line[0][1];
+  const padLat = GOLD_RADIUS_M / 111_320;
+  const padLon = padLat / Math.cos((lat * Math.PI) / 180);
   return {
     bbox: [
-      Math.min(...line.map((p) => p[0])) - pad,
-      Math.min(...line.map((p) => p[1])) - pad,
-      Math.max(...line.map((p) => p[0])) + pad,
-      Math.max(...line.map((p) => p[1])) + pad,
+      Math.min(...line.map((p) => p[0])) - padLon,
+      Math.min(...line.map((p) => p[1])) - padLat,
+      Math.max(...line.map((p) => p[0])) + padLon,
+      Math.max(...line.map((p) => p[1])) + padLat,
     ],
     required: [],
     corridor: { line: path, radiusM: GOLD_RADIUS_M },
@@ -82,11 +90,13 @@ function corridorTest(corridor: Region["corridor"]): (p: Point) => boolean {
     const k = key(Math.floor(p[0] / cell), Math.floor(p[1] / cell));
     index.set(k, [...(index.get(k) ?? []), p]);
   }
+  // A cell is at least 770 m wide here, so search as many rings as the radius spans.
+  const rings = Math.ceil(corridor.radiusM / 770);
   return (p) => {
     const cx = Math.floor(p[0] / cell),
       cy = Math.floor(p[1] / cell);
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -rings; dx <= rings; dx++)
+      for (let dy = -rings; dy <= rings; dy++)
         for (const q of index.get(key(cx + dx, cy + dy)) ?? [])
           if (distance(p, q) <= corridor.radiusM) return true;
     return false;

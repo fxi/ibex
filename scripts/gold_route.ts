@@ -269,11 +269,32 @@ async function audit(name: string, pick?: string, packs?: string) {
   );
   const o = overlap(result.geometry, gold.line);
   const km = (m: number) => (m / 1000).toFixed(2);
+  const share = (x: Overlap) => (100 * x.sharedM) / x.goldM;
   console.log(
     `${name}, ${profile.name}, waypoints ${indices.join(",")}: ${result.status}, ` +
       `route ${km(o.routeM)} km, gold ${km(o.goldM)} km, shared ${km(o.sharedM)} km ` +
-      `(${((100 * o.sharedM) / o.goldM).toFixed(1)}% of gold, min ${100 * gold.min_shared}%)`,
+      `(${share(o).toFixed(1)}% of gold, min ${100 * gold.min_shared}%)`,
   );
+  // The fixture is only a stand-in for the packs: if it routes differently, it has lost
+  // an alternative the app weighs, and the test ratchet measures a graph nobody rides.
+  if (packs) {
+    const onFixture = overlap(
+      routeAsApp(
+        loadGoldGraph(name),
+        profile,
+        indices.map((i) => gold.waypoints[i]),
+        pick === undefined || pick === "intent",
+      ).geometry,
+      gold.line,
+    );
+    const gap = share(onFixture) - share(o);
+    console.log(
+      Math.abs(gap) < 0.5
+        ? `fixture agrees with the packs (${share(onFixture).toFixed(1)}%)`
+        : `WARNING: the fixture routes ${share(onFixture).toFixed(1)}% of gold, the packs ` +
+            `${share(o).toFixed(1)}%. Widen GOLD_RADIUS_M or regenerate the fixture.`,
+    );
+  }
   const fmt = (parts: Partial<Record<string, number>>) =>
     Object.entries(parts)
       .filter(([, v]) => Math.abs(v!) >= 1)

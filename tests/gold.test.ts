@@ -43,7 +43,9 @@ describe.each(cases)("gold standard %s", (name) => {
     expect(onGraph(graph, gold.line)).toBeGreaterThan(0.99);
   });
 
+  // Exploration routes each leg once per candidate destination, on a graph wide enough
+  // to hold the app's alternatives: seconds per case.
   it("is ridden from its intent alone", () => {
     expect(ride("intent")).toBeGreaterThanOrEqual(gold.min_shared);
-  });
+  }, 120_000);
 });
