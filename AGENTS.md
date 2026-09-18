@@ -9,9 +9,7 @@ Ibex is a browser-only cycling route planner (React, MapLibre, Vite, PWA). Routi
 the device, on binary grid cells (`.ibx`) downloaded from a static data tree on S3. Data is
 built locally from OpenStreetMap by a Python/TS pipeline under `scripts/`. The app deploys
 to GitHub Pages at https://fxi.io/ibex/ (repo `fxi/ibex`). Data is served from the Exoscale
-bucket `ibex` at `https://ibex.sos-ch-gva-2.exo.io/data`. The product name is **ibex**:
-never reintroduce the former name "cyclatractor", including in storage keys, paths or
-bucket names.
+bucket `ibex` at `https://ibex.sos-ch-gva-2.exo.io/data`. The product name is **ibex**. 
 
 ## Commands
 
