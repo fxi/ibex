@@ -53,6 +53,12 @@ node --import tsx scripts/route_golden.ts            # capture
 node --import tsx scripts/route_golden.ts --check    # compare, exits 1 on any difference
 ```
 
+A change meant to *improve* routes is judged against the gold standards in
+`tests/fixtures/gold/`: lines the author judged best, each routed from its intent
+waypoints only. `node --import tsx scripts/gold_route.ts audit <name>` shows every place
+the router still parts from one and what each side costs. Raise a case's `min_shared` when
+a change earns it; never lower it without asking.
+
 For the Python builder the equivalent is a single-cell rebuild diffed against the existing
 build: `uv run scripts/build_region.py --input data/pbf/<edition>/cells/<id>.osm.pbf
 --output <tmp> --cell <id> --split-nodes data/derived/<edition>/split-nodes.bin`, then

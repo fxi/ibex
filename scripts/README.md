@@ -28,11 +28,12 @@ Scripts that read a local release take its packs directory as an argument, defau
 | Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local release's merged packs |
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
+| | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_coudry.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
 | Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests) |
 | | `gen_grid_fixture.ts`, `gen_grid_vectors.ts` | `tests/fixtures/grid-fixture`, `tests/fixtures/grid-vectors.json` |
-| | `gen_coudry_fixture.ts`, `gen_voirons_fixture.ts` | Real-data routing fixtures in `tests/fixtures/` |
+| | `gen_graph_fixture.ts` | Real-data routing fixtures in `tests/fixtures/`: a named region, or `gold/<name>` for the corridor around a gold standard |
 | Personal tracks | `prepare_tracks.py`, `match_tracks.py` | Private ride traces → `data/derived/` (never uploaded) |
 | Dev & browser tests | `setup.mjs` | `npm run setup`: install, create `.env`, report missing settings |
 | | `data-server.ts`, `local-env.ts` | **lib** for `vite.config.ts`: serve `data/publish/` with byte ranges; read only this workspace's `.env` |

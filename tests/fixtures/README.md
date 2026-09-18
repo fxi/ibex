@@ -14,7 +14,7 @@ with bilinear interpolation and 80 m windows along each complete way.
 
 Regenerate it from the installed packs with:
 
-    node --import tsx scripts/gen_voirons_fixture.ts
+    node --import tsx scripts/gen_graph_fixture.ts voirons
 
 The script retains edges whose complete geometry lies within `[6.30, 46.20, 6.38, 46.25]`,
 their endpoint nodes, and restrictions whose ways are all retained; it refuses to write a
@@ -26,5 +26,18 @@ are included.
 `coudry-graph.json.gz` is a public OSM/Mapterhorn clip from release
 `g4-20260909-p5-20d228e2`, with the same attribution and licenses above. It covers
 `[6.225, 46.15, 6.36, 46.195]` and contains no personal tracks. Regenerate it with
-`node --import tsx scripts/gen_coudry_fixture.ts`. It tests automatic discovery of
+`node --import tsx scripts/gen_graph_fixture.ts coudry`. It tests automatic discovery of
 the Coudry panorama and gravel corridor towards the Menoge.
+
+`gold/` holds gold standards: lines the author drew in Ibex and judged the best through
+their area, run by `tests/gold.test.ts`. Each `<name>.json` carries the line, every
+waypoint it was drawn through, the few that express intent, the profile, and
+`min_shared`, the share of the line the router must ride from the intent alone. They are
+planned lines snapped to OSM vertices, not recorded rides. `<name>-graph.json.gz` is the
+public OSM/Mapterhorn graph within 1 km of the line, same attribution as above. Add one:
+
+    node --import tsx scripts/gold_route.ts import <drawn.gpx> <name> [profile] [intent]
+    node --import tsx scripts/gen_graph_fixture.ts gold/<name>
+    node --import tsx scripts/gold_route.ts audit <name>
+
+then set `min_shared` to what the audit reports.

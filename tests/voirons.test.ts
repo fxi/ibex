@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
 import { route, scoreEdge, total } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
@@ -8,7 +7,6 @@ import {
   PROFILES,
   ROAD,
   TRAIL,
-  loadProfile,
   voironsGraph,
   withPreferences,
 } from "./helpers";
@@ -18,21 +16,6 @@ const anchors: Point[] = [
   [6.3512921, 46.2272083],
   [6.3530403, 46.2270601],
 ];
-const defaultGravel = loadProfile("gravel_50");
-const climbAnchors: Point[] = [
-  [6.3072653464371875, 46.24165426558587],
-  [6.354980055182864, 46.229866761960544],
-];
-const geometryDigest = (geometry: Point[]) =>
-  createHash("sha256")
-    .update(
-      JSON.stringify(
-        geometry.map(([lon, lat]) => [+lon.toFixed(7), +lat.toFixed(7)]),
-      ),
-    )
-    .digest("hex")
-    .slice(0, 16);
-
 /**
  * This used to assert the opposite — that the gravel preset returned `no-path` here,
  * because the connector carries `mtb:scale:uphill=1` and the profile's capability limit
@@ -109,23 +92,6 @@ it("routes a road profile between road-access points", () => {
     "reference",
   );
   expect(road.status).toBe("ok");
-});
-
-it("reproduces the standard Voirons climb from only its endpoints", () => {
-  const result = route(
-    graph,
-    { profile: defaultGravel, anchors: climbAnchors },
-    "reference",
-  );
-  expect(result.status).toBe("ok");
-  expect(result.distanceM).toBeCloseTo(14459.116, 2);
-  // Digest of tmp/voirons_climb_standard.gpx, rounded to centimetre-scale coordinates.
-  expect(geometryDigest(result.geometry)).toBe("8510387755cc005b");
-
-  const byId = new Map(graph.edges.map((edge) => [edge.id, edge]));
-  expect(result.edgeIds.some((id) => byId.get(id)?.way === "111311811")).toBe(
-    false,
-  );
 });
 
 /**

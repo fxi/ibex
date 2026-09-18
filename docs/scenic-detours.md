@@ -37,7 +37,7 @@ certify rideability from missing OSM tags.
 Run:
 
 ```sh
-node --import tsx scripts/gen_coudry_fixture.ts
+node --import tsx scripts/gen_graph_fixture.ts coudry
 node --import tsx scripts/audit_coudry.ts tests/fixtures/coudry-graph.json.gz data/tracks/reference/fillinges_casino_annemasse_optimal_gravel.gpx
 ```
 
