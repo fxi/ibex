@@ -81,6 +81,20 @@ describe("leg keys", () => {
     expect(legData("r2", packs, cells, [6, 46, 6.4, 46.4])).not.toBe(data);
   });
 
+  it("changes with whether the leg explores", () => {
+    const direct = legKey({ profile: GRAVEL }, anchors[0], anchors[1], data);
+    expect(
+      legKey({ profile: GRAVEL, explore: true }, anchors[0], anchors[1], data),
+    ).not.toBe(direct);
+    // Each leg is keyed by its own flag, so pinning one waypoint re-routes only its legs.
+    const keys = (explore: boolean[]) =>
+      legKeys({ anchors, profile: GRAVEL, explore }, "r1", packs, cells);
+    const all = keys(anchors.slice(1).map(() => true));
+    const pinned = keys(anchors.slice(1).map((_, i) => i !== 0));
+    expect(pinned[0]).not.toBe(all[0]);
+    expect(pinned.slice(1)).toEqual(all.slice(1));
+  });
+
   it("changes with a waypoint, the profile, or the data", () => {
     const base = legKey({ profile: GRAVEL }, anchors[0], anchors[1], data);
     expect(legKey({ profile: GRAVEL }, anchors[0], anchors[1], data)).toBe(

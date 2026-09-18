@@ -137,6 +137,19 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
           </p>
         )}
 
+        {planned && (
+          // Waypoints moved or inserted by hand are never explored: that leg goes where
+          // the rider said. The rest look for a scenic detour, which takes longer.
+          <label>
+            <input
+              type="checkbox"
+              checked={track.explore}
+              onChange={(e) => tracks.edit({ explore: e.target.checked })}
+            />
+            Explore scenic detours
+          </label>
+        )}
+
         {/* The run is started here, so its outcome is reported here too. */}
         {!routing.busy && ctx.status && (
           <p className="hint" role="status">

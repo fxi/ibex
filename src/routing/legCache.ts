@@ -2,7 +2,7 @@
  * Finished legs, remembered so an edit only routes the legs it touched.
  *
  * A leg is keyed by everything its result depends on — its two waypoints, the compiled
- * profile, and the installed data under its search area — so a key is valid for as long
+ * profile, whether it explores, and the installed data under its search area — so a key is valid for as long
  * as it can be computed, whichever track or revision produced it. Appending a waypoint
  * routes one leg; moving one routes the two legs that meet there; inserting one routes the
  * two halves of the leg it splits.
@@ -47,7 +47,7 @@ export function legKey(
   request: Pick<
     RouteRequest,
     "profile" | "attraction" | "maxSettled" | "diagnostics" | "search"
-  >,
+  > & { explore?: boolean },
   from: Point,
   to: Point,
   data: string,
@@ -61,6 +61,7 @@ export function legKey(
     request.attraction ?? null,
     request.maxSettled ?? null,
     request.diagnostics ?? false,
+    request.explore ?? false,
     request.search ?? "astar",
     data,
   ]);
@@ -77,7 +78,7 @@ export function legKeys(
   return request.anchors.slice(1).map((to, i) => {
     const from = request.anchors[i];
     return legKey(
-      compiled,
+      { ...compiled, explore: request.explore?.[i] ?? false },
       from,
       to,
       legData(release, packs, cells, searchArea([from, to])),

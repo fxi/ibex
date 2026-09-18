@@ -55,6 +55,11 @@ export type RouteRequest = {
   maxSettled?: number;
   /** Expensive corridor/reference/scenic comparisons, only for explicit audits. */
   diagnostics?: boolean;
+  /**
+   * Per leg, whether to look for a scenic destination worth a detour (`explore`). Off
+   * where the rider placed a waypoint by hand: that leg goes where they said.
+   */
+  explore?: boolean[];
   /** Dijkstra remains available as a correctness oracle for the accelerated query. */
   search?: "astar" | "dijkstra";
 };

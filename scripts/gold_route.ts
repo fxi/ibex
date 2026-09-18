@@ -14,8 +14,9 @@
  *
  * `import` needs a line drawn in Ibex on the current release, so that its vertices are
  * graph vertices; the points that are not are the waypoints. `intent` defaults to the
- * two ends. `audit` routes the case (`intent`, `all`, or comma-separated waypoint
- * indices) on its fixture, or on a local release when given one, prints the share of the
+ * two ends. `audit` routes the case as the app does (`intent`, which explores, `all`,
+ * or comma-separated waypoint indices, which do not) on its fixture, or on a local
+ * release when given one, prints the share of the
  * line it rides, and every divergence with what each side costs, term by term, and the
  * ways on both. Turn charges are included: a divergence is often distance traded against
  * changes of direction.
@@ -23,10 +24,18 @@
 import fs from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { distance } from "../src/geo/distance";
-import { route, scoreEdge, total, turnCost } from "../src/routing/engine";
+import { scoreEdge, total, turnCost } from "../src/routing/engine";
+import { compareOn, joinLegs } from "../src/routing/legs";
+import { selectedRoute } from "../src/routing/selection";
 import { toCompiled } from "../src/routing/compile";
 import type { Profile } from "../src/routing/profiles";
-import type { Components, Edge, Graph, Point } from "../src/routing/types";
+import type {
+  Components,
+  Edge,
+  Graph,
+  Point,
+  RouteResult,
+} from "../src/routing/types";
 
 export type Gold = {
   profile: string;
@@ -169,6 +178,23 @@ export const goldGraphPath = (name: string) =>
 export const loadGoldGraph = (name: string): Graph =>
   JSON.parse(gunzipSync(fs.readFileSync(goldGraphPath(name))).toString());
 
+/**
+ * Route `anchors` as the app does: leg by leg, each exploring when `explore` says so,
+ * then joined. A gold case explores every leg, like a track the rider has not pinned.
+ */
+export function routeAsApp(
+  graph: Graph,
+  profile: Profile,
+  anchors: Point[],
+  explore = true,
+): RouteResult {
+  const legs = anchors.slice(1).map((to, i) => {
+    const request = { profile, anchors: [anchors[i], to], explore: [explore] };
+    return selectedRoute(compareOn(graph, request, graph.bbox))!;
+  });
+  return joinLegs(legs, anchors);
+}
+
 /** Waypoint indices for `intent`, `all`, or a comma-separated list. */
 export function pickWaypoints(gold: Gold, pick = "intent"): number[] {
   if (pick === "intent") return gold.intent;
@@ -218,10 +244,12 @@ async function audit(name: string, pick?: string, packs?: string) {
     : loadGoldGraph(name);
   const profile = await loadProfile(gold.profile);
   const indices = pickWaypoints(gold, pick);
-  const result = route(
+  // Every waypoint is a correction, pinned by hand, so only the intent explores.
+  const result = routeAsApp(
     graph,
-    { profile, anchors: indices.map((i) => gold.waypoints[i]) },
-    "reference",
+    profile,
+    indices.map((i) => gold.waypoints[i]),
+    pick === undefined || pick === "intent",
   );
   const o = overlap(result.geometry, gold.line);
   const km = (m: number) => (m / 1000).toFixed(2);

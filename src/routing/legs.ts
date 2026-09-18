@@ -79,10 +79,15 @@ export function compareOn(
   if (!request.diagnostics) {
     progress("Finding your route…");
     const result = route(graph, request, "reference");
+    // Several more searches, one per candidate destination. The app is for finding the
+    // line worth riding, so this is worth the wait wherever the rider left it the choice.
+    if (request.explore?.[0]) progress("Looking for scenic detours…");
     return {
       reference: result,
       corridor: result,
-      exploration: result,
+      exploration: request.explore?.[0]
+        ? explore(graph, request, result)
+        : result,
       fieldView: { type: "FeatureCollection", features: [] },
       relativeCost: null,
     };
@@ -190,8 +195,11 @@ export async function routeLeg(
       ? intersect(loaded.bbox, area)
       : loaded.bbox,
   };
-  const value = compareOn(graph, { ...request, anchors }, coverage, (label) =>
-    progress(prefix + label),
+  const value = compareOn(
+    graph,
+    { ...request, anchors, explore: [request.explore?.[leg - 1] ?? false] },
+    coverage,
+    (label) => progress(prefix + label),
   );
   for (const result of new Set([
     value.reference,

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { acceptResult, type TrackCollection, type Track } from "../tracks";
+import {
+  acceptResult,
+  exploreLegs,
+  type TrackCollection,
+  type Track,
+} from "../tracks";
 import { selectedRoute } from "../routing/selection";
 import {
   LegCache,
@@ -82,6 +87,7 @@ export function useRouting({
     const request = {
       anchors: active.anchors,
       profile: active.profile,
+      explore: exploreLegs(active),
     };
     const keys = legKeys(
       request,

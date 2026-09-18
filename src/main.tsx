@@ -171,7 +171,14 @@ function App() {
       setError(`A track supports up to ${LIMITS.anchorsMax} waypoints.`);
       return;
     }
-    tracks.edit({ anchors: edit.anchors });
+    // Every waypoint this edit placed — the one moved or inserted, and its pinches — is
+    // the rider's own choice, so the legs that meet there are not explored.
+    tracks.edit({
+      anchors: edit.anchors,
+      pin: edit.anchors.filter(
+        (p) => !active.anchors.some((a) => a[0] === p[0] && a[1] === p[1]),
+      ),
+    });
     routing.computeKeeping(edit.kept);
   };
   const fit = (points: Point[]) => {
@@ -254,7 +261,9 @@ function App() {
           }
           const anchors = [...active.anchors];
           anchors.splice(insertAt ?? anchors.length, 0, point);
-          tracks.edit({ anchors });
+          // Extending the track leaves the new leg to the router; inserting into it is
+          // placing a waypoint by hand.
+          tracks.edit({ anchors, pin: insertAt === undefined ? [] : [point] });
         }}
         onMove={(i, p, pinches) =>
           reshape({ kind: "move", index: i }, p, pinches)
