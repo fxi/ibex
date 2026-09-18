@@ -46,7 +46,8 @@ RELEASE_ROOT = "data/build/geneva-toulon-v7"
 # tag from each cell manifest, so incompatible generations cannot be joined.
 # 7 includes mapped mountain passes and saddles among scenic sources.
 # 8 scores track quality from the tags present and draws to amenity clusters.
-PREPROCESSOR_VERSION = 8
+# 9 caps amenity clusters at a viewpoint's strength.
+PREPROCESSOR_VERSION = 9
 
 
 def release_cells(window=WINDOW, zoom=GRID_ZOOM):

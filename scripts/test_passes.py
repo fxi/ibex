@@ -14,7 +14,6 @@ from build_region import (
     attractor_kind,
     cluster_strength,
     edge_quality,
-    edge_rewards,
     junction_severity,
     network_utility,
     reward_potential,
@@ -165,32 +164,31 @@ class RewardPotential(unittest.TestCase):
 
 
 class Attractors(unittest.TestCase):
-    def test_a_viewpoint_is_a_destination_on_its_own(self):
+    def test_a_viewpoint_is_a_full_source(self):
         self.assertEqual(cluster_strength(["viewpoint"]), 1.0)
 
-    def test_amenities_add_to_a_viewpoint(self):
-        coudry = ["viewpoint", "bench", "bench", "guidepost"]
-        self.assertAlmostEqual(cluster_strength(coudry), 1.8)
-        self.assertGreater(cluster_strength(coudry), cluster_strength(["viewpoint"]))
+    def test_amenities_add_up_to_a_viewpoint(self):
+        self.assertAlmostEqual(cluster_strength(["bench", "bench", "guidepost", "water"]), 1.0)
+        self.assertAlmostEqual(cluster_strength(["bench", "guidepost"]), 0.5)
 
     def test_a_lone_amenity_draws_nobody(self):
         self.assertEqual(cluster_strength(["bench"]), 0.0)
         self.assertEqual(cluster_strength(["bench"] * 5), 0.0)
 
-    def test_two_kinds_agree_but_stay_below_a_destination(self):
+    def test_two_kinds_agree_but_stay_below_a_viewpoint(self):
         # A bench by a fountain: pleasant, not worth a detour on its own.
         self.assertLess(cluster_strength(["bench", "water"]), 1.0)
         self.assertGreater(cluster_strength(["bench", "water"]), 0.0)
 
     def test_a_row_of_benches_says_no_more_than_two(self):
         self.assertEqual(
-            cluster_strength(["viewpoint"] + ["bench"] * 6),
-            cluster_strength(["viewpoint", "bench", "bench"]),
+            cluster_strength(["water"] + ["bench"] * 6),
+            cluster_strength(["water", "bench", "bench"]),
         )
 
-    def test_strength_is_capped(self):
+    def test_strength_is_capped_at_a_viewpoint(self):
         everything = ["viewpoint", "peak", "bench", "bench", "water", "picnic"]
-        self.assertEqual(cluster_strength(everything), 2.0)
+        self.assertEqual(cluster_strength(everything), 1.0)
 
     def test_reads_kinds_from_tags(self):
         self.assertEqual(attractor_kind({"amenity": "bench"}), "bench")
@@ -209,25 +207,11 @@ class Attractors(unittest.TestCase):
         ]
         clusters = attractor_clusters(points)
         self.assertEqual(len(clusters), 1)
-        self.assertAlmostEqual(clusters[0][2], 1.3)
+        self.assertAlmostEqual(clusters[0][2], 1.0)
 
-    def test_a_rich_cluster_marks_its_edges_but_not_the_field(self):
-        index = attractor_index([(6.1, 46.1, 1.8)])
-        # Leads to the destination from 600 m away.
-        far = edge(2, 3, 4)
-        approach = edge(3, 4, 1, length=600.0)
-        for e in (far, approach):
-            e["geometry"] = [[6.11, 46.1], [6.12, 46.1]]
-        edges = [edge(1, 1, 2), far, approach]
-        # The field ahead of the destination is a viewpoint's, never more.
-        self.assertAlmostEqual(reward_potential(edges, index)[1], 1.0, places=3)
-        rewards = edge_rewards(edges, index)
-        self.assertAlmostEqual(rewards[0], 1.8, places=3)
-        self.assertLess(rewards[1], 1.0)
-
-    def test_a_small_cluster_is_no_destination(self):
+    def test_a_cluster_seeds_the_field_at_its_strength(self):
         index = attractor_index([(6.1, 46.1, 0.6)])
-        self.assertLess(edge_rewards([edge(1, 1, 2)], index)[0], 1.0)
+        self.assertAlmostEqual(reward_potential([edge(1, 1, 2)], index)[1], 0.6, places=3)
 
 
 class EdgeQuality(unittest.TestCase):

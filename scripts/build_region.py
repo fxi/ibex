@@ -178,8 +178,9 @@ def edge_forest_fraction(coords, length, forest_geom):
 # A place worth riding to, read from what people built there. Nobody puts two benches, a
 # guidepost and a viewpoint at random: each is a small investment someone made because the
 # spot deserved it, so together they say more than any one of them. A viewpoint, peak or
-# pass is a destination on its own; the small amenities add to it, and without one they
-# only count once two kinds agree, since a single bench is on every village square.
+# pass is a full source on its own; the small amenities add up towards one, and without
+# one they only count once two kinds agree, since a single bench is on every village
+# square.
 SUMMIT_KINDS = {"viewpoint", "peak", "pass"}
 AMENITY_WEIGHT = {
     "viewpoint": 1.0,
@@ -194,7 +195,9 @@ AMENITY_WEIGHT = {
 }
 # A second bench still says something; a promenade lined with them does not say more.
 BENCHES_COUNTED = 2
-ATTRACTOR_MAX = 2.0
+# As strong as a source gets: the field is a scenic signal per way, not a destination
+# value, and more than a viewpoint's strength spread credit over a whole village.
+ATTRACTOR_MAX = 1.0
 CLUSTER_RADIUS_M = 100
 
 
@@ -502,13 +505,10 @@ def reward_potential(edges, attractors):
     REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
     QUALITY_SOURCE_THRESHOLD = 0.7
     FOREST_SOURCE_THRESHOLD = 0.6
-    # An amenity cluster seeds the field at most as strongly as a viewpoint. Its full
-    # strength marks the destination itself (`edge_rewards`); spread over the field, a
-    # village's benches and fountain lent scenic credit to every road for a kilometre.
     SOURCE_STRENGTH = {"quality": 0.7, "forest": 0.5}
 
     def source_strength(edge):
-        strength = min(1.0, attractor_strength(edge["geometry"], attractors))
+        strength = attractor_strength(edge["geometry"], attractors)
         if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
             strength = max(strength, SOURCE_STRENGTH["quality"])
         if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
@@ -543,22 +543,6 @@ def reward_potential(edges, attractors):
         for node, d in node_reward_dist.items()
         if d <= REWARD_HORIZON
     }
-
-
-def edge_rewards(edges, attractors):
-    """Each edge's reward: the field ahead of it, or on a destination, its strength.
-
-    A destination is a cluster worth a detour on its own (strength 1 or more), and only
-    the edges beside it carry that strength, which is where exploration looks for it.
-    """
-    field = reward_potential(edges, attractors)
-    rewards = []
-    for edge in edges:
-        strength = attractor_strength(edge["geometry"], attractors)
-        rewards.append(
-            max(field.get(edge["to"], 0.0), strength if strength >= 1 else 0.0)
-        )
-    return rewards
 
 
 def basemap_features(ways, elements):
@@ -921,8 +905,9 @@ def build(
     node_junction = junction_severity(edges, node_ids)
     for edge in edges:
         edge["junction"] = node_junction[edge["to"]]
-    for edge, reward in zip(edges, edge_rewards(edges, attractors)):
-        edge["reward"] = reward
+    reward = reward_potential(edges, attractors)
+    for edge in edges:
+        edge["reward"] = reward.get(edge["to"], 0.0)
     # Halo trim. Everything above ran over the cell plus its halo, so the bounded passes
     # (utility 1 km, junction node-local, reward 2,347 m) saw every neighbour that can
     # influence an edge this cell owns, making their results identical to a whole-region
