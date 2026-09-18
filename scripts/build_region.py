@@ -298,6 +298,221 @@ def read_source(source):
 MIN_TERRAIN_COVERAGE = 0.98
 
 
+def network_utility(edges, node_ids):
+    """How much low-stress network a node sits in: reachable low-stress length within 1 km.
+
+    A bounded Dijkstra per node. The same physical segment counts once however many
+    directions it carries. Run before partitioning, over the cell plus its halo, so a node
+    near a cell edge gets the answer it would in a whole-region build.
+    """
+    # Reachable low-stress length within 1km, calculated before partitioning.
+    adjacency = defaultdict(list)
+    for edge in edges:
+        if edge["stress"] < 0.4 and edge["highway"] not in {"steps", "ferry"}:
+            adjacency[edge["from"]].append(edge)
+    utility = {}
+    for origin in sorted(node_ids):
+        queue = [(0, origin)]
+        best = {origin: 0}
+        reach = 0
+        seen_ways = set()
+        while queue:
+            cost, node = heapq.heappop(queue)
+            if cost != best[node]:
+                continue
+            for edge in adjacency[node]:
+                key = (
+                    edge["way"],
+                    min(edge["from"], edge["to"]),
+                    max(edge["from"], edge["to"]),
+                )
+                if key not in seen_ways:
+                    reach += min(edge["length"], 1000 - cost)
+                    seen_ways.add(key)
+                new = cost + edge["length"]
+                if new <= 1000 and new < best.get(edge["to"], math.inf):
+                    best[edge["to"]] = new
+                    heapq.heappush(queue, (new, edge["to"]))
+        utility[origin] = round(min(1, math.log1p(reach) / math.log1p(15000)), 3)
+    return utility
+
+
+def junction_severity(edges, node_ids):
+    """How hard the junction at each node is: how many ways converge, on what road class.
+
+    Scored at the node, so both directions of an edge arriving there agree.
+    """
+    # Junction severity: multiple converging ways onto a busy road class, scored at the arrival node.
+    JUNCTION_CLASS_WEIGHT = {
+        "primary": 1.0,
+        "primary_link": 1.0,
+        "secondary": 0.7,
+        "secondary_link": 0.7,
+        "tertiary": 0.4,
+        "tertiary_link": 0.4,
+        "unclassified": 0.25,
+        "residential": 0.15,
+        "living_street": 0.05,
+        "service": 0.05,
+        "cycleway": 0.0,
+    }
+    node_degree = Counter()
+    node_max_class = defaultdict(float)
+    for edge in edges:
+        node_degree[edge["from"]] += 1
+        node_degree[edge["to"]] += 1
+        weight = JUNCTION_CLASS_WEIGHT.get(edge["highway"], 0.1)
+        node_max_class[edge["from"]] = max(node_max_class[edge["from"]], weight)
+        node_max_class[edge["to"]] = max(node_max_class[edge["to"]], weight)
+    node_junction = {
+        n: round(min(1, node_max_class[n] * min(1, max(0, node_degree[n] / 2 - 1) / 3)), 3)
+        for n in node_ids
+    }
+    return node_junction
+
+
+def reward_potential(edges, vp_index):
+    """How close each node is to something worth riding to, decayed by distance.
+
+    A reverse multi-source Dijkstra from every attractor (viewpoint or peak, forest, golden
+    gravel), seeded at both ends of the attractor edge and propagated over the reversed
+    graph — riding the direction actually allowed — so the cost of a hard section can be
+    discounted when the reward follows soon after.
+    """
+    # Reward-potential field: decayed distance, riding the actual allowed direction, to the
+    # nearest attractor (viewpoint/peak, forest, golden gravel) ahead — a reverse multi-source
+    # Dijkstra over the reversed graph, so cost of a hard section can be discounted when
+    # something rewarding follows soon after.
+    REWARD_TAU = 600.0
+    REWARD_FLOOR = 0.02
+    REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
+    QUALITY_SOURCE_THRESHOLD = 0.7
+    FOREST_SOURCE_THRESHOLD = 0.6
+    SOURCE_STRENGTH = {"viewpoint": 1.0, "quality": 0.7, "forest": 0.5}
+
+    def source_strength(edge):
+        strength = 0.0
+        if near_viewpoint(edge["geometry"], vp_index):
+            strength = max(strength, SOURCE_STRENGTH["viewpoint"])
+        if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
+            strength = max(strength, SOURCE_STRENGTH["quality"])
+        if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
+            strength = max(strength, SOURCE_STRENGTH["forest"])
+        return strength
+
+    reverse_adj = defaultdict(list)
+    for edge in edges:
+        reverse_adj[edge["to"]].append((edge["from"], edge["length"]))
+    node_reward_dist = {}
+    queue = []
+    for edge in edges:
+        strength = source_strength(edge)
+        if strength <= 0:
+            continue
+        d0 = -REWARD_TAU * math.log(strength)
+        for n in (edge["from"], edge["to"]):
+            if d0 < node_reward_dist.get(n, math.inf):
+                node_reward_dist[n] = d0
+                heapq.heappush(queue, (d0, n))
+    while queue:
+        d, node = heapq.heappop(queue)
+        if d != node_reward_dist.get(node) or d > REWARD_HORIZON:
+            continue
+        for neighbor, length in reverse_adj[node]:
+            nd = d + length
+            if nd <= REWARD_HORIZON and nd < node_reward_dist.get(neighbor, math.inf):
+                node_reward_dist[neighbor] = nd
+                heapq.heappush(queue, (nd, neighbor))
+    return {
+        node: round(math.exp(-d / REWARD_TAU), 3)
+        for node, d in node_reward_dist.items()
+        if d <= REWARD_HORIZON
+    }
+
+
+def basemap_features(ways, elements):
+    """The self-contained basemap a cell ships: roads, places, peaks, forest and water.
+
+    Purely presentational, and a pure function of the source elements: it shares nothing
+    with the routing graph, which is why it can be read and changed without the graph in
+    mind.
+    """
+    features = []
+    for w in ways:
+        coords = [[p["lon"], p["lat"]] for p in w["geometry"] if "lon" in p]
+        if len(coords) > 1:
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {"kind": "road", "class": w["tags"]["highway"]},
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                }
+            )
+    for element in elements:
+        tags = element.get("tags", {})
+        if element["type"] == "node" and tags.get("place"):
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {"kind": "place", "name": tags.get("name", "")},
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [element["lon"], element["lat"]],
+                    },
+                }
+            )
+        if element["type"] == "node" and (
+            tags.get("tourism") == "viewpoint" or tags.get("natural") in {"peak", "saddle"}
+            or tags.get("mountain_pass") == "yes"
+        ):
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "kind": ("pass" if tags.get("natural") == "saddle" or tags.get("mountain_pass") == "yes"
+                                 else "peak" if tags.get("natural") == "peak" else "viewpoint"),
+                        "name": tags.get("name", ""),
+                    },
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [element["lon"], element["lat"]],
+                    },
+                }
+            )
+        if (
+            element["type"] == "way"
+            and (tags.get("natural") in {"wood", "water"} or tags.get("landuse") == "forest" or "waterway" in tags)
+            and "highway" not in tags
+            and element.get("geometry")
+        ):
+            coords = [[p["lon"], p["lat"]] for p in element["geometry"] if "lon" in p]
+            if len(coords) < 2:
+                continue
+            is_forest = tags.get("landuse") == "forest" or tags.get("natural") == "wood"
+            closed = coords[0] == coords[-1] and len(coords) > 3
+            polygon = tags.get("natural") == "water" and closed
+            if is_forest and closed:
+                features.append(
+                    {
+                        "type": "Feature",
+                        "properties": {"kind": "forest"},
+                        "geometry": {"type": "Polygon", "coordinates": [coords]},
+                    }
+                )
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": {"kind": "water" if polygon else "river"},
+                    "geometry": {
+                        "type": "Polygon" if polygon else "LineString",
+                        "coordinates": [coords] if polygon else coords,
+                    },
+                }
+            )
+    return features
+
+
 def build(
     source,
     output,
@@ -574,112 +789,15 @@ def build(
                 )
             node_ids.update([ids[0], ids[-1]])
     print(f"Built {len(edges)} directed edges; calculating network utility", flush=True)
-    # Reachable low-stress length within 1km, calculated before partitioning.
-    adjacency = defaultdict(list)
-    for edge in edges:
-        if edge["stress"] < 0.4 and edge["highway"] not in {"steps", "ferry"}:
-            adjacency[edge["from"]].append(edge)
-    utility = {}
-    for origin in sorted(node_ids):
-        queue = [(0, origin)]
-        best = {origin: 0}
-        reach = 0
-        seen_ways = set()
-        while queue:
-            cost, node = heapq.heappop(queue)
-            if cost != best[node]:
-                continue
-            for edge in adjacency[node]:
-                key = (
-                    edge["way"],
-                    min(edge["from"], edge["to"]),
-                    max(edge["from"], edge["to"]),
-                )
-                if key not in seen_ways:
-                    reach += min(edge["length"], 1000 - cost)
-                    seen_ways.add(key)
-                new = cost + edge["length"]
-                if new <= 1000 and new < best.get(edge["to"], math.inf):
-                    best[edge["to"]] = new
-                    heapq.heappush(queue, (new, edge["to"]))
-        utility[origin] = round(min(1, math.log1p(reach) / math.log1p(15000)), 3)
+    utility = network_utility(edges, node_ids)
     for edge in edges:
         edge["utility"] = utility[edge["to"]]
-    # Junction severity: multiple converging ways onto a busy road class, scored at the arrival node.
-    JUNCTION_CLASS_WEIGHT = {
-        "primary": 1.0,
-        "primary_link": 1.0,
-        "secondary": 0.7,
-        "secondary_link": 0.7,
-        "tertiary": 0.4,
-        "tertiary_link": 0.4,
-        "unclassified": 0.25,
-        "residential": 0.15,
-        "living_street": 0.05,
-        "service": 0.05,
-        "cycleway": 0.0,
-    }
-    node_degree = Counter()
-    node_max_class = defaultdict(float)
-    for edge in edges:
-        node_degree[edge["from"]] += 1
-        node_degree[edge["to"]] += 1
-        weight = JUNCTION_CLASS_WEIGHT.get(edge["highway"], 0.1)
-        node_max_class[edge["from"]] = max(node_max_class[edge["from"]], weight)
-        node_max_class[edge["to"]] = max(node_max_class[edge["to"]], weight)
-    node_junction = {
-        n: round(min(1, node_max_class[n] * min(1, max(0, node_degree[n] / 2 - 1) / 3)), 3)
-        for n in node_ids
-    }
+    node_junction = junction_severity(edges, node_ids)
     for edge in edges:
         edge["junction"] = node_junction[edge["to"]]
-    # Reward-potential field: decayed distance, riding the actual allowed direction, to the
-    # nearest attractor (viewpoint/peak, forest, golden gravel) ahead — a reverse multi-source
-    # Dijkstra over the reversed graph, so cost of a hard section can be discounted when
-    # something rewarding follows soon after.
-    REWARD_TAU = 600.0
-    REWARD_FLOOR = 0.02
-    REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
-    QUALITY_SOURCE_THRESHOLD = 0.7
-    FOREST_SOURCE_THRESHOLD = 0.6
-    SOURCE_STRENGTH = {"viewpoint": 1.0, "quality": 0.7, "forest": 0.5}
-
-    def source_strength(edge):
-        strength = 0.0
-        if near_viewpoint(edge["geometry"], vp_index):
-            strength = max(strength, SOURCE_STRENGTH["viewpoint"])
-        if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
-            strength = max(strength, SOURCE_STRENGTH["quality"])
-        if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
-            strength = max(strength, SOURCE_STRENGTH["forest"])
-        return strength
-
-    reverse_adj = defaultdict(list)
+    reward = reward_potential(edges, vp_index)
     for edge in edges:
-        reverse_adj[edge["to"]].append((edge["from"], edge["length"]))
-    node_reward_dist = {}
-    queue = []
-    for edge in edges:
-        strength = source_strength(edge)
-        if strength <= 0:
-            continue
-        d0 = -REWARD_TAU * math.log(strength)
-        for n in (edge["from"], edge["to"]):
-            if d0 < node_reward_dist.get(n, math.inf):
-                node_reward_dist[n] = d0
-                heapq.heappush(queue, (d0, n))
-    while queue:
-        d, node = heapq.heappop(queue)
-        if d != node_reward_dist.get(node) or d > REWARD_HORIZON:
-            continue
-        for neighbor, length in reverse_adj[node]:
-            nd = d + length
-            if nd <= REWARD_HORIZON and nd < node_reward_dist.get(neighbor, math.inf):
-                node_reward_dist[neighbor] = nd
-                heapq.heappush(queue, (nd, neighbor))
-    for edge in edges:
-        d = node_reward_dist.get(edge["to"], math.inf)
-        edge["reward"] = round(math.exp(-d / REWARD_TAU), 3) if d <= REWARD_HORIZON else 0.0
+        edge["reward"] = reward.get(edge["to"], 0.0)
     # Halo trim. Everything above ran over the cell plus its halo, so the bounded passes
     # (utility 1 km, junction node-local, reward 2,347 m) saw every neighbour that can
     # influence an edge this cell owns, making their results identical to a whole-region
@@ -769,79 +887,7 @@ def build(
         "edges": edges,
         "restrictions": restrictions,
     }
-    features = []
-    for w in ways:
-        coords = [[p["lon"], p["lat"]] for p in w["geometry"] if "lon" in p]
-        if len(coords) > 1:
-            features.append(
-                {
-                    "type": "Feature",
-                    "properties": {"kind": "road", "class": w["tags"]["highway"]},
-                    "geometry": {"type": "LineString", "coordinates": coords},
-                }
-            )
-    for element in elements:
-        tags = element.get("tags", {})
-        if element["type"] == "node" and tags.get("place"):
-            features.append(
-                {
-                    "type": "Feature",
-                    "properties": {"kind": "place", "name": tags.get("name", "")},
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [element["lon"], element["lat"]],
-                    },
-                }
-            )
-        if element["type"] == "node" and (
-            tags.get("tourism") == "viewpoint" or tags.get("natural") in {"peak", "saddle"}
-            or tags.get("mountain_pass") == "yes"
-        ):
-            features.append(
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "kind": ("pass" if tags.get("natural") == "saddle" or tags.get("mountain_pass") == "yes"
-                                 else "peak" if tags.get("natural") == "peak" else "viewpoint"),
-                        "name": tags.get("name", ""),
-                    },
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [element["lon"], element["lat"]],
-                    },
-                }
-            )
-        if (
-            element["type"] == "way"
-            and (tags.get("natural") in {"wood", "water"} or tags.get("landuse") == "forest" or "waterway" in tags)
-            and "highway" not in tags
-            and element.get("geometry")
-        ):
-            coords = [[p["lon"], p["lat"]] for p in element["geometry"] if "lon" in p]
-            if len(coords) < 2:
-                continue
-            is_forest = tags.get("landuse") == "forest" or tags.get("natural") == "wood"
-            closed = coords[0] == coords[-1] and len(coords) > 3
-            polygon = tags.get("natural") == "water" and closed
-            if is_forest and closed:
-                features.append(
-                    {
-                        "type": "Feature",
-                        "properties": {"kind": "forest"},
-                        "geometry": {"type": "Polygon", "coordinates": [coords]},
-                    }
-                )
-                continue
-            features.append(
-                {
-                    "type": "Feature",
-                    "properties": {"kind": "water" if polygon else "river"},
-                    "geometry": {
-                        "type": "Polygon" if polygon else "LineString",
-                        "coordinates": [coords] if polygon else coords,
-                    },
-                }
-            )
+    features = basemap_features(ways, elements)
     output.mkdir(parents=True, exist_ok=True)
     artifacts = {
         "graph.json": graph,
