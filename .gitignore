@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 /data/
+/tmp/
 .DS_Store
 .claude/
 node_modules/
