@@ -71,7 +71,13 @@ export function deviation(value: number, reference: number): number {
   return Math.max(-1, Math.min(1, d));
 }
 
-type Rate = { net: number; hard: number; terms: Record<HardTerm, number> };
+type Rate = {
+  net: number;
+  hard: number;
+  terms: Record<HardTerm, number>;
+  /** The effort of the climb, per metre: the part of `slope` a taste may discount. */
+  effort: number;
+};
 
 /**
  * The hazard of riding in traffic busier than a quiet departmental road, for a rider who
@@ -299,14 +305,17 @@ function riddenRate(
     weight += w.weight;
   }
 
+  const effort =
+    grade !== null && grade > 0
+      ? ENGINE.climb_effort * grade * p.climbAversion
+      : 0;
   const terms: Record<HardTerm, number> = {
     slope:
       grade === null
         ? 0
         : flowCost(grade, p) +
           (grade > 0
-            ? ENGINE.climb_effort * grade * p.climbAversion +
-              ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
+            ? effort + ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
             : // A steep descent on a twisty line is worse than a steep straight one,
               // and this is the only place curvature is used.
               ENGINE.threshold_rate *
@@ -331,6 +340,7 @@ function riddenRate(
     net: weight > 0 ? sum / weight : 0,
     hard: HARD_TERMS.reduce((total, key) => total + terms[key], 0),
     terms,
+    effort,
   };
 }
 
@@ -418,7 +428,8 @@ export function scoreEdge(
     uncertainty: 0,
     network: 0,
   };
-  let net = 0;
+  let net = 0,
+    effort = 0;
   for (const seg of segments) {
     if (seg.mode === "ferry") continue;
     const r = riddenRate(edge, p, s, seg.grade);
@@ -441,19 +452,27 @@ export function scoreEdge(
     const share = walking ? ENGINE.walk_hard_share : 1;
     for (const key of HARD_TERMS)
       terms[key] += r.terms[key] * seg.length * share;
+    effort += r.effort * seg.length * share;
   }
 
-  // The preference factor scales the whole perceived cost, climb and push included.
-  // Applying it only to the flat reference metre left it with almost no leverage exactly
-  // where terrain is interesting: in the mountains the climbing and capability terms
-  // dominate, so a rider who said they would happily ride half as far again for a better
-  // line got a route barely 3% longer. A rider who loves quiet gravel finds the climb on
-  // it more worth doing too, and this says so.
+  // The preference factor scales the effort of riding the way — its distance, the climb
+  // and the push. Applying it only to the flat reference metre left it with almost no
+  // leverage exactly where terrain is interesting: in the mountains climbing dominates,
+  // so a rider who said they would happily ride half as far again for a better line got
+  // a route barely 3% longer. A rider who loves quiet gravel finds the climb on it more
+  // worth doing too, and this says so.
+  //
+  // What the rider cannot comfortably do is not a matter of taste, and stays outside:
+  // past the grade, technical and roughness thresholds, the flow band, traffic and the
+  // gamble of undescribed ground. Scaled with the rest, a scenic forest made a 19%
+  // `mtb:scale=1` path the cheapest climb up the Voirons at 1.6 per metre, below the
+  // village street the gold standard takes to the gravel of the Route du Montauban.
   const preference = p.detour.budget_ratio ** Math.tanh(net / NET_SCALE);
+  const taste = riddenLength + c.walking + effort;
   const raw =
     riddenLength + c.walking + HARD_TERMS.reduce((sum, k) => sum + terms[k], 0);
   c.base = riddenLength;
-  c.preference = raw * (preference - 1);
+  c.preference = taste * (preference - 1);
   for (const key of HARD_TERMS) c[key] = terms[key];
 
   // Nothing is ever unroutable, so the whole edge is capped rather than any one term.
