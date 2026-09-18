@@ -161,12 +161,14 @@ describe("no preference may make a route impossible", () => {
           }
   });
 
-  it("keeps the Menoge bridges, whose grade was never sampled", () => {
-    // The DEM reads the ground under a deck, so bridges are deliberately left unsampled.
-    // Treating that silence as unrideable once deleted the cut vertices that held the
-    // whole massif together.
+  it("keeps the Menoge bridges flat instead of sampling the ground below", () => {
+    // A structure without an explicit incline is flat in the routing model. Reading the
+    // DEM below it once made these cut vertices prohibitively expensive.
     const structures = graph.edges.filter(
-      (e) => (e.bridge || e.tunnel) && e.grades === null,
+      (e) =>
+        (e.bridge || e.tunnel) &&
+        e.grades?.length === 1 &&
+        e.grades[0][1] === 0,
     );
     expect(structures.length).toBeGreaterThan(0);
     for (const profile of [...SHIPPED, ...PROFILES])

@@ -3,10 +3,10 @@ published cell release (`g4-20260909-p5`, cost model 4). It covers the technical
 du Sauget with its road/track detour, and — to the west — the small Menoge road bridges
 that are the only links between the Geneva plain and the massif.
 
-Those bridges matter: the terrain sampler leaves every bridge and tunnel without grades on
-purpose, because the DEM reads the ground under a deck rather than the deck itself. Any
-eligibility rule that treats a missing grade as impassable deletes them and strands the
-whole massif from every profile that sets a grade limit.
+Those bridges matter: the terrain sampler gives a bridge or tunnel an explicit flat grade
+unless OSM supplies a numeric incline, because the DEM reads the valley or mountain rather
+than the structure itself. A terrain-derived grade can make these cut vertices unusable and
+strand the whole massif.
 
 © OpenStreetMap contributors, [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
 Elevation: [Mapterhorn attribution](https://mapterhorn.com/attribution/), sampled

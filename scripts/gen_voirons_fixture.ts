@@ -6,8 +6,8 @@
  *
  * The window is wider than the Sentier du Sauget the fixture originally covered: it now
  * reaches west to the small road bridges over the Menoge, which are cut vertices between
- * the Geneva plain and the massif and which the terrain sampler deliberately leaves
- * without grades. Losing them would lose the regression they guard.
+ * the Geneva plain and the massif and which must never take a grade from the terrain
+ * below. Losing them would lose the regression they guard.
  *
  *   node --import tsx scripts/gen_voirons_fixture.ts
  */
@@ -22,7 +22,7 @@ import { DEFAULT_RELEASE } from "./local_release";
 const DIR = process.argv[2] ?? DEFAULT_RELEASE;
 const OUT = process.argv[3] ?? "tests/fixtures/voirons-graph.json.gz";
 const BBOX: BBox = [6.3, 46.2, 6.38, 46.25];
-/** The unsampled road bridges the fixture exists to cover; see tests/voirons.test.ts. */
+/** The flat-modelled road bridges the fixture covers; see tests/voirons.test.ts. */
 const REQUIRED_WAYS = ["252371604", "894021116", "590804167"];
 
 const read = (path: string) => new Uint8Array(readFileSync(path));

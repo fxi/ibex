@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
 import { route, scoreEdge, total } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
@@ -7,6 +8,7 @@ import {
   PROFILES,
   ROAD,
   TRAIL,
+  loadProfile,
   voironsGraph,
   withPreferences,
 } from "./helpers";
@@ -16,6 +18,20 @@ const anchors: Point[] = [
   [6.3512921, 46.2272083],
   [6.3530403, 46.2270601],
 ];
+const defaultGravel = loadProfile("gravel_50");
+const climbAnchors: Point[] = [
+  [6.3072653464371875, 46.24165426558587],
+  [6.354980055182864, 46.229866761960544],
+];
+const geometryDigest = (geometry: Point[]) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        geometry.map(([lon, lat]) => [+lon.toFixed(7), +lat.toFixed(7)]),
+      ),
+    )
+    .digest("hex")
+    .slice(0, 16);
 
 /**
  * This used to assert the opposite — that the gravel preset returned `no-path` here,
@@ -95,17 +111,33 @@ it("routes a road profile between road-access points", () => {
   expect(road.status).toBe("ok");
 });
 
+it("reproduces the standard Voirons climb from only its endpoints", () => {
+  const result = route(
+    graph,
+    { profile: defaultGravel, anchors: climbAnchors },
+    "reference",
+  );
+  expect(result.status).toBe("ok");
+  expect(result.distanceM).toBeCloseTo(14459.116, 2);
+  // Digest of tmp/voirons_climb_standard.gpx, rounded to centimetre-scale coordinates.
+  expect(geometryDigest(result.geometry)).toBe("8510387755cc005b");
+
+  const byId = new Map(graph.edges.map((edge) => [edge.id, edge]));
+  expect(result.edgeIds.some((id) => byId.get(id)?.way === "111311811")).toBe(
+    false,
+  );
+});
+
 /**
  * The Menoge road bridges are the only links between the Geneva plain and the massif, and
- * the terrain sampler leaves every bridge and tunnel without grades on purpose — the DEM
- * reads the ground under the deck. Blocking an unmeasured grade therefore used to delete
- * these three edges and strand the whole of the Voirons from any profile with a grade
- * limit, which was every mountain model.
+ * the DEM reads the ground under their decks. They therefore carry an explicit flat grade
+ * unless OSM describes the structure's incline. A terrain-derived grade once made these
+ * cut vertices prohibitively expensive and stranded the whole Voirons massif.
  */
-it("routes over the unmeasured Menoge bridges instead of deleting them", () => {
+it("routes over the flat-modelled Menoge bridges instead of deleting them", () => {
   const bridge = graph.edges.find((e) => e.way === "252371604")!;
   expect(bridge.bridge).toBe(true);
-  expect(bridge.grades).toBeNull();
+  expect(bridge.grades).toEqual([[bridge.length, 0]]);
   for (const profile of PROFILES)
     expect(eligible(bridge, profile), profile.id).toBe(true);
 
@@ -123,12 +155,14 @@ it("routes over the unmeasured Menoge bridges instead of deleting them", () => {
   }
 });
 
-it("never excludes a structure for the grade it could not measure", () => {
+it("never derives a structure grade from terrain", () => {
   const structures = graph.edges.filter((e) => e.bridge || e.tunnel);
   expect(structures.length).toBeGreaterThan(0);
-  expect(structures.every((e) => e.grades === null)).toBe(true);
-  // There is no longer a grade limit to lift: the only thing that can exclude one of
-  // these is legal access, which a missing grade has no bearing on.
+  expect(
+    structures.every(
+      (e) => e.grades?.length === 1 && e.grades[0][1] === 0,
+    ),
+  ).toBe(true);
   for (const profile of PROFILES)
     expect(
       structures.filter((e) => !eligible(e, profile)).map((e) => e.way),
