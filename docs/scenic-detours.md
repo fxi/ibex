@@ -30,8 +30,8 @@ passed a viewpoint lost by ten metres. Travel
 cost stays unchanged; `experience.score` subtracts the bonus for selection only.
 The same destinations and reward apply to the baseline and all candidates. This
 avoids rewarding laps or the number of graph edges. Candidate routes cannot add
-more than 50% distance, more than one metre of modeled pushing, or more than 100 m
-of repeated geometry. Candidate searches share a 1.5-million-state budget by
+more than 50% distance, more than one metre of modeled pushing, or pass a point again more than 100 m after
+first passing it: an out-and-back or a lap round a block to collect the bonus. Candidate searches share a 1.5-million-state budget by
 default; if they fail or exhaust it, the successful baseline remains available.
 
 This is a heuristic, not a global maximum-fun solution. It explores one additional

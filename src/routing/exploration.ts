@@ -116,18 +116,21 @@ export function explore(
       r.hikeABikeM > baseline.hikeABikeM + 1
     )
       continue;
-    // An out-and-back to collect a prize is not a through-going scenic detour. Count
-    // repeated undirected geometry spans; this survives splits at inserted anchors.
-    const seen = new Set<string>();
-    let repeated = 0;
-    for (let i = 1; i < r.geometry.length; i++) {
-      const a = r.geometry[i - 1],
-        b = r.geometry[i];
-      const key = [a.join(","), b.join(",")].sort().join("|");
-      if (seen.has(key)) repeated += distance(a, b);
-      seen.add(key);
+    // Going somewhere and coming back to collect a prize is not a through-going scenic
+    // detour, whether it retraces its way or loops round a block to the Marais de Lissoud.
+    // A shortest path never passes a point twice, so any point the route passes again was
+    // brought back by the inserted destination: measure the longest such lap.
+    const along = new Map<string, number>();
+    let lap = 0,
+      travelled = 0;
+    for (let i = 0; i < r.geometry.length; i++) {
+      if (i > 0) travelled += distance(r.geometry[i - 1], r.geometry[i]);
+      const key = r.geometry[i].join(",");
+      const first = along.get(key);
+      if (first === undefined) along.set(key, travelled);
+      else lap = Math.max(lap, travelled - first);
     }
-    if (repeated > 100) continue;
+    if (lap > 100) continue;
     const scored = assess(r);
     if (scored.experience!.score < best.experience!.score) best = scored;
   }
