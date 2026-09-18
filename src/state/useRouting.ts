@@ -127,10 +127,21 @@ export function useRouting({
         const version = `${catalogue.release}:${cellPacks.length}`;
         updateTrack(trackId, (t) => acceptResult(t, revision, result, version));
         const reused = keys.length - missing.length;
+        // Say which legs explored: a leg that ends at a waypoint placed by hand never
+        // does, and without this the switch looks broken on a hand-shaped track.
+        const explored = request.explore.filter(Boolean).length;
         setStatus(
-          reused && keys.length > 1
-            ? `Route ready · ${reused} of ${keys.length} legs reused`
-            : "Route ready",
+          [
+            "Route ready",
+            reused && keys.length > 1
+              ? `${reused} of ${keys.length} legs reused`
+              : "",
+            active.explore && explored < keys.length
+              ? `explored ${explored} of ${keys.length} legs, the others end at a waypoint you placed`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
         );
       } else if (result?.status === "missing-cells") {
         const needed = result.missingCells ?? [];
