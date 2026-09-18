@@ -111,6 +111,22 @@ export function overlap(geometry: Point[], gold: Point[]): Overlap {
   return { routeM, goldM: along.at(-1)!, sharedM, divergences };
 }
 
+/** The share of a line, by length, whose spans are edges of `graph` as they stand. */
+export function onGraph(graph: Graph, line: Point[]): number {
+  const spans = new Set<string>();
+  for (const e of graph.edges)
+    for (let i = 1; i < e.geometry.length; i++)
+      spans.add(span(e.geometry[i - 1], e.geometry[i]));
+  let found = 0,
+    total = 0;
+  for (let i = 1; i < line.length; i++) {
+    const d = distance(line[i - 1], line[i]);
+    total += d;
+    if (spans.has(span(line[i - 1], line[i]))) found += d;
+  }
+  return total > 0 ? found / total : 0;
+}
+
 /**
  * What riding a polyline costs, turns included. Spans are matched to the graph's
  * directed edges; one the graph lacks, such as a waypoint's split, costs nothing here.

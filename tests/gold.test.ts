@@ -4,6 +4,7 @@ import {
   loadGold,
   loadGoldGraph,
   goldPath,
+  onGraph,
   overlap,
   pickWaypoints,
   routeAsApp,
@@ -25,22 +26,21 @@ describe.each(cases)("gold standard %s", (name) => {
   const graph = loadGoldGraph(name);
   const profile = loadProfile(gold.profile);
   const ride = (pick: string) => {
-    // Through every waypoint, each was placed by hand and nothing is explored.
     const result = routeAsApp(
       graph,
       profile,
       pickWaypoints(gold, pick).map((i) => gold.waypoints[i]),
-      pick === "intent",
     );
     expect(result.status).toBe("ok");
     const o = overlap(result.geometry, gold.line);
     return o.sharedM / o.goldM;
   };
 
-  it("is reproduced through all of its waypoints", () => {
-    // Otherwise the fixture no longer matches the release the line was drawn on, and the
-    // ratchet below would measure the data rather than the model.
-    expect(ride("all")).toBeGreaterThan(0.99);
+  it("still lies on the graph it was drawn on", () => {
+    // Otherwise the fixture no longer matches the data the line was drawn on, and the
+    // ratchet below would measure the data rather than the model. Waypoint splits are the
+    // only spans a drawn line may add.
+    expect(onGraph(graph, gold.line)).toBeGreaterThan(0.99);
   });
 
   it("is ridden from its intent alone", () => {
