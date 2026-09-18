@@ -8,7 +8,12 @@ them made each one statable on a graph small enough to reason about by hand.
 import math
 import unittest
 
-from build_region import junction_severity, network_utility, reward_potential
+from build_region import (
+    edge_quality,
+    junction_severity,
+    network_utility,
+    reward_potential,
+)
 
 
 def edge(
@@ -152,6 +157,27 @@ class RewardPotential(unittest.TestCase):
         # so the value is that strength decayed by e.
         self.assertAlmostEqual(reward[1], round(0.7 * math.exp(-1), 3), places=3)
         self.assertAlmostEqual(reward[2], 0.7, places=3)
+
+
+class EdgeQuality(unittest.TestCase):
+    def test_missing_tags_do_not_discount_a_grade2_track(self):
+        quality = edge_quality(
+            "track", "unknown", {"tracktype": "grade2"}, stress=0.05
+        )
+        self.assertGreaterEqual(quality, 0.7)
+
+    def test_the_weakest_explicit_ground_evidence_wins(self):
+        self.assertEqual(
+            edge_quality("track", "mud", {"tracktype": "grade1"}, stress=0),
+            0.0,
+        )
+        self.assertLess(
+            edge_quality("track", "unknown", {"tracktype": "grade4"}, stress=0),
+            edge_quality("track", "unknown", {"tracktype": "grade2"}, stress=0),
+        )
+
+    def test_an_undescribed_path_is_not_a_quality_source(self):
+        self.assertEqual(edge_quality("path", "unknown", {}, stress=0), 0.0)
 
 
 if __name__ == "__main__":

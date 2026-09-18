@@ -109,20 +109,38 @@ SURFACE_QUALITY = {
     "rock": 0.0,
 }
 TRACK_QUALITY = {"grade1": 1.0, "grade2": 0.85, "grade3": 0.6, "grade4": 0.2, "grade5": 0.2}
-SMOOTHNESS_QUALITY = {"excellent": 1.0, "good": 1.0, "intermediate": 0.85, "bad": 0.5}
+SMOOTHNESS_QUALITY = {
+    "excellent": 1.0,
+    "good": 1.0,
+    "intermediate": 0.85,
+    "bad": 0.5,
+    "very_bad": 0.25,
+    "horrible": 0.05,
+    "very_horrible": 0.0,
+    "impassable": 0.0,
+}
 QUALITY_HIGHWAYS = {"track", "path", "bridleway"}
 
 
 def edge_quality(highway, surface, tags, stress):
     if highway not in QUALITY_HIGHWAYS:
         return 0.0
-    surface_score = SURFACE_QUALITY.get(surface, 0.2)
-    track_score = TRACK_QUALITY.get(tags.get("tracktype"), 0.7)
-    smooth_score = SMOOTHNESS_QUALITY.get(tags.get("smoothness"), 0.6)
-    return round(
-        max(0.0, min(1.0, surface_score * track_score * smooth_score * (1 - 0.5 * stress))),
-        3,
-    )
+    # Missing tags are absence of evidence, not mediocre evidence: multiplying three
+    # guessed defaults kept a track described only by a good tracktype from ever becoming
+    # a quality source. Among facts that are present, the weakest one wins: grade1 never
+    # turns mud into a quality surface.
+    evidence = [
+        score
+        for score in (
+            SURFACE_QUALITY.get(surface),
+            TRACK_QUALITY.get(tags.get("tracktype")),
+            SMOOTHNESS_QUALITY.get(tags.get("smoothness")),
+        )
+        if score is not None
+    ]
+    if not evidence:
+        return 0.0
+    return round(max(0.0, min(evidence) * (1 - 0.5 * stress)), 3)
 
 
 def forest_polygons(elements):
