@@ -1,8 +1,9 @@
 # Scenic destination experiment
 
-The first stage adds a bounded destination search after full-graph routing. It is
-enabled when both scenery and detouring are `prefer` or `strongly_prefer`. The
-existing profile JSON and model-4 packs remain compatible.
+The first stage adds a bounded destination search after full-graph routing. It runs
+on every leg of a track with "Explore scenic detours" on, except the legs at a
+waypoint the rider moved or inserted by hand, and only has an effect when both
+scenery and detouring are `prefer` or `strongly_prefer`.
 
 The old objective could only discount individual edges. A great destination could
 lose because reaching it required ordinary connecting roads. The new search tries
@@ -10,15 +11,22 @@ up to eight geographically distinct scenic destinations, routing through each wi
 the existing restriction-aware path finder. It preserves ordered user waypoints.
 The worker now also uses the profile's corridor width instead of a fixed ladder.
 
-Candidates use model-4 reward sources: reward 1 identifies a viewpoint/peak source
-neighbourhood, whereas forest and gravel sources peak at 0.5 and 0.7. Accessible,
+Candidates use the builder's reward sources. A reward of 1 or more identifies an
+amenity cluster: a viewpoint, peak or pass is worth 1 on its own, and benches (two at
+most), water, a picnic spot, a shelter, a guidepost or an information board add to it,
+up to 2. Small amenities without a viewpoint only count when two kinds agree, and then
+stay below 1: a bench by a fountain colours the field without becoming a destination.
+Forest and gravel sources peak at 0.5 and 0.7. Accessible,
 comfortable tracks with documented ground take precedence for an unpaved-preferring
 profile. Unsurveyed footpaths cannot seed a destination. These are approximate
 source neighbourhoods, not exact POI coordinates; the current pack does not retain
 POI identities, and preprocessing seeds both endpoints of nearby edges.
 
-Each route receives at most one scenic bonus, capped at 3,000 equivalent metres
-and 20% of baseline distance, scaled by the scenic and detour preferences. Travel
+A route receives one scenic bonus per distinct destination it visits, each capped at
+3,000 equivalent metres and 20% of baseline distance, scaled by the scenic and detour
+preferences and by that destination's strength. A single bonus for the best one made a
+second highlight worth nothing: on the Voirons tour, adding Coudry to a leg that already
+passed a viewpoint lost by ten metres. Travel
 cost stays unchanged; `experience.score` subtracts the bonus for selection only.
 The same destinations and reward apply to the baseline and all candidates. This
 avoids rewarding laps or the number of graph edges. Candidate routes cannot add
@@ -27,7 +35,7 @@ of repeated geometry. Candidate searches share a 1.5-million-state budget by
 default; if they fail or exhaust it, the successful baseline remains available.
 
 This is a heuristic, not a global maximum-fun solution. It explores one additional
-destination per candidate and rewards the best visited destination once. It does
+destination per candidate. It does
 not yet optimize sequences of highlights or reward sustained gravel independently
 of the existing edge costs. It also cannot correct an incorrect terrain model or
 certify rideability from missing OSM tags.

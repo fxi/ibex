@@ -16,12 +16,14 @@ export function explore(
   const budget = Math.max(0, p.detour.budget_ratio - 1.5);
   if (baseline.status !== "ok" || !appetite || !budget) return baseline;
   const started = performance.now();
-  // Model 4 has no POI identities. A reward of one locates a viewpoint/peak source
-  // neighbourhood (forest and gravel sources top out at .5 and .7). Prefer a usable
-  // track access to it, never an unsurveyed footpath merely surrounded by forest.
+  // There are no POI identities in the graph. A reward of one or more locates an
+  // amenity cluster — a viewpoint, a peak, or benches, water and a guidepost together —
+  // and its value is how strongly it draws (forest and gravel sources top out at .5 and
+  // .7). Prefer a usable track access to it, never an unsurveyed footpath merely
+  // surrounded by forest.
   const sources = graph.edges
     .filter((e) => {
-      if (e.reward !== 1 || !eligible(e, p)) return false;
+      if ((e.reward ?? 0) < 1 || !eligible(e, p)) return false;
       const s = edgeSignals(e);
       return (
         (s.surfaceKnown ||
@@ -35,14 +37,15 @@ export function explore(
         edgeSignals(e).unpaved * Math.max(0, STRENGTH[p.weights.unpaved.level]);
       return value(b) - value(a) || a.length - b.length || a.id - b.id;
     });
-  const destinations: Point[] = [];
+  const destinations: { point: Point; strength: number }[] = [];
   for (const e of sources) {
     const point = e.geometry.at(-1)!;
-    if (!destinations.some((other) => distance(point, other) < 500))
-      destinations.push(point);
+    const near = destinations.find((d) => distance(point, d.point) < 500);
+    if (near) near.strength = Math.max(near.strength, e.reward!);
+    else destinations.push({ point, strength: e.reward! });
   }
   const candidates = destinations
-    .flatMap((point) => {
+    .flatMap(({ point, strength }) => {
       let extra = Infinity,
         leg = 1;
       for (let i = 1; i < request.anchors.length; i++) {
@@ -54,29 +57,36 @@ export function explore(
           leg = i;
         }
       }
-      return [{ point, leg, extra }];
+      return [{ point, strength, leg, extra }];
     })
     .filter((c) => c.extra <= baseline.distanceM * Math.min(0.5, budget / 5))
     .sort((a, b) => a.extra - b.extra)
     .slice(0, 8);
   if (!candidates.length) return baseline;
 
-  // Pay once per outing for its best scenic destination. Never pay per edge or lap.
-  // Keep travel cost intact so diagnostics still compare like with like.
-  const prize =
+  // Pay once for every distinct destination a route visits, never per edge or lap:
+  // destinations are 500 m apart, and a candidate that retraces its way is refused below.
+  // Paying only for the best one made a second highlight worth nothing, and a ride that
+  // links two of them lost to one that saw either. Keep travel cost intact so diagnostics
+  // still compare like with like. A richer destination is worth more: the prize scales
+  // with its strength, one for a bare viewpoint and up to two for one people furnished
+  // with benches, water and signs.
+  const prize = (strength: number) =>
     Math.min(3000, baseline.distanceM * 0.2) *
     appetite *
-    Math.min(1, budget / 2.5);
+    Math.min(1, budget / 2.5) *
+    strength;
   const assess = (r: RouteResult): RouteResult => {
-    const visited = candidates.find((c) =>
-      r.geometry.some((point) => distance(point, c.point) <= 80),
-    );
+    const visited = destinations
+      .filter((d) => r.geometry.some((point) => distance(point, d.point) <= 80))
+      .sort((a, b) => b.strength - a.strength);
+    const bonus = visited.reduce((sum, d) => sum + prize(d.strength), 0);
     return {
       ...r,
       experience: {
-        score: r.cost - (visited ? prize : 0),
-        scenicBonus: visited ? prize : 0,
-        destination: visited?.point,
+        score: r.cost - bonus,
+        scenicBonus: bonus,
+        destination: visited[0]?.point,
         candidates: 0,
       },
     };
@@ -84,9 +94,6 @@ export function explore(
   let best = assess(baseline),
     settled = 0,
     attempted = 0;
-  // The full-graph optimum already earned the only available prize. Every forced
-  // detour costs at least as much and cannot earn more, so no extra search can win.
-  if (best.experience!.scenicBonus > 0) return best;
   const limit = request.maxSettled ?? 1500000;
   for (const candidate of candidates) {
     if (settled >= limit) break;
