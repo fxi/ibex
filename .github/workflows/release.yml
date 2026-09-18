@@ -8,7 +8,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check the tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}"
       - name: Create GitHub release
