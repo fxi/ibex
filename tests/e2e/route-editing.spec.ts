@@ -2,8 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, saveMapData, planArve } from "./fixtures";
 
 // An edit reroutes only the legs it touched, and the status says how many it kept.
-const routeReady =
-  /^Route ready( · \d+ of \d+ legs reused)?( · explored \d+ of \d+ legs, .*)?$/;
+const routeReady = /^Route ready( · \d+ of \d+ legs reused)?$/;
 
 /**
  * Points on the active route by fraction of its length, in viewport pixels. Each is moved
@@ -241,12 +240,8 @@ test("a route handle branches at its neighbouring handles, and the edit can be u
   // The dropped point and a pinch on either side of it.
   await expect(waypoints).toHaveCount(before + 3);
   // Only pinch → point → pinch is routed; the two legs outside the pinches are kept.
-  // Every leg now ends at a waypoint placed by hand, so none of them explores.
   await expect(
-    page.getByText(
-      "Route ready · 2 of 4 legs reused · explored 0 of 4 legs, the others end at a waypoint you placed",
-      { exact: true },
-    ),
+    page.getByText("Route ready · 2 of 4 legs reused", { exact: true }),
   ).toBeVisible();
 
   // Undo puts back the waypoints and the route they had, without routing again.

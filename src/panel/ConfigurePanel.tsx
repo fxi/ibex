@@ -320,15 +320,6 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
                   {`${(shownComparison.relativeCost * 100).toFixed(1)}%`}
                 </p>
               )}
-              {shownComparison.exploration?.experience && (
-                <p>
-                  Scenic detours:{" "}
-                  {shownComparison.exploration.experience.candidates} checked
-                  {shownComparison.exploration.experience.scenicBonus > 0
-                    ? " · scenic destination included"
-                    : " · original route retained"}
-                </p>
-              )}
               <p>
                 Search: {shownComparison.reference.metrics.explored} states
                 explored

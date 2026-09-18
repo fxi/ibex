@@ -72,7 +72,7 @@ cannot collide with cached costs. Loading/decoding and search durations are repo
 separately. Completed leg caching remains in place; reused legs keep the load metrics of
 the run that produced them.
 
-Set `diagnostics: true` on an audit request to restore corridor/reference/exploration
+Set `diagnostics: true` on an audit request to restore corridor/reference
 comparisons. Normal results have no field overlay and a null comparison cost difference.
 
 ## Upstream data

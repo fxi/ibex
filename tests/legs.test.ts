@@ -132,8 +132,8 @@ describe("routing leg by leg", () => {
     expect(routed).toEqual([2]);
     expect(loads).toBe(1);
     const fresh = await routeLegs(fixture, { anchors, profile }, graph.bbox);
-    expect(extended.exploration!.edgeIds).toEqual(fresh.exploration!.edgeIds);
-    expect(extended.exploration!.cost).toBeCloseTo(fresh.exploration!.cost, 6);
+    expect(extended.selected!.edgeIds).toEqual(fresh.selected!.edgeIds);
+    expect(extended.selected!.cost).toBeCloseTo(fresh.selected!.cost, 6);
   }, 60000);
 
   it("reports the failing leg numbered across the route", () => {

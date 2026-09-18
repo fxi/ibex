@@ -11,7 +11,7 @@ import { loadProfile } from "./helpers";
  * picks, so retuning one deliberately is *supposed* to break them. A failure here means
  * "a shipped profile changed meaning" and the promise in profiles/README.md has to change
  * with it — it does not mean the router regressed. Tests that must not move with product
- * tuning pin their own preferences instead (see tests/exploration.test.ts).
+ * tuning pin their own preferences instead.
  */
 const GRAVEL = loadProfile("gravel_50");
 const MTB = loadProfile("trail_60");

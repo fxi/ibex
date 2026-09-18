@@ -6,7 +6,6 @@ import {
   HISTORY_LIMIT,
   acceptResult,
   editTrack,
-  exploreLegs,
   modelSnapshot,
   newTrack,
   recordEdit,
@@ -143,45 +142,3 @@ describe("independent track revisions", () => {
   });
 });
 
-describe("exploring legs", () => {
-  const a: [number, number] = [6, 46],
-    b: [number, number] = [6.1, 46],
-    c: [number, number] = [6.2, 46],
-    d: [number, number] = [6.3, 46];
-  const planned = editTrack(newTrack(), { anchors: [a, b, c] });
-
-  it("explores every leg of a new track", () => {
-    expect(planned.explore).toBe(true);
-    expect(exploreLegs(planned)).toEqual([true, true]);
-  });
-
-  it("routes the legs at a hand-placed waypoint as drawn", () => {
-    const inserted = editTrack(planned, { anchors: [a, d, b, c], pin: [d] });
-    expect(exploreLegs(inserted)).toEqual([false, false, true]);
-  });
-
-  it("keeps a pin with its waypoint and drops it with it", () => {
-    const pinned = editTrack(planned, { pin: [b] });
-    const reordered = editTrack(pinned, { anchors: [b, a, c] });
-    expect(exploreLegs(reordered)).toEqual([false, true]);
-    expect(editTrack(pinned, { anchors: [a, c] }).pinned).toEqual([]);
-  });
-
-  it("explores nothing when the track does not", () => {
-    expect(exploreLegs(editTrack(planned, { explore: false }))).toEqual([
-      false,
-      false,
-    ]);
-  });
-
-  it("restores tracks saved before exploration was a choice", () => {
-    const { pinned: _, explore: __, ...old } = planned;
-    const restored = restoreCollection({
-      version: 1,
-      activeId: planned.id,
-      tracks: [old],
-    }).tracks[0];
-    expect(restored.explore).toBe(true);
-    expect(restored.pinned).toEqual([]);
-  });
-});

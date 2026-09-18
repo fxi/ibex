@@ -146,10 +146,10 @@ async function routeCells(data: CellInput) {
       blocks: provider.stats.blocks - beforeBlocks,
       cells: provider.stats.cells,
     };
-    for (const r of [value.reference, value.corridor, value.exploration])
+    for (const r of new Set([value.reference, value.corridor, value.selected]))
       Object.assign(r.metrics, extras);
     self.postMessage({ id, type: "leg", leg, value });
-    if (value.exploration.status !== "ok") break;
+    if (value.selected.status !== "ok") break;
   }
   self.postMessage({ id, type: "done" });
 }

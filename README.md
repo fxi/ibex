@@ -85,7 +85,7 @@ npm run build:test && npx playwright install chromium webkit && npm run test:e2e
 
 A profile is a complete, self-contained file: bike, rider, whole-ride settings, way preferences with uphill and downhill overrides, and permissions. See [the profile guide](profiles/README.md). Every `profiles/*.profile.json` ships with the app.
 
-Normal routing runs one A* search per leg over the graph merged from installed cells. Turn restrictions, urban turns, riding transitions and ferry boarding stay in the final search. Costs are additive: scenery can discount distance but never traffic or capability penalties. Legal access excludes a connection; difficult terrain and refused pushing remain expensive last resorts. Snapping requires a suitable connection within 250 m. See [the routing refactor](docs/routing-refactor.md) and [scenic detours](docs/scenic-detours.md).
+Normal routing runs one A* search per leg over the graph merged from installed cells. Turn restrictions, urban turns, riding transitions and ferry boarding stay in the final search. Costs are additive: scenery can discount distance but never traffic or capability penalties. Legal access excludes a connection; difficult terrain and refused pushing remain expensive last resorts. Snapping requires a suitable connection within 250 m. See [the routing refactor](docs/routing-refactor.md).
 
 For audits, `node --import tsx scripts/audit_route.ts [packs dir]` writes selected ways, grades and costs under `data/derived/routing-audit/`. The checked-in Voirons and Coudry fixtures exercise real detours in `npm test`. Every script is listed in [scripts/README.md](scripts/README.md).
 

@@ -335,7 +335,7 @@ export const ENGINE = {
   /**
    * Cost of technical ground that challenges the equipment before the rider's handling
    * threshold. See `technicalEquipmentHazard`. Past ~110 it pushes Voirons detours out
-   * of their budget and loses the Coudry gravel detour (detour and exploration tests).
+   * of their budget (`tests/detour.test.ts`).
    */
   technical_equipment: 60,
   /**

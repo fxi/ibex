@@ -13,7 +13,7 @@ import { loadProfile } from "./helpers";
 
 /**
  * Real lines judged the best through their area, each routed as the app routes it from
- * only the waypoints that say where the rider wanted to go, exploring every leg. The
+ * only the waypoints that say where the rider wanted to go. The
  * router must already ride `min_shared` of the line; raise it as the model improves.
  * `scripts/gold_route.ts audit <name>` explains every place it still parts from the line.
  */
@@ -43,8 +43,7 @@ describe.each(cases)("gold standard %s", (name) => {
     expect(onGraph(graph, gold.line)).toBeGreaterThan(0.99);
   });
 
-  // Exploration routes each leg once per candidate destination, on a graph wide enough
-  // to hold the app's alternatives: seconds per case.
+  // On a graph wide enough to hold the app's alternatives: seconds per case.
   it("is ridden from its intent alone", () => {
     expect(ride("intent")).toBeGreaterThanOrEqual(gold.min_shared);
   }, 120_000);

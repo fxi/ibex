@@ -14,9 +14,9 @@
  *
  * `import` needs a line drawn in Ibex on the current release, so that its vertices are
  * graph vertices; the points that are not are the waypoints. `intent` defaults to the
- * two ends. `audit` routes the case as the app does (`intent`, which explores, `all`,
- * or comma-separated waypoint indices, which do not) on its fixture, or on a local
- * release when given one, prints the share of the
+ * two ends. `audit` routes the case as the app does (`intent`, `all`, or comma-separated
+ * waypoint indices) on its fixture, or on a local release when given one, prints the
+ * share of the
  * line it rides, and every divergence with what each side costs, term by term, and the
  * ways on both. Turn charges are included: a divergence is often distance traded against
  * changes of direction.
@@ -194,18 +194,14 @@ export const goldGraphPath = (name: string) =>
 export const loadGoldGraph = (name: string): Graph =>
   JSON.parse(gunzipSync(fs.readFileSync(goldGraphPath(name))).toString());
 
-/**
- * Route `anchors` as the app does: leg by leg, each exploring when `explore` says so,
- * then joined. A gold case explores every leg, like a track the rider has not pinned.
- */
+/** Route `anchors` as the app does: leg by leg, then joined. */
 export function routeAsApp(
   graph: Graph,
   profile: Profile,
   anchors: Point[],
-  explore = true,
 ): RouteResult {
   const legs = anchors.slice(1).map((to, i) => {
-    const request = { profile, anchors: [anchors[i], to], explore: [explore] };
+    const request = { profile, anchors: [anchors[i], to] };
     return selectedRoute(compareOn(graph, request, graph.bbox))!;
   });
   return joinLegs(legs, anchors);
@@ -260,12 +256,10 @@ async function audit(name: string, pick?: string, packs?: string) {
     : loadGoldGraph(name);
   const profile = await loadProfile(gold.profile);
   const indices = pickWaypoints(gold, pick);
-  // Every waypoint is a correction, pinned by hand, so only the intent explores.
   const result = routeAsApp(
     graph,
     profile,
     indices.map((i) => gold.waypoints[i]),
-    pick === undefined || pick === "intent",
   );
   const o = overlap(result.geometry, gold.line);
   const km = (m: number) => (m / 1000).toFixed(2);
@@ -283,7 +277,6 @@ async function audit(name: string, pick?: string, packs?: string) {
         loadGoldGraph(name),
         profile,
         indices.map((i) => gold.waypoints[i]),
-        pick === undefined || pick === "intent",
       ).geometry,
       gold.line,
     );

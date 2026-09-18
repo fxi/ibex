@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  acceptResult,
-  exploreLegs,
-  type TrackCollection,
-  type Track,
-} from "../tracks";
+import { acceptResult, type TrackCollection, type Track } from "../tracks";
 import { selectedRoute } from "../routing/selection";
 import {
   LegCache,
@@ -87,7 +82,6 @@ export function useRouting({
     const request = {
       anchors: active.anchors,
       profile: active.profile,
-      explore: exploreLegs(active),
     };
     const keys = legKeys(
       request,
@@ -103,7 +97,7 @@ export function useRouting({
         legs.set(key, {
           reference: route,
           corridor: route,
-          exploration: route,
+          selected: route,
           fieldView: { type: "FeatureCollection", features: [] },
           relativeCost: null,
         });
@@ -127,21 +121,10 @@ export function useRouting({
         const version = `${catalogue.release}:${cellPacks.length}`;
         updateTrack(trackId, (t) => acceptResult(t, revision, result, version));
         const reused = keys.length - missing.length;
-        // Say which legs explored: a leg that ends at a waypoint placed by hand never
-        // does, and without this the switch looks broken on a hand-shaped track.
-        const explored = request.explore.filter(Boolean).length;
         setStatus(
-          [
-            "Route ready",
-            reused && keys.length > 1
-              ? `${reused} of ${keys.length} legs reused`
-              : "",
-            active.explore && explored < keys.length
-              ? `explored ${explored} of ${keys.length} legs, the others end at a waypoint you placed`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" · "),
+          reused && keys.length > 1
+            ? `Route ready · ${reused} of ${keys.length} legs reused`
+            : "Route ready",
         );
       } else if (result?.status === "missing-cells") {
         const needed = result.missingCells ?? [];
@@ -184,7 +167,7 @@ export function useRouting({
       if (data.id !== id) return;
       if (data.type === "leg") {
         routed.set(data.leg, data.value);
-        if (data.value.exploration.status === "ok")
+        if (data.value.selected.status === "ok")
           legs.set(keys[data.leg - 1], data.value);
       }
       // Even for a track no longer on screen, the worker is idle again and keeps its cache.

@@ -51,7 +51,7 @@ function leg(status: RouteResult["status"], from: Point, to: Point) {
   return {
     reference: route,
     corridor: route,
-    exploration: route,
+    selected: route,
     relativeCost: 0,
     fieldView: { type: "FeatureCollection", features: [] },
   } as LegComparison;
@@ -79,20 +79,6 @@ describe("leg keys", () => {
       ),
     ).not.toBe(data);
     expect(legData("r2", packs, cells, [6, 46, 6.4, 46.4])).not.toBe(data);
-  });
-
-  it("changes with whether the leg explores", () => {
-    const direct = legKey({ profile: GRAVEL }, anchors[0], anchors[1], data);
-    expect(
-      legKey({ profile: GRAVEL, explore: true }, anchors[0], anchors[1], data),
-    ).not.toBe(direct);
-    // Each leg is keyed by its own flag, so pinning one waypoint re-routes only its legs.
-    const keys = (explore: boolean[]) =>
-      legKeys({ anchors, profile: GRAVEL, explore }, "r1", packs, cells);
-    const all = keys(anchors.slice(1).map(() => true));
-    const pinned = keys(anchors.slice(1).map((_, i) => i !== 0));
-    expect(pinned[0]).not.toBe(all[0]);
-    expect(pinned.slice(1)).toEqual(all.slice(1));
   });
 
   it("changes with a waypoint, the profile, or the data", () => {
@@ -190,9 +176,9 @@ describe("assembling a route from legs", () => {
     cache.set("k3", leg("ok", anchors[2], anchors[3]));
     const routed = new Map([[2, leg("ok", anchors[1], anchors[2])]]);
     const value = assembleLegs(keys, anchors, cache, routed)!;
-    expect(value.exploration!.status).toBe("ok");
-    expect(value.exploration!.geometry).toEqual(anchors);
-    expect(value.exploration!.distanceM).toBe(3000);
+    expect(value.selected!.status).toBe("ok");
+    expect(value.selected!.geometry).toEqual(anchors);
+    expect(value.selected!.distanceM).toBe(3000);
   });
 
   it("ends the route at a failed leg", () => {
@@ -202,7 +188,7 @@ describe("assembling a route from legs", () => {
       [2, leg("budget-exceeded", anchors[1], anchors[2])],
     ]);
     const value = assembleLegs(keys, anchors, cache, routed)!;
-    expect(value.exploration!.status).toBe("budget-exceeded");
+    expect(value.selected!.status).toBe("budget-exceeded");
   });
 
   it("makes no route when a leg never arrived", () => {

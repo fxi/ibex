@@ -24,14 +24,6 @@ export type Track = {
   color: string;
   visible: boolean;
   anchors: Point[];
-  /**
-   * Waypoints the rider moved or inserted by hand. A leg ending at one goes where they
-   * said and is not explored. Kept as coordinates, so a pin follows its waypoint through
-   * reordering and disappears with it.
-   */
-  pinned: Point[];
-  /** Look for scenic detours on legs the rider left the choice of: see `exploreLegs`. */
-  explore: boolean;
   profile: Profile;
   revision: number;
   resultRevision?: number;
@@ -82,41 +74,15 @@ export function newTrack(
     color: colors[index % colors.length],
     visible: true,
     anchors: [],
-    pinned: [],
-    explore: true,
     profile: modelSnapshot(profile),
     revision: 0,
   };
 }
-const samePoint = (a: Point, b: Point) => a[0] === b[0] && a[1] === b[1];
-/** `pin` adds pins; a pin whose waypoint is gone is dropped. */
 export function editTrack(
   track: Track,
-  edit: Partial<Pick<Track, "anchors" | "profile" | "explore">> & {
-    pin?: Point[];
-  },
+  edit: Partial<Pick<Track, "anchors" | "profile">>,
 ): Track {
-  const { pin = [], ...changes } = structuredClone(edit);
-  const next = { ...track, ...changes };
-  return {
-    ...next,
-    pinned: [...next.pinned, ...pin].filter(
-      (p, i, all) =>
-        next.anchors.some((a) => samePoint(a, p)) &&
-        all.findIndex((q) => samePoint(q, p)) === i,
-    ),
-    revision: track.revision + 1,
-  };
-}
-/**
- * Per leg, whether to explore: when the track does, and neither end is a waypoint the
- * rider placed by hand.
- */
-export function exploreLegs(track: Track): boolean[] {
-  const pinned = (p: Point) => track.pinned.some((q) => samePoint(p, q));
-  return track.anchors
-    .slice(1)
-    .map((to, i) => track.explore && !pinned(track.anchors[i]) && !pinned(to));
+  return { ...track, ...structuredClone(edit), revision: track.revision + 1 };
 }
 /**
  * What undo brings back: the fields that shape a route, and the route they had then. A
@@ -125,8 +91,6 @@ export function exploreLegs(track: Track): boolean[] {
  */
 export type TrackState = {
   anchors: Point[];
-  pinned: Point[];
-  explore: boolean;
   profile: Profile;
   result?: RouteResult;
   routed: boolean;
@@ -139,8 +103,6 @@ export const HISTORY_LIMIT = 100;
 export function trackState(track: Track): TrackState {
   return {
     anchors: track.anchors,
-    pinned: track.pinned,
-    explore: track.explore,
     profile: track.profile,
     result: track.result,
     routed: track.resultRevision === track.revision,
@@ -153,8 +115,6 @@ export function restoreState(track: Track, state: TrackState): Track {
   return {
     ...track,
     anchors: state.anchors,
-    pinned: state.pinned,
-    explore: state.explore,
     profile: state.profile,
     result: state.result,
     resultRevision: state.routed ? revision : undefined,
@@ -243,8 +203,6 @@ export function importedTrack(
     color: colors[index % colors.length],
     visible: true,
     anchors: [],
-    pinned: [],
-    explore: false,
     profile: defaultProfile(),
     revision: 0,
     resultRevision: 0,
@@ -338,9 +296,6 @@ const storedTrack = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   visible: z.boolean(),
   anchors: z.array(point).max(LIMITS.anchorsMax),
-  // Tracks saved before exploration was a choice explore, as new ones do.
-  pinned: z.array(point).max(LIMITS.anchorsMax).default([]),
-  explore: z.boolean().default(true),
   profile: profileSchema,
   revision: z.number().int().nonnegative(),
   resultRevision: z.number().int().optional(),

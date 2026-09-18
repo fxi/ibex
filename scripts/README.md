@@ -30,7 +30,7 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
-| | `audit_route.ts`, `audit_long_route.ts`, `audit_coudry.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
+| | `audit_route.ts`, `audit_long_route.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
 | Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests) |
 | | `gen_grid_fixture.ts`, `gen_grid_vectors.ts` | `tests/fixtures/grid-fixture`, `tests/fixtures/grid-vectors.json` |
 | | `gen_graph_fixture.ts` | Real-data routing fixtures in `tests/fixtures/`: a named region, or `gold/<name>` for the corridor around a gold standard |

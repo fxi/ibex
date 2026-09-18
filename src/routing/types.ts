@@ -55,11 +55,6 @@ export type RouteRequest = {
   maxSettled?: number;
   /** Expensive corridor/reference/scenic comparisons, only for explicit audits. */
   diagnostics?: boolean;
-  /**
-   * Per leg, whether to look for a scenic destination worth a detour (`explore`). Off
-   * where the rider placed a waypoint by hand: that leg goes where they said.
-   */
-  explore?: boolean[];
   /** Dijkstra remains available as a correctness oracle for the accelerated query. */
   search?: "astar" | "dijkstra";
 };
@@ -144,13 +139,6 @@ export type RouteResult = {
   geometry: Point[];
   anchors: Point[];
   cost: number;
-  /** Route-level destination value; travel cost remains separately inspectable. */
-  experience?: {
-    score: number;
-    scenicBonus: number;
-    destination?: Point;
-    candidates: number;
-  };
   components: Components;
   distanceM: number;
   hikeABikeM: number;
@@ -185,7 +173,8 @@ export type RouteResult = {
   corridor?: Point[][];
 };
 export type Comparison = {
-  exploration?: RouteResult;
+  /** The route chosen from the others, leg by leg; see `selectedRoute`. */
+  selected?: RouteResult;
   reference: RouteResult;
   corridor: RouteResult;
   relativeCost: number | null;

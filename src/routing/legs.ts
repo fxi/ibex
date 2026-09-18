@@ -13,7 +13,6 @@
 import { bboxIntersects, type BBox } from "../geo/grid";
 import { toCompiled } from "./compile";
 import { buildField, emptyComponents, route } from "./engine";
-import { explore } from "./exploration";
 import { searchArea } from "./provider";
 import { selectedRoute } from "./selection";
 import type {
@@ -67,27 +66,21 @@ export function fieldViewOf(field: Field): FieldView {
 }
 
 /**
- * Corridor expansion, the full-graph reference, then scenic exploration — for one graph
- * and one request. Used per leg, so every budget here is a per-leg budget.
+ * Corridor expansion, then the full-graph reference — for one graph and one request. Used
+ * per leg, so every budget here is a per-leg budget.
  */
 export function compareOn(
   graph: Graph,
   request: RouteRequest,
   coverage: BBox,
   progress: (label: string) => void = () => {},
-): Comparison & { fieldView: FieldView; exploration: RouteResult } {
+): Comparison & { fieldView: FieldView } {
   if (!request.diagnostics) {
     progress("Finding your route…");
     const result = route(graph, request, "reference");
-    // Several more searches, one per candidate destination. The app is for finding the
-    // line worth riding, so this is worth the wait wherever the rider left it the choice.
-    if (request.explore?.[0]) progress("Looking for scenic detours…");
     return {
       reference: result,
       corridor: result,
-      exploration: request.explore?.[0]
-        ? explore(graph, request, result)
-        : result,
       fieldView: { type: "FeatureCollection", features: [] },
       relativeCost: null,
     };
@@ -133,13 +126,10 @@ export function compareOn(
   }
   progress("Comparing with the complete graph…");
   const reference = route(graph, request, "reference");
-  progress("Looking for scenic detours…");
-  const exploration = explore(graph, request, reference);
   return {
     fieldView,
     reference,
     corridor: corridor!,
-    exploration,
     relativeCost: relativeCost(reference, corridor!),
   };
 }
@@ -163,12 +153,12 @@ const intersect = (a: BBox, b: BBox): BBox => [
 ];
 
 /**
- * One leg's comparison. `exploration` always holds the route chosen for the leg, so legs
+ * One leg's comparison. `selected` always holds the route chosen for the leg, so legs
  * joined through it carry each leg's own choice.
  */
 export type LegComparison = Comparison & {
   fieldView: FieldView;
-  exploration: RouteResult;
+  selected: RouteResult;
 };
 
 /** Route leg `leg` (one-based) of `request.anchors`, over the area of its two waypoints. */
@@ -197,27 +187,23 @@ export async function routeLeg(
   };
   const value = compareOn(
     graph,
-    { ...request, anchors, explore: [request.explore?.[leg - 1] ?? false] },
+    { ...request, anchors },
     coverage,
     (label) => progress(prefix + label),
   );
-  for (const result of new Set([
-    value.reference,
-    value.corridor,
-    value.exploration,
-  ]))
+  for (const result of new Set([value.reference, value.corridor]))
     result.metrics.loadMs = loadMs;
   // A search that ran out of graph next to uninstalled coverage is missing data, not a
   // disconnected network.
   if (value.reference.status === "no-path") {
     const needed = source.missing(area);
     if (needed.length)
-      for (const r of [value.reference, value.corridor, value.exploration]) {
+      for (const r of [value.reference, value.corridor]) {
         r.status = "missing-cells";
         r.missingCells = needed;
       }
   }
-  return { ...value, exploration: selectedRoute(value)! };
+  return { ...value, selected: selectedRoute(value)! };
 }
 
 /** Join leg comparisons, first to last, into the comparison for the whole route. */
@@ -240,8 +226,8 @@ export function joinComparison(
     },
     reference,
     corridor,
-    exploration: joinLegs(
-      legs.map((c) => c.exploration),
+    selected: joinLegs(
+      legs.map((c) => c.selected),
       anchors,
     ),
     relativeCost: legs.every((leg) => leg.relativeCost !== null)
@@ -273,7 +259,7 @@ export async function routeLegs(
       hooks.onLeg?.(leg, value);
     }
     done.push(value);
-    if (value.exploration.status !== "ok") break;
+    if (value.selected.status !== "ok") break;
   }
   return joinComparison(done, request.anchors);
 }
@@ -327,7 +313,6 @@ export function joinLegs(legs: RouteResult[], anchors: Point[]): RouteResult {
     return joined;
   }
   const corridor: Point[][] = [];
-  const experiences = legs.filter((r) => r.experience);
   for (const [i, leg] of legs.entries()) {
     joined.metrics.durationMs += leg.metrics.durationMs;
     joined.metrics.loadMs =
@@ -386,19 +371,5 @@ export function joinLegs(legs: RouteResult[], anchors: Point[]): RouteResult {
     joined.descentM = null;
   }
   if (corridor.length) joined.corridor = corridor;
-  if (failed === -1 && experiences.length)
-    joined.experience = {
-      score: legs.reduce((sum, r) => sum + (r.experience?.score ?? r.cost), 0),
-      scenicBonus: experiences.reduce(
-        (sum, r) => sum + r.experience!.scenicBonus,
-        0,
-      ),
-      destination: experiences.find((r) => r.experience!.destination)
-        ?.experience!.destination,
-      candidates: experiences.reduce(
-        (sum, r) => sum + r.experience!.candidates,
-        0,
-      ),
-    };
   return joined;
 }
