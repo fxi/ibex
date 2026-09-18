@@ -175,22 +175,118 @@ def edge_forest_fraction(coords, length, forest_geom):
     return round(hits / (samples + 1), 3)
 
 
-def viewpoint_index(viewpoints, cell=0.001):
+# A place worth riding to, read from what people built there. Nobody puts two benches, a
+# guidepost and a viewpoint at random: each is a small investment someone made because the
+# spot deserved it, so together they say more than any one of them. A viewpoint, peak or
+# pass is a destination on its own; the small amenities add to it, and without one they
+# only count once two kinds agree, since a single bench is on every village square.
+SUMMIT_KINDS = {"viewpoint", "peak", "pass"}
+AMENITY_WEIGHT = {
+    "viewpoint": 1.0,
+    "peak": 1.0,
+    "pass": 1.0,
+    "bench": 0.3,
+    "water": 0.3,
+    "picnic": 0.3,
+    "shelter": 0.3,
+    "guidepost": 0.2,
+    "board": 0.2,
+}
+# A second bench still says something; a promenade lined with them does not say more.
+BENCHES_COUNTED = 2
+ATTRACTOR_MAX = 2.0
+CLUSTER_RADIUS_M = 100
+
+
+def attractor_kind(tags):
+    if tags.get("tourism") == "viewpoint":
+        return "viewpoint"
+    if tags.get("natural") == "peak":
+        return "peak"
+    if tags.get("natural") == "saddle" or tags.get("mountain_pass") == "yes":
+        return "pass"
+    amenity = tags.get("amenity")
+    if amenity == "bench":
+        return "bench"
+    if amenity in {"drinking_water", "fountain", "water_point"}:
+        return "water"
+    if amenity == "shelter":
+        return "shelter"
+    if tags.get("tourism") == "picnic_site" or tags.get("leisure") == "picnic_table":
+        return "picnic"
+    if tags.get("tourism") == "information":
+        return {"guidepost": "guidepost", "board": "board"}.get(tags.get("information"))
+    return None
+
+
+def cluster_strength(kinds):
+    """How strongly a cluster of amenity kinds draws a rider, 0 when it does not."""
+    counts = Counter(kinds)
+    if not SUMMIT_KINDS & counts.keys() and len(counts) < 2:
+        return 0.0
+    total = sum(
+        AMENITY_WEIGHT[k] * (min(n, BENCHES_COUNTED) if k == "bench" else 1)
+        for k, n in counts.items()
+    )
+    return round(min(ATTRACTOR_MAX, total), 3)
+
+
+def attractor_clusters(points, radius_m=CLUSTER_RADIUS_M, cell=0.002):
+    """Group `(lon, lat, kind)` points within `radius_m` of each other, single-linkage.
+
+    Returns `(lon, lat, strength)` per cluster that draws, at its centroid.
+    """
+    grid = defaultdict(list)
+    for i, (lon, lat, _) in enumerate(points):
+        grid[(math.floor(lon / cell), math.floor(lat / cell))].append(i)
+    parent = list(range(len(points)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, (lon, lat, _) in enumerate(points):
+        cx, cy = math.floor(lon / cell), math.floor(lat / cell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for j in grid.get((cx + dx, cy + dy), ()):
+                    if j > i and distance(points[i][:2], points[j][:2]) <= radius_m:
+                        parent[root(j)] = root(i)
+    members = defaultdict(list)
+    for i in range(len(points)):
+        members[root(i)].append(points[i])
+    clusters = []
+    for group in members.values():
+        strength = cluster_strength([kind for _, _, kind in group])
+        if strength > 0:
+            lon = sum(p[0] for p in group) / len(group)
+            lat = sum(p[1] for p in group) / len(group)
+            clusters.append((lon, lat, strength))
+    return clusters
+
+
+def attractor_index(clusters, cell=0.001):
     index = defaultdict(list)
-    for p in viewpoints:
-        index[(math.floor(p[0] / cell), math.floor(p[1] / cell))].append(p)
+    for lon, lat, strength in clusters:
+        index[(math.floor(lon / cell), math.floor(lat / cell))].append(
+            ((lon, lat), strength)
+        )
     return index
 
 
-def near_viewpoint(coords, index, cell=0.001, radius_m=60):
+def attractor_strength(coords, index, cell=0.001, radius_m=60):
+    """The strongest attractor within `radius_m` of a way, 0 when none is."""
+    best = 0.0
     for p in coords:
         cx, cy = math.floor(p[0] / cell), math.floor(p[1] / cell)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
-                for vp in index.get((cx + dx, cy + dy), ()):
-                    if distance(p, vp) <= radius_m:
-                        return True
-    return False
+                for point, strength in index.get((cx + dx, cy + dy), ()):
+                    if strength > best and distance(p, point) <= radius_m:
+                        best = strength
+    return best
 
 
 # Deterministic edge identity. The same physical segment must get the same id in every cell
@@ -389,16 +485,16 @@ def junction_severity(edges, node_ids):
     return node_junction
 
 
-def reward_potential(edges, vp_index):
+def reward_potential(edges, attractors):
     """How close each node is to something worth riding to, decayed by distance.
 
-    A reverse multi-source Dijkstra from every attractor (viewpoint or peak, forest, golden
+    A reverse multi-source Dijkstra from every attractor (an amenity cluster, forest, golden
     gravel), seeded at both ends of the attractor edge and propagated over the reversed
     graph — riding the direction actually allowed — so the cost of a hard section can be
     discounted when the reward follows soon after.
     """
     # Reward-potential field: decayed distance, riding the actual allowed direction, to the
-    # nearest attractor (viewpoint/peak, forest, golden gravel) ahead — a reverse multi-source
+    # nearest attractor (amenity cluster, forest, golden gravel) ahead — a reverse multi-source
     # Dijkstra over the reversed graph, so cost of a hard section can be discounted when
     # something rewarding follows soon after.
     REWARD_TAU = 600.0
@@ -406,12 +502,12 @@ def reward_potential(edges, vp_index):
     REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
     QUALITY_SOURCE_THRESHOLD = 0.7
     FOREST_SOURCE_THRESHOLD = 0.6
-    SOURCE_STRENGTH = {"viewpoint": 1.0, "quality": 0.7, "forest": 0.5}
+    # An amenity cluster brings its own strength (`cluster_strength`), up to 2 for a rich
+    # one; the field then starts above 1 there, which is what marks a destination.
+    SOURCE_STRENGTH = {"quality": 0.7, "forest": 0.5}
 
     def source_strength(edge):
-        strength = 0.0
-        if near_viewpoint(edge["geometry"], vp_index):
-            strength = max(strength, SOURCE_STRENGTH["viewpoint"])
+        strength = attractor_strength(edge["geometry"], attractors)
         if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
             strength = max(strength, SOURCE_STRENGTH["quality"])
         if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
@@ -580,18 +676,15 @@ def build(
         w for w in ways if permitted(w["tags"]) and w["id"] not in conditional_from
     ]
     counts["excludedWays"] = len(ways) - len(roads)
-    viewpoints = [
-        (e["lon"], e["lat"])
+    amenities = [
+        (e["lon"], e["lat"], kind)
         for e in elements
         if e["type"] == "node"
-        and (
-            e.get("tags", {}).get("tourism") == "viewpoint"
-            or e.get("tags", {}).get("natural") == "peak"
-            or e.get("tags", {}).get("natural") == "saddle"
-            or e.get("tags", {}).get("mountain_pass") == "yes"
-        )
+        and "lon" in e
+        and (kind := attractor_kind(e.get("tags", {})))
     ]
-    vp_index = viewpoint_index(viewpoints)
+    attractors = attractor_index(attractor_clusters(amenities))
+    counts["attractors"] = sum(len(v) for v in attractors.values())
     forest_shapes = forest_polygons(elements)
     forest_geom = prep(unary_union(forest_shapes)) if forest_shapes else None
     positions = {}
@@ -811,7 +904,7 @@ def build(
     node_junction = junction_severity(edges, node_ids)
     for edge in edges:
         edge["junction"] = node_junction[edge["to"]]
-    reward = reward_potential(edges, vp_index)
+    reward = reward_potential(edges, attractors)
     for edge in edges:
         edge["reward"] = reward.get(edge["to"], 0.0)
     # Halo trim. Everything above ran over the cell plus its halo, so the bounded passes

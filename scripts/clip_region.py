@@ -41,6 +41,10 @@ FILTERS = [
     "n/natural=peak",
     "n/natural=saddle",
     "n/mountain_pass=yes",
+    # Small amenities people put where a place is worth stopping -> attractor clusters
+    "n/amenity=bench,drinking_water,fountain,shelter,water_point",
+    "n/leisure=picnic_table",
+    "n/tourism=picnic_site,information",
     # landuse / natural=wood ways and relations -> urban and forest fractions
     "w/landuse=forest,residential,commercial,industrial,retail,garages,construction",
     "r/landuse=forest,residential,commercial,industrial,retail,garages,construction",
