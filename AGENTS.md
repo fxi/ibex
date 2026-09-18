@@ -38,6 +38,28 @@ worktree of the previous commit before concluding otherwise. Tests that encode a
 decision — a cost, a preference, a routing outcome — are not to be relaxed to make them
 pass: ask instead. Record any newly accepted failure in this section.
 
+## Changing the router
+
+`src/routing/engine.ts` is the search and nothing else: the cost model (`cost.ts`), the cost
+field (`field.ts`), turn restrictions (`restrictions.ts`), the A* lower bound
+(`heuristic.ts`), the heap and `distance`/`project` (`src/geo/`) each live on their own and
+are re-exported through `engine.ts`, so existing imports and scripts are unaffected. Keep it
+that way: put new cost terms in `cost.ts`, not in `route()`.
+
+The suite asserts *relationships* (this costs more than that, this distance is in a band),
+which will not catch a refactor that moves a route. Before and after any change meant to
+preserve behaviour, run the golden master against the local packs:
+
+```sh
+node --import tsx scripts/route_golden.ts            # capture
+node --import tsx scripts/route_golden.ts --check    # compare, exits 1 on any difference
+```
+
+For the Python builder the equivalent is a single-cell rebuild diffed against the existing
+build: `uv run scripts/build_region.py --input data/pbf/<edition>/cells/<id>.osm.pbf
+--output <tmp> --cell <id> --split-nodes data/derived/<edition>/split-nodes.bin`, then
+compare `graph.json` and `basemap.json`. It takes about two minutes and 300 MB for one cell.
+
 ## Data format rules
 
 Read `docs/data-format.md` before touching `src/offline/`, `scripts/package_cells.ts`,
