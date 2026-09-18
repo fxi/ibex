@@ -338,4 +338,16 @@ export const ENGINE = {
    * of their budget and loses the Coudry gravel detour (detour and exploration tests).
    */
   technical_equipment: 60,
+  /**
+   * Equivalent metres per metre, per unit of grade outside the momentum band, at
+   * `direction_changes: strongly_avoid`. See `flowCost`. At 40 a gravel rider (`avoid`)
+   * pays 1.4 extra per metre of a 17% descent, which is what the Voirons gold standard
+   * needed to stay on its 11% road; 20 left half those descents, 80 lost other sections.
+   */
+  flow: 40,
+  /**
+   * The momentum band, as a share of the rider's comfortable grade in each direction:
+   * about 6% up and 10% down for the shipped gravel rider.
+   */
+  flow_band: 0.6,
 } as const;

@@ -173,6 +173,29 @@ export function turnCost(
   return ENGINE.turn_meters * -strength * ((1 - cos) / 2);
 }
 
+/**
+ * Grade outside the band where a rider keeps their momentum, for one who values flow.
+ *
+ * Climbing effort is charged per metre of height, so on its own it is indifferent to how
+ * steeply the height is gained or lost, and distance then decides: the steep shortcut
+ * always wins. On the Voirons gold standard that was nearly every divergence — a 17-20%
+ * residential ramp off a descent on an 11% road, a 16% grade3 track off an 8% climb. The
+ * capability ramp is no answer: it prices what the rider cannot do, and the same ride
+ * takes short 16-26% ramps where there is no alternative. This is linear and mild, a
+ * preference for staying in the band rather than a limit, and it scales with
+ * `direction_changes`, the setting that already stands for a fluid line.
+ */
+export function flowCost(grade: number, p: CompiledProfile): number {
+  const strength = STRENGTH[p.directionChanges];
+  if (strength >= 0) return 0;
+  const band =
+    ENGINE.flow_band *
+    (grade > 0
+      ? p.capability.uphill_grade.comfortable_until
+      : p.capability.downhill_grade.comfortable_until);
+  return ENGINE.flow * -strength * Math.max(0, Math.abs(grade) - band);
+}
+
 /** Physical cycle infrastructure remains distinguishable from signed route membership. */
 export function cycleInfrastructure(edge: Edge): number {
   return Math.max(
@@ -280,14 +303,15 @@ function riddenRate(
     slope:
       grade === null
         ? 0
-        : grade > 0
-          ? ENGINE.climb_effort * grade * p.climbAversion +
-            ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
-          : // A steep descent on a twisty line is worse than a steep straight one, and
-            // this is the only place curvature is used.
-            ENGINE.threshold_rate *
-            exceedance(-grade, k.downhill_grade) *
-            (1 + 0.5 * s.curvature),
+        : flowCost(grade, p) +
+          (grade > 0
+            ? ENGINE.climb_effort * grade * p.climbAversion +
+              ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
+            : // A steep descent on a twisty line is worse than a steep straight one,
+              // and this is the only place curvature is used.
+              ENGINE.threshold_rate *
+              exceedance(-grade, k.downhill_grade) *
+              (1 + 0.5 * s.curvature)),
     technical:
       ENGINE.threshold_rate *
         exceedance(technical, down ? k.technical_down : k.technical_up) +
