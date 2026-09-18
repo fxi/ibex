@@ -332,4 +332,10 @@ export const ENGINE = {
    * them is quartic, so the onset is barely felt and the far side climbs hard.
    */
   threshold_rate: 8,
+  /**
+   * Cost of technical ground that challenges the equipment before the rider's handling
+   * threshold. See `technicalEquipmentHazard`. Past ~110 it pushes Voirons detours out
+   * of their budget and loses the Coudry gravel detour (detour and exploration tests).
+   */
+  technical_equipment: 60,
 } as const;

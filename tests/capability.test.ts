@@ -117,6 +117,19 @@ describe("the handling heuristics", () => {
     const mtb = deriveCapability(setup("mtb_60", "expert")).surface_roughness;
     expect(mtb.comfortable_until).toBeGreaterThan(road.comfortable_until * 2);
   });
+
+  it("makes luggage reduce technical capability", () => {
+    const empty = deriveCapability(setup("gravel_50", "expert"));
+    const loaded = deriveCapability(
+      setup("gravel_50", "expert", { load_kg: 18 }),
+    );
+    expect(loaded.technical_up.comfortable_until).toBeLessThan(
+      empty.technical_up.comfortable_until,
+    );
+    expect(loaded.technical_down.comfortable_until).toBeLessThan(
+      empty.technical_down.comfortable_until,
+    );
+  });
 });
 
 describe("the threshold ramp", () => {

@@ -17,7 +17,7 @@ import {
   STRENGTH,
   type ScoredKey,
 } from "./vocabulary";
-import { exceedance } from "./capability";
+import { exceedance, type CapabilityProfile } from "./capability";
 import { edgeSignals, scenicValue, type Signals } from "./signals";
 import {
   climbingTechnical,
@@ -95,6 +95,30 @@ export function effectiveStress(edge: Edge): number {
   return edge.cyclingNetwork
     ? edge.stress * ENGINE.network_calming
     : edge.stress;
+}
+
+/**
+ * Roots and steps ask something of the bike before they exceed the rider's handling
+ * limit. Tire volume, suspension and luggage already meet in the surface threshold, so
+ * use a conservative share of it as equipment clearance: scale 1 is noticeable on a
+ * rigid gravel bike, free on a suspended 60 mm MTB, and increasingly costly when loaded.
+ */
+export function technicalEquipmentHazard(
+  technical: number,
+  capability: CapabilityProfile,
+  handling: CapabilityProfile["technical_up"],
+): number {
+  // Past handling comfort the ordinary capability term is already speaking. This term
+  // exists only for easy technical grades the rider can handle but the bike cannot shrug
+  // off, so it must not recalibrate scale 2/3 routes that already have a real cost.
+  if (technical > handling.comfortable_until) return 0;
+  const clearance = Math.min(
+    1,
+    0.35 * capability.surface_roughness.comfortable_until,
+  );
+  if (technical <= clearance) return 0;
+  const excess = (technical - clearance) / Math.max(1e-6, 1 - clearance);
+  return ENGINE.technical_equipment * excess * excess;
 }
 
 /**
@@ -266,7 +290,12 @@ function riddenRate(
             (1 + 0.5 * s.curvature),
     technical:
       ENGINE.threshold_rate *
-      exceedance(technical, down ? k.technical_down : k.technical_up),
+        exceedance(technical, down ? k.technical_down : k.technical_up) +
+      technicalEquipmentHazard(
+        technical,
+        k,
+        down ? k.technical_down : k.technical_up,
+      ),
     roughness:
       ENGINE.threshold_rate * exceedance(s.roughness, k.surface_roughness) +
       unpavedHazard(edge, s, p, weights),

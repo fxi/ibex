@@ -65,16 +65,21 @@ const withDownhill = (
     ...profile,
     preferences: { ...profile.preferences, downhill },
   });
+const withBike = (
+  profile: typeof GRAVEL,
+  bike: Partial<(typeof GRAVEL)["setup"]["bike"]>,
+) =>
+  parseProfile({
+    ...profile,
+    setup: { ...profile.setup, bike: { ...profile.setup.bike, ...bike } },
+  });
 
 describe("gravel", () => {
   it("climbs on easy gravel", () => {
     expect(cost(easyGravel(0.04))).toBeLessThan(cost(tarmac(0.04)));
   });
 
-  it("comes down on smooth tarmac once downhill says so", () => {
-    // Shipped Gravel has no downhill override yet: on local grade it cost the Fillinges
-    // gold standard 20 points, which rides gravel on short descents. The mechanism is
-    // tested here; the shipped rule waits for sustained-descent data.
+  it("comes down on smooth tarmac once downhill explicitly avoids gravel", () => {
     const smoothDown = withDownhill(GRAVEL, {
       unpaved: "avoid",
       surface_difficulty: "strongly_avoid",
@@ -88,6 +93,40 @@ describe("gravel", () => {
     expect(cost(easyGravel(0.04), smoothDown)).toBeLessThan(
       cost(tarmac(0.04), smoothDown),
     );
+  });
+
+  it("prices scale 1 by tires and suspension, and scale 2 more uphill", () => {
+    const scale1 = singletrack(-0.08);
+    const gravel45 = withBike(GRAVEL, { tire_mm: 45 });
+    const mtb60 = withBike(GRAVEL, { tire_mm: 60, suspension: "front" });
+    expect(scoreEdge(scale1, gravel45).technical).toBeGreaterThan(
+      scoreEdge(scale1, GRAVEL).technical,
+    );
+    expect(scoreEdge(scale1, GRAVEL).technical).toBeGreaterThan(0);
+    expect(scoreEdge(scale1, mtb60).technical).toBe(0);
+
+    const scale2Up = way(
+      "path",
+      "ground",
+      { "mtb:scale": "2" },
+      0.08,
+    );
+    const scale2Down = {
+      ...scale2Up,
+      grades: [[1000, -0.08]] as [number, number][],
+    };
+    expect(scoreEdge(scale2Up, GRAVEL).technical).toBeGreaterThan(
+      scoreEdge(scale2Down, GRAVEL).technical,
+    );
+  });
+
+  it("makes grade5 rougher with luggage without calling it technical", () => {
+    const grade5 = way("track", "unknown", { tracktype: "grade5" }, -0.08);
+    const loaded = withBike(GRAVEL, { load_kg: 18 });
+    expect(scoreEdge(grade5, loaded).roughness).toBeGreaterThan(
+      scoreEdge(grade5, GRAVEL).roughness,
+    );
+    expect(scoreEdge(grade5, loaded).technical).toBe(0);
   });
 });
 
