@@ -14,6 +14,7 @@ from build_region import (
     attractor_kind,
     cluster_strength,
     edge_quality,
+    edge_rewards,
     junction_severity,
     network_utility,
     reward_potential,
@@ -210,10 +211,23 @@ class Attractors(unittest.TestCase):
         self.assertEqual(len(clusters), 1)
         self.assertAlmostEqual(clusters[0][2], 1.3)
 
-    def test_a_rich_cluster_starts_the_field_above_one(self):
+    def test_a_rich_cluster_marks_its_edges_but_not_the_field(self):
         index = attractor_index([(6.1, 46.1, 1.8)])
-        reward = reward_potential([edge(1, 1, 2)], index)
-        self.assertAlmostEqual(reward[1], 1.8, places=3)
+        # Leads to the destination from 600 m away.
+        far = edge(2, 3, 4)
+        approach = edge(3, 4, 1, length=600.0)
+        for e in (far, approach):
+            e["geometry"] = [[6.11, 46.1], [6.12, 46.1]]
+        edges = [edge(1, 1, 2), far, approach]
+        # The field ahead of the destination is a viewpoint's, never more.
+        self.assertAlmostEqual(reward_potential(edges, index)[1], 1.0, places=3)
+        rewards = edge_rewards(edges, index)
+        self.assertAlmostEqual(rewards[0], 1.8, places=3)
+        self.assertLess(rewards[1], 1.0)
+
+    def test_a_small_cluster_is_no_destination(self):
+        index = attractor_index([(6.1, 46.1, 0.6)])
+        self.assertLess(edge_rewards([edge(1, 1, 2)], index)[0], 1.0)
 
 
 class EdgeQuality(unittest.TestCase):

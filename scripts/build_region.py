@@ -502,12 +502,13 @@ def reward_potential(edges, attractors):
     REWARD_HORIZON = REWARD_TAU * math.log(1 / REWARD_FLOOR)
     QUALITY_SOURCE_THRESHOLD = 0.7
     FOREST_SOURCE_THRESHOLD = 0.6
-    # An amenity cluster brings its own strength (`cluster_strength`), up to 2 for a rich
-    # one; the field then starts above 1 there, which is what marks a destination.
+    # An amenity cluster seeds the field at most as strongly as a viewpoint. Its full
+    # strength marks the destination itself (`edge_rewards`); spread over the field, a
+    # village's benches and fountain lent scenic credit to every road for a kilometre.
     SOURCE_STRENGTH = {"quality": 0.7, "forest": 0.5}
 
     def source_strength(edge):
-        strength = attractor_strength(edge["geometry"], attractors)
+        strength = min(1.0, attractor_strength(edge["geometry"], attractors))
         if edge["quality"] >= QUALITY_SOURCE_THRESHOLD:
             strength = max(strength, SOURCE_STRENGTH["quality"])
         if edge["forest"] >= FOREST_SOURCE_THRESHOLD:
@@ -542,6 +543,22 @@ def reward_potential(edges, attractors):
         for node, d in node_reward_dist.items()
         if d <= REWARD_HORIZON
     }
+
+
+def edge_rewards(edges, attractors):
+    """Each edge's reward: the field ahead of it, or on a destination, its strength.
+
+    A destination is a cluster worth a detour on its own (strength 1 or more), and only
+    the edges beside it carry that strength, which is where exploration looks for it.
+    """
+    field = reward_potential(edges, attractors)
+    rewards = []
+    for edge in edges:
+        strength = attractor_strength(edge["geometry"], attractors)
+        rewards.append(
+            max(field.get(edge["to"], 0.0), strength if strength >= 1 else 0.0)
+        )
+    return rewards
 
 
 def basemap_features(ways, elements):
@@ -904,9 +921,8 @@ def build(
     node_junction = junction_severity(edges, node_ids)
     for edge in edges:
         edge["junction"] = node_junction[edge["to"]]
-    reward = reward_potential(edges, attractors)
-    for edge in edges:
-        edge["reward"] = reward.get(edge["to"], 0.0)
+    for edge, reward in zip(edges, edge_rewards(edges, attractors)):
+        edge["reward"] = reward
     # Halo trim. Everything above ran over the cell plus its halo, so the bounded passes
     # (utility 1 km, junction node-local, reward 2,347 m) saw every neighbour that can
     # influence an edge this cell owns, making their results identical to a whole-region

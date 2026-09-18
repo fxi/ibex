@@ -45,7 +45,8 @@ RELEASE_ROOT = "data/build/geneva-toulon-v7"
 # Raised whenever the pipeline changes the edge data it publishes; it rides in the release
 # tag from each cell manifest, so incompatible generations cannot be joined.
 # 7 includes mapped mountain passes and saddles among scenic sources.
-PREPROCESSOR_VERSION = 7
+# 8 scores track quality from the tags present and draws to amenity clusters.
+PREPROCESSOR_VERSION = 8
 
 
 def release_cells(window=WINDOW, zoom=GRID_ZOOM):
