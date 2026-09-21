@@ -36,6 +36,14 @@ worktree of the previous commit before concluding otherwise. Tests that encode a
 decision — a cost, a preference, a routing outcome — are not to be relaxed to make them
 pass: ask instead. Record any newly accepted failure in this section.
 
+## Known defects
+
+`docs/issues.md` lists the defects found by review and not yet fixed, each with what it
+blocks: B1 before the next full rebuild, R1 with the Swiss extract, the rest when the
+surrounding work makes them cheap. Read it before touching the builder, the publisher or
+the cost model — the entry probably says what you are about to rediscover. Fix an entry by
+deleting it, not by marking it done, and add one when you leave a defect behind.
+
 ## Changing the router
 
 `src/routing/engine.ts` is the search and nothing else: the cost model (`cost.ts`), the cost
