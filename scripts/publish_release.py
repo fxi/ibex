@@ -109,14 +109,36 @@ def releases(client, bucket: str, root: str) -> list[str]:
     return sorted(found)
 
 
-def exists(client, bucket: str, key: str, size: int | None = None) -> bool:
+def remote_size(client, bucket: str, key: str) -> int | None:
+    """The size of an object already in the bucket, or None when there is none."""
     try:
         head = client.head_object(Bucket=bucket, Key=key)
     except client.exceptions.ClientError as error:
         if error.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
-            return False
+            return None
         raise
-    return size is None or head["ContentLength"] == size
+    return head["ContentLength"]
+
+
+def exists(client, bucket: str, key: str, size: int | None = None) -> bool:
+    found = remote_size(client, bucket, key)
+    return found is not None and (size is None or found == size)
+
+
+def conflicts(client, bucket: str, base: str, uploads) -> list[str]:
+    """Keys already published under `base` whose size disagrees with what we would send.
+
+    A release is immutable, so a disagreement is never something to upload over: it means
+    this id is already taken by different bytes, and the caller must stop. Equal sizes are
+    taken as the same object here — that is as far as a HEAD can tell, and it is why the
+    release id has to follow from the graph's digest (scripts/package_cells.ts).
+    """
+    return [
+        key
+        for _, key, size in uploads
+        if (found := remote_size(client, bucket, f"{base}/{key}")) is not None
+        and found != size
+    ]
 
 
 def main():
@@ -236,6 +258,16 @@ def main():
 
     if args.publish:
         base = release_root(prefix, data_version, catalogue["release"])
+        # Preflight the whole release before writing any of it. Uploading over one object
+        # and stopping would leave the prefix holding two builds at once, behind immutable
+        # cache headers that make it effectively permanent.
+        clashing = conflicts(client, bucket, base, uploads)
+        if clashing:
+            raise SystemExit(
+                f"{catalogue['release']} is already published with different content "
+                f"({len(clashing)} object(s), e.g. {clashing[0]}). Releases are immutable: "
+                f"repackage so the id follows from these bytes, rather than overwriting."
+            )
         skipped = 0
         for path, key, size in uploads:
             if exists(client, bucket, f"{base}/{key}", size):

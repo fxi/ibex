@@ -64,6 +64,9 @@ rounded coverage fraction cannot tell apart. Packaging checks each `graph.json` 
 digest its manifest declares, so an interrupted rebuild cannot be released under the
 provenance of the build it replaced.
 
+Publication preflights the whole release before writing any of it and refuses an id already
+holding different content, rather than uploading over it.
+
 Packaging refuses a build that is missing any cell of its window, comparing what it finds
 against the `window.json` that `build_cells.py` writes beside the cells. A deliberate subset
 is packaged with `--partial`, which is never a release.

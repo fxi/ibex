@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from data_version import DATA_VERSION, data_version
-from publish_release import collect, pointer, release_root
+from publish_release import collect, conflicts, pointer, release_root
 
 FIXTURE = Path(__file__).resolve().parent.parent / "tests/fixtures/data/v1"
 
@@ -59,6 +59,51 @@ class PublishLayout(unittest.TestCase):
             graph.write_bytes(bytes(data))
             with self.assertRaisesRegex(ValueError, "Integrity"):
                 collect(copy)
+
+
+class FakeS3:
+    """Just enough of the client for the publication preflight: HEAD and its 404."""
+
+    class exceptions:
+        class ClientError(Exception):
+            def __init__(self, code):
+                super().__init__(code)
+                self.response = {"Error": {"Code": code}}
+
+    def __init__(self, sizes):
+        self.sizes = sizes
+
+    def head_object(self, Bucket, Key):
+        if Key not in self.sizes:
+            raise self.exceptions.ClientError("404")
+        return {"ContentLength": self.sizes[Key]}
+
+
+class ImmutablePublication(unittest.TestCase):
+    """A release id names one set of bytes for good; republishing must not write over it."""
+
+    BASE = "data/v1/releases/r"
+    uploads = [
+        (Path("a.ibx"), "9-264-181/graph.ibx", 10),
+        (Path("b.json"), "catalogue.json", 4),
+    ]
+
+    def test_an_unpublished_release_has_nothing_to_clash_with(self):
+        self.assertEqual(conflicts(FakeS3({}), "ibex", self.BASE, self.uploads), [])
+
+    def test_republishing_the_same_bytes_is_not_a_conflict(self):
+        client = FakeS3({f"{self.BASE}/9-264-181/graph.ibx": 10, f"{self.BASE}/catalogue.json": 4})
+        self.assertEqual(conflicts(client, "ibex", self.BASE, self.uploads), [])
+
+    def test_different_content_under_the_same_id_is_refused(self):
+        client = FakeS3({f"{self.BASE}/9-264-181/graph.ibx": 11})
+        self.assertEqual(
+            conflicts(client, "ibex", self.BASE, self.uploads), ["9-264-181/graph.ibx"]
+        )
+
+    def test_an_interrupted_upload_still_resumes(self):
+        client = FakeS3({f"{self.BASE}/9-264-181/graph.ibx": 10})
+        self.assertEqual(conflicts(client, "ibex", self.BASE, self.uploads), [])
 
 
 if __name__ == "__main__":
