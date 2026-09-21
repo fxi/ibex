@@ -128,12 +128,16 @@ export function fieldPath(f: Field, start: number, end: number): number[] {
 }
 export function corridorCells(f: Field, radius: number): Set<number> {
   const allowed = new Set<number>();
+  // Integer offsets: a radius is not always whole (the second corridor expansion is 2.5x
+  // the profile's), and a fractional step made every id fractional, so the set matched no
+  // cell and the corridor rejected the whole graph.
+  const reach = Math.ceil(radius);
   for (const path of f.paths)
     for (const id of path) {
       const x = id % f.width,
         y = Math.floor(id / f.width);
-      for (let dy = -radius; dy <= radius; dy++)
-        for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -reach; dy <= reach; dy++)
+        for (let dx = -reach; dx <= reach; dx++) {
           if (
             dx * dx + dy * dy > radius * radius ||
             x + dx < 0 ||
