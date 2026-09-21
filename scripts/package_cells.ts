@@ -72,6 +72,10 @@ for (const id of entries) {
     throw new Error(
       `${id} was built with cost model ${manifest.costModelVersion}`,
     );
+  // The release id is derived from this, so a cell that does not declare one would make
+  // two different graphs hash alike.
+  if (typeof manifest.version !== "string" || !manifest.version)
+    throw new Error(`${id} has no build version in its manifest; rebuild the cell`);
   cells.push({ id, manifest });
 }
 
@@ -102,10 +106,15 @@ const preprocessorVersion = [...preprocessors][0];
 // Terrain rides in the digest as well as OSM: a build whose DEM tiles partly failed carries
 // different grades, and without this it would claim the same id — and the same permanently
 // cached S3 prefix — as a later, complete rebuild of the same OSM input.
+// The cell's own version is the digest of the bytes it built, so it covers everything the
+// provenance fields describe only indirectly — the split-node set, the elevation samples
+// behind a coverage fraction that rounds to three decimals — and nothing can reach this
+// point claiming an id that does not follow from the graph being packaged.
 const sources = cells
   .map(
     (c) =>
-      `${c.id}:${c.manifest.source?.osmSha256 ?? ""}:${c.manifest.osmTimestamp}` +
+      `${c.id}:${c.manifest.version}` +
+      `:${c.manifest.source?.osmSha256 ?? ""}:${c.manifest.osmTimestamp}` +
       `:${c.manifest.terrainSource ?? "none"}:${c.manifest.terrainCoverage ?? 0}`,
   )
   .sort()
@@ -139,9 +148,21 @@ const catalogueCells = [];
 let releaseBytes = 0;
 
 for (const { id, manifest } of cells) {
-  const graph: Graph = JSON.parse(
-    await fs.readFile(`${input}/${id}/graph.json`, "utf8"),
-  );
+  // The manifest is the sentinel build_cells.py resumes on, and build_region.py writes the
+  // artifacts before the terrain gate: a --force rebuild that fails or is interrupted can
+  // leave new bytes beside the old manifest. Package the graph the manifest describes or
+  // none at all, so a stale provenance cannot reach a release.
+  const built = await fs.readFile(`${input}/${id}/graph.json`);
+  const declared = (
+    manifest.files as { path: string; bytes: number; sha256: string }[]
+  ).find((file) => file.path === "graph.json");
+  if (!declared) throw new Error(`${id}: its manifest declares no graph.json`);
+  if (built.length !== declared.bytes || sha256(built) !== declared.sha256)
+    throw new Error(
+      `${id}: graph.json does not match its manifest — the build was interrupted or ` +
+        `overwritten. Rebuild the cell with scripts/build_cells.py --force.`,
+    );
+  const graph: Graph = JSON.parse(built.toString("utf8"));
   const cell = parseCellId(id);
   const directory = `${output}/${id}`;
   await fs.mkdir(directory, { recursive: true });

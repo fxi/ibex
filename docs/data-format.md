@@ -56,10 +56,13 @@ What a bump does:
   `--data-version <N> --prune <keep> --yes`.
 
 The release id is `<yyyymmdd>-<hash>`, where the hash covers `DATA_VERSION`, the cost model
-version, the preprocessor version, and every cell's source digest and terrain provenance
-(source and coverage). Changing any of them produces a new id, so an existing release is
-never overwritten — including by a rebuild whose DEM tiles failed, which carries different
-grades from the same OSM input.
+version, the preprocessor version, and, per cell, its build version — the digest of the
+bytes it built — alongside its source digest and terrain provenance. Changing any of them
+produces a new id, so an existing release is never overwritten: not by a rebuild whose DEM
+tiles failed, and not by one that differs only in its split-node set or in elevations a
+rounded coverage fraction cannot tell apart. Packaging checks each `graph.json` against the
+digest its manifest declares, so an interrupted rebuild cannot be released under the
+provenance of the build it replaced.
 
 Packaging refuses a build that is missing any cell of its window, comparing what it finds
 against the `window.json` that `build_cells.py` writes beside the cells. A deliberate subset
