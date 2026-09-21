@@ -949,14 +949,8 @@ def build(
                     far += 1
                     break
         counts["edgesBeyondHalo"] = far
-        if split_nodes is None and counts["haloOvershootKm"] > HALO_KM:
-            raise ValueError(
-                f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns an edge reaching "
-                f"{counts['haloOvershootKm']:.2f} km past its bounds with no global "
-                f"split-node set; run global_splits.py first"
-            )
         # Scheduled ferries legitimately run hundreds of km (Marseille to Tangier, Corsica),
-        # so only road edges are held to the broken-extract cap.
+        # so only road edges are held to the two overshoot limits below.
         road_overshoot = max(
             (
                 max(bounds[0] - p[0], p[0] - bounds[2], bounds[1] - p[1], p[1] - bounds[3])
@@ -966,6 +960,19 @@ def build(
             ),
             default=0.0,
         ) * 111.32
+        counts["roadOvershootKm"] = round(road_overshoot, 3)
+        # Without a global split-node set, a cell derives its split points from its own
+        # extract. `complete_ways` puts every road way touching a node inside the cell plus
+        # halo into that extract, so the derivation is exact there and can only miss a
+        # junction further out — which is precisely an owned road reaching past the halo.
+        # A ferry cannot miss one: nothing joins a lake crossing mid-water, and its
+        # endpoints are split points by definition, so it is judged on the road figure.
+        if split_nodes is None and road_overshoot > HALO_KM:
+            raise ValueError(
+                f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns a road reaching "
+                f"{road_overshoot:.2f} km past its bounds with no global "
+                f"split-node set; run global_splits.py first"
+            )
         if road_overshoot > 200:
             raise ValueError(
                 f"Cell {cell_id(cell_zoom, cell_x, cell_y)} owns an edge reaching "
