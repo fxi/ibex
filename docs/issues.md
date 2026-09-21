@@ -7,6 +7,30 @@ marking it done.
 
 ## Data and publication
 
+### B5 · The two split rules disagree
+`scripts/global_splits.py` and `scripts/build_region.py` derive the way-split node set by
+different rules, so the release-wide set is not what a cell would have computed for itself.
+Two mismatches, both confirmed on `9-264-181` against `geneva-toulon-v7`:
+
+- `global_splits.py:48` skips any way without a `highway` tag, so `route=ferry` ways
+  contribute no split points. `build_region.py` synthesises `highway=ferry` (`:643`) and
+  treats them as roads, so they do. Way 163578661 splits locally and not globally.
+- `global_splits.py` keeps the via node of every `type=restriction` relation.
+  `build_region.py` adds `via_nodes` only inside the loop that has already filtered on
+  `except=bicycle`, on a `no_`/`only_` prefix, and on all named ways being present in
+  `road_ids` (`:700-738`), so it keeps strictly fewer.
+
+**Measured 2026-09-21:** building the cell both ways differs on 7 ways of 345,631 edges —
+6 nodes and 8 edges only in the global build, 2 edges only in the local one. All seven nodes
+are interior to the cell, and road overshoot past the halo is 0.00 km, so none of it follows
+from the extract's extent. Both releases route identically: `route_golden.ts --check` over
+4 scenarios × 4 profiles reports 16 of 16 unchanged, the seam included.
+**Blocks:** nothing measurable — no route moves. It means the global set cannot be used as
+the definition of correct, so a per-cell builder cannot be validated against it.
+**Shape of the fix:** one rule, in one place. Deriving splits per cell removes the second
+implementation rather than reconciling it; a cell extract cut with `complete_ways` holds
+every road way touching a node inside the cell plus halo, which is what the rule needs.
+
 ### B1 · Cross-cell turn restrictions can disappear
 `scripts/build_region.py:976-979` keeps a restriction only when *every* way it names has an
 edge owned by that cell (ownership is the cell holding an edge's first point, `:915`). A
