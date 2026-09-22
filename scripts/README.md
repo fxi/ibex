@@ -29,6 +29,7 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `build_parity.ts` | Diff two cell builds: ids and extents exactly, derived values to a tolerance (use around builder changes) |
+| | `build_cell.ts` | Build one cell's graph in TypeScript from its extract; `--cell`, `--no-terrain`, `--terrain-cache` |
 | | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
