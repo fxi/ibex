@@ -36,6 +36,11 @@ const present = existsSync(`${DIR}/catalog.json`);
 const CELL_LIMIT = 50_000_000;
 
 const read = (path: string) => new Uint8Array(readFileSync(path));
+/** Where a cell's file sits on disk: named after the hash of the bytes it holds. */
+const fileOf = (id: string, name: "index.ibx" | "graph.ibx") => {
+  const entry = catalogue!.cells.find((c) => c.id === id)!;
+  return `${DIR}/cells/${id}/${entry.hash}.${name}`;
+};
 const catalogue = present
   ? catalogueSchema.parse(
       JSON.parse(readFileSync(`${DIR}/catalog.json`, "utf8")),
@@ -75,7 +80,8 @@ describe.skipIf(!present)("generated release", () => {
     expect(catalogue!.cells.length).toBeGreaterThan(0);
     expect(catalogue!.grid).toMatchObject({ scheme: "xyz", blockZoom: 13 });
     // `<osm edition>-<hash of inputs>`; pin the shape, not a value that moves with the data.
-    expect(GENERATION).toMatch(/^\d{8}-[0-9a-f]{8}$/);
+    // A generation, not a release date: cells built months apart still carry it.
+    expect(GENERATION).toMatch(/^b\d+$/);
     for (const cell of catalogue!.cells) {
       const derived = cellBBox(parseCellId(cell.id));
       derived.forEach((v, i) => expect(cell.bbox[i]).toBeCloseTo(v, 6));
@@ -106,7 +112,7 @@ describe.skipIf(!present)("generated release", () => {
 
   it("decodes every cell index against the release", () => {
     for (const cell of catalogue!.cells) {
-      const index = decodeIndex(read(`${DIR}/${cell.id}/index.ibx`), {
+      const index = decodeIndex(read(fileOf(cell.id, "index.ibx")), {
         release: GENERATION,
         cell: parseCellId(cell.id),
       });
@@ -119,17 +125,17 @@ describe.skipIf(!present)("generated release", () => {
         expect(block.offset).toBe(at);
         at += block.length;
       }
-      const graphBytes = readFileSync(`${DIR}/${cell.id}/graph.ibx`).length;
+      const graphBytes = readFileSync(fileOf(cell.id, "graph.ibx")).length;
       expect(at).toBe(graphBytes);
     }
   });
 
   it("verifies and decodes every block of one cell", () => {
     const id = catalogue!.cells[0].id;
-    const index = decodeIndex(read(`${DIR}/${id}/index.ibx`), {
+    const index = decodeIndex(read(fileOf(id, "index.ibx")), {
       release: GENERATION,
     });
-    const graph = readFileSync(`${DIR}/${id}/graph.ibx`);
+    const graph = readFileSync(fileOf(id, "graph.ibx"));
     let nodes = 0;
     let edges = 0;
     for (const ref of index.blocks) {
@@ -154,10 +160,10 @@ describe.skipIf(!present)("generated release", () => {
 
   it("decodes data every validator accepts", () => {
     const id = catalogue!.cells[0].id;
-    const index = decodeIndex(read(`${DIR}/${id}/index.ibx`), {
+    const index = decodeIndex(read(fileOf(id, "index.ibx")), {
       release: GENERATION,
     });
-    const graph = readFileSync(`${DIR}/${id}/graph.ibx`);
+    const graph = readFileSync(fileOf(id, "graph.ibx"));
     for (const ref of index.blocks.slice(0, 12)) {
       const decoded = decodeBlock(
         new Uint8Array(
@@ -179,7 +185,7 @@ describe.skipIf(!present)("generated release", () => {
     ];
     const ids = ["9-264-181", "9-265-181"];
     const hasCells =
-      present && ids.every((id) => existsSync(`${DIR}/${id}/index.ibx`));
+      present && ids.every((id) => existsSync(fileOf(id, "index.ibx")));
 
     it.skipIf(!hasCells)(
       "routes across the cell boundary",

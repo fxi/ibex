@@ -24,7 +24,7 @@ import { attractionSurface } from "../src/build/layers";
 import { distance } from "../src/geo/distance";
 import type { BBox } from "../src/build/surface";
 
-const CELL = "data/pbf/geneva-toulon-v7/cells/9-266-187.osm.pbf";
+const CELL = "tests/fixtures/osm/monaco.osm.pbf";
 
 describe("attractorKind", () => {
   it("reads the summit kinds", () => {

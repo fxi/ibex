@@ -1,3 +1,19 @@
+`osm/monaco.osm.pbf` is Geofabrik's Monaco extract, committed unmodified. It is 676 KB and
+still a real OpenStreetMap file — dense nodes, a string table, several blobs, relations with
+roles — so the PBF reader, the source loader, the tag rules, the attractor pass and a whole
+cell build all run against real data on any machine, with no download and no local build.
+
+© OpenStreetMap contributors, [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+Refresh it from <https://download.geofabrik.de/europe/monaco-latest.osm.pbf>; the recorded
+counts and folds in the tests that read it are expected to change when you do, and are
+re-recorded from the code under test.
+
+`data/` is a synthetic single-cell tree in the published layout — one `catalog.json` and one
+cell whose files are named after its hash — used by the browser tests so they never touch
+the network. Regenerate it with `node --import tsx scripts/create_cell_fixture.ts`.
+`grid-fixture/catalog.json` is the two-cell catalogue for unit tests
+(`scripts/gen_grid_fixture.ts`).
+
 `voirons-graph.json.gz` is a geographic routing regression fixture clipped from the
 published cell release (`g4-20260909-p5`, cost model 4). It covers the technical Sentier
 du Sauget with its road/track detour, and — to the west — the small Menoge road bridges

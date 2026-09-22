@@ -1,15 +1,18 @@
 /**
- * The PBF reader against real extracts.
+ * The PBF reader against a real extract.
  *
- * The expectations were produced by pyosmium — the reader the Python builder uses — over
- * the same files, with identical canonical forms on both sides: scaled integer
- * coordinates, ordered way refs, ordered relation members with roles, and the full tag
- * map. Every value below matched exactly when they were recorded, so a change here means
- * the reader has drifted from osmium, not that the numbers need updating.
+ * The fixture is Geofabrik's Monaco download, committed because it is small (676 KB) and
+ * still genuinely real: dense nodes, a string table, multiple blobs, relations with roles.
+ *
+ * The expectations below were recorded from this reader once pyosmium — the reader the
+ * Python builder used — had been shown to agree with it element for element on the old
+ * per-cell extracts, in identical canonical forms: scaled integer coordinates, ordered way
+ * refs, ordered relation members with roles, the full tag map. Those extracts are gone with
+ * the region model, and so is pyosmium, so this is no longer a live cross-check against
+ * osmium: it locks the reader against drift from a state that was verified against it.
  *
  * The fold is an xor of per-element digests, so it is order-independent but sensitive to
  * any element's content; the counts and sums localise a failure to a kind of element.
- * Skipped when the extracts are absent, as the release tests are.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -17,7 +20,7 @@ import { createHash } from "node:crypto";
 import { readPbf } from "../src/build/osm/pbf";
 import { inflate } from "../src/build/platform/node";
 
-const CELLS = "data/pbf/geneva-toulon-v7/cells";
+export const MONACO = "tests/fixtures/osm/monaco.osm.pbf";
 
 type Expectation = {
   counts: { node: number; way: number; relation: number };
@@ -27,23 +30,11 @@ type Expectation = {
 };
 
 const EXPECTED: Record<string, Expectation> = {
-  "9-266-187": {
-    counts: { node: 163101, way: 26222, relation: 329 },
-    ids: { nodeId: "888517674015874", wayId: "17380645027885", relationId: "3690352300" },
-    sums: { refs: 207098, members: 2099, tags: 149075 },
-    fold: { node: "46f6a77fdda5363", way: "8550ef68bd0e44cc", relation: "293798c591e58882" },
-  },
-  "9-262-187": {
-    counts: { node: 455963, way: 28010, relation: 434 },
-    ids: { nodeId: "2815631599717136", wayId: "19080179594412", relationId: "5017832693" },
-    sums: { refs: 498937, members: 3003, tags: 96131 },
-    fold: { node: "f7af0754c2c36d3f", way: "2bc45ffd87709ffa", relation: "712cbb8f8f0fddd0" },
-  },
-  "9-264-181": {
-    counts: { node: 2992035, way: 286312, relation: 3987 },
-    ids: { nodeId: "16889097457781942", wayId: "177352476103083", relationId: "43163613279" },
-    sums: { refs: 3531906, members: 41705, tags: 1204465 },
-    fold: { node: "5196c8f5f1f6f5eb", way: "e47a71d25422b2e5", relation: "d8648dd74370a92e" },
+  monaco: {
+    counts: { node: 41703, way: 6248, relation: 348 },
+    ids: { nodeId: "244553901793413", wayId: "3978102628683", relationId: "3294205633" },
+    sums: { refs: 50620, members: 40412, tags: 45103 },
+    fold: { node: "ecee4d0dbc7a630c", way: "17c0ef9f1fabc7c6", relation: "96d3a36922f26d12" },
   },
 };
 
@@ -99,11 +90,8 @@ async function summarise(path: string) {
 }
 
 describe("OSM PBF reader", () => {
-  for (const [cell, expected] of Object.entries(EXPECTED)) {
-    const path = `${CELLS}/${cell}.osm.pbf`;
-    const present = fs.existsSync(path);
-    it.skipIf(!present)(`matches osmium on ${cell}`, async () => {
-      expect(await summarise(path)).toEqual(expected);
+  for (const [name, expected] of Object.entries(EXPECTED))
+    it(`reads ${name} element for element`, async () => {
+      expect(await summarise(MONACO)).toEqual(expected);
     }, 60_000);
-  }
 });

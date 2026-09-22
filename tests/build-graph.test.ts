@@ -1,13 +1,14 @@
 /**
- * The whole builder, on a real cell.
+ * The whole builder, on a real extract.
  *
- * The counts below are what `scripts/build_region.py` produces for the same extract with
- * cell-local split nodes and no terrain, and `scripts/build_parity.ts` confirmed the graphs
- * agree field by field: every edge id, node id, geometry, length, tag, grade and restriction
- * matched, and only the three rasterised signals — forest, urban, reward — differed.
+ * Monaco, committed because it is small and real. The graph it produces is small too, and
+ * the counts below are recorded from this builder — which was shown field for field against
+ * the Python one it replaced, every edge id, node id, geometry, length, tag and restriction
+ * matching, with only the three rasterised signals differing by design.
  *
- * So this guards the part with a right answer. What the signals should be is settled by the
- * gold routes, not here.
+ * So this guards the part with a right answer, against drift. What the signals should be is
+ * settled by the gold routes, not here. Whether a real cell still builds identically is
+ * `scripts/build_parity.ts`, on a real cell.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -16,8 +17,8 @@ import { inflate } from "../src/build/platform/node";
 import { buildGraph, edgeUid } from "../src/build/graph";
 import { parseCellId } from "../src/geo/grid";
 
-const CELL = "9-266-187";
-const EXTRACT = `data/pbf/geneva-toulon-v7/cells/${CELL}.osm.pbf`;
+const CELL = "9-266-186";
+const EXTRACT = "tests/fixtures/osm/monaco.osm.pbf";
 
 describe("edgeUid", () => {
   it("is a pure function of way, node index and direction", () => {
@@ -41,14 +42,14 @@ describe("edgeUid", () => {
 
 describe.skipIf(!fs.existsSync(EXTRACT))("buildGraph", () => {
   it(
-    "reproduces the Python builder's graph for a real cell",
+    "builds a whole cell out of a real extract",
     async () => {
       const source = await readSource(new Uint8Array(fs.readFileSync(EXTRACT)), inflate);
       const { graph, counts } = buildGraph(source, { cell: parseCellId(CELL) });
 
-      expect(counts.nodes).toBe(4014);
-      expect(counts.edges).toBe(7944);
-      expect(counts.restrictions).toBe(46);
+      expect(counts.nodes).toBe(2241);
+      expect(counts.edges).toBe(3434);
+      expect(counts.restrictions).toBe(43);
       expect(counts.waysMissingPositions).toBe(0);
 
       // Every edge the cell keeps starts inside it — that is what ownership means, and what

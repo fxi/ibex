@@ -16,26 +16,14 @@ import { createHash } from "node:crypto";
 import { geometry, readSource } from "../src/build/osm/source";
 import { inflate } from "../src/build/platform/node";
 
-const CELLS = "data/pbf/geneva-toulon-v7/cells";
+const MONACO = "tests/fixtures/osm/monaco.osm.pbf";
 
 const EXPECTED = {
-  "9-266-187": {
-    counts: { node: 14642, way: 26222, relation: 329 },
+  monaco: {
+    counts: { node: 4251, way: 6248, relation: 348 },
     waysMissingPositions: 0,
-    geometryPoints: 207098,
-    fold: { node: "e5115f4104fb2106", wayGeometry: "6df5db60b7dbfdf5" },
-  },
-  "9-262-187": {
-    counts: { node: 4743, way: 28010, relation: 434 },
-    waysMissingPositions: 0,
-    geometryPoints: 498937,
-    fold: { node: "b19fb7b95bd7e52f", wayGeometry: "cf1fdb05a3ee8fb0" },
-  },
-  "9-264-181": {
-    counts: { node: 72923, way: 286312, relation: 3987 },
-    waysMissingPositions: 0,
-    geometryPoints: 3531906,
-    fold: { node: "209595e694517084", wayGeometry: "7688914b68d499eb" },
+    geometryPoints: 50620,
+    fold: { node: "fde4a2db4df4939f", wayGeometry: "bd1981d9c99249c9" },
   },
 };
 
@@ -79,21 +67,17 @@ async function summarise(path: string) {
 }
 
 describe("cell source loader", () => {
-  for (const [cell, expected] of Object.entries(EXPECTED)) {
-    const path = `${CELLS}/${cell}.osm.pbf`;
-    const present = fs.existsSync(path);
-    it.skipIf(!present)(
-      `matches osm_source.py on ${cell}`,
+  for (const [name, expected] of Object.entries(EXPECTED))
+    it(
+      `loads ${name} into the shape the graph build reads`,
       async () => {
-        expect(await summarise(path)).toEqual(expected);
+        expect(await summarise(MONACO)).toEqual(expected);
       },
       120_000,
     );
-  }
 
   it("resolves way geometry through the node index", async () => {
-    const path = `${CELLS}/9-266-187.osm.pbf`;
-    if (!fs.existsSync(path)) return;
+    const path = MONACO;
     const source = await readSource(new Uint8Array(fs.readFileSync(path)), inflate);
     const way = source.ways.find((w) => w.refs.length > 2)!;
     const coords = geometry(way, source.positions)!;

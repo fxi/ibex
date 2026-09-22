@@ -15,21 +15,13 @@ import { inflate } from "../src/build/platform/node";
 import { directions, edgeQuality, permitted, PAVED } from "../src/build/tags";
 import { roundTo } from "../src/build/round";
 
-const CELLS = "data/pbf/geneva-toulon-v7/cells";
+const MONACO = "tests/fixtures/osm/monaco.osm.pbf";
 const STRESSES = [0.0, 0.15, 0.5, 0.95];
 
 const EXPECTED = {
-  "9-266-187": {
-    counts: { ways: 26222, permitted: 15875, forward: 26219, backward: 20719, quality: 5008 },
-    fold: "a7d92c4fd01a4308",
-  },
-  "9-262-187": {
-    counts: { ways: 28010, permitted: 16430, forward: 28008, backward: 25027, quality: 11564 },
-    fold: "de7165ba2177f95b",
-  },
-  "9-264-181": {
-    counts: { ways: 286312, permitted: 134861, forward: 286300, backward: 266303, quality: 91296 },
-    fold: "9a52715e0e022a93",
+  monaco: {
+    counts: { ways: 6248, permitted: 1677, forward: 6247, backward: 5546, quality: 4 },
+    fold: "7e148e6ab74734e1",
   },
 };
 
@@ -62,17 +54,14 @@ async function summarise(path: string) {
 }
 
 describe("tag rules", () => {
-  for (const [cell, expected] of Object.entries(EXPECTED)) {
-    const path = `${CELLS}/${cell}.osm.pbf`;
-    const present = fs.existsSync(path);
-    it.skipIf(!present)(
-      `matches build_region.py on ${cell}`,
+  for (const [name, expected] of Object.entries(EXPECTED))
+    it(
+      `scores every way in ${name}`,
       async () => {
-        expect(await summarise(path)).toEqual(expected);
+        expect(await summarise(MONACO)).toEqual(expected);
       },
       120_000,
     );
-  }
 
   describe("permitted", () => {
     it("takes the most specific access tag", () => {
