@@ -14,7 +14,8 @@
 import { readPbf, type Inflate, type OsmNode, type OsmRelation, type OsmWay } from "./pbf";
 
 export type { OsmNode, OsmRelation, OsmWay };
-export type Position = readonly [number, number];
+/** Matches `Point` in `src/routing/types`, so geometry flows into the rest of the build. */
+export type Position = [number, number];
 
 /**
  * Every node's location, as sorted typed arrays with a binary search.
