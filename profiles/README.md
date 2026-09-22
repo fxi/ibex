@@ -59,7 +59,8 @@ parse rather than guessing what it meant.
     "rider": { "mass_kg": 75, "sustained_w_per_kg": 3.2,
                "tech_skill": 0.7, "descend_confidence": 0.7 }
   },
-  "settings": { "detour": "prefer", "climbing": "neutral", "direction_changes": "neutral" },
+  "settings": { "detour": "prefer", "climbing": "neutral",
+                "steepness": "neutral", "direction_changes": "neutral" },
   "preferences": {
     "base": { "traffic_stress": "strongly_avoid", "unpaved": "strongly_prefer",
               "surface_difficulty": "avoid", "scenic": "prefer",
@@ -72,8 +73,8 @@ parse rather than guessing what it meant.
 ```
 
 `base` must state every preference. `uphill` and `downhill` may state any subset, and
-nothing else: `detour`, `climbing` and `direction_changes` cannot be overridden by
-direction. An override equal to `base` says nothing and is dropped on save, so two
+nothing else: `detour`, `climbing`, `steepness` and `direction_changes` cannot be
+overridden by direction. An override equal to `base` says nothing and is dropped on save, so two
 profiles that mean the same thing serialize the same.
 
 ## Setup
@@ -107,6 +108,15 @@ solved for speed, so lower gearing and lighter luggage genuinely raise it. The r
 calibrated heuristics and are labelled as such in the code: there is no honest physics for
 how steep a descent a given rider will commit to. Configure shows the result in words.
 
+The uphill threshold is a *tarmac* threshold — the power balance uses rolling resistance
+for good tarmac — so the cost model lowers it on ground that will not hold a tyre
+(`tractionGrade`). On a loose track the limit stops being what the rider can turn over and
+becomes whether the rear wheel holds. How much is taken away depends on the bike as well
+as the ground: a 60 mm knobbly on suspension keeps more of its climbing grade than a 28 mm
+tyre does, and an unsurveyed way is charged at `unpaved_guess_share`, because silence is
+not evidence of loose ground. This does **not** move the line between riding and pushing,
+which is a fact about gearing: losing traction does not stop the pedals turning.
+
 ## Settings
 
 Whole-ride choices, one value each, in the same five-word vocabulary as preferences.
@@ -119,7 +129,17 @@ Whole-ride choices, one value each, in the same five-word vocabulary as preferen
   whether the app explores or commutes.
 - `climbing` — whether height gain is the point or the price. It scales a cost that
   already adds up over the ride (`ENGINE.climb_effort`, 5 equivalent metres per metre
-  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×.
+  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×. Note what it cannot
+  do: climbing effort is charged per metre of *height*, so between two ways up the same
+  hill it is the same number on both and cancels. `climbing` chooses how much ascent a
+  ride has, never which side of the hill it is taken on. That is `steepness`.
+- `steepness` — how the height is gained, apart from how much of it there is. Charged per
+  metre outside a momentum band of 0.6 × the rider's comfortable grade in that direction
+  (`ENGINE.flow`, 20 equivalent metres per unit of grade past the band at `neutral`,
+  scaled 0.4× to 1.6× by the word). It applies uphill and downhill alike. Unlike
+  `direction_changes` it charges in full at `neutral`: gradient has a cost whatever the
+  rider thinks of it, and a setting that vanished in the middle left Road and MTB — both
+  shipped `direction_changes: neutral` — with no opinion about gradient at all.
 - `direction_changes` — the attention a change of direction takes at an intersection.
   Only where three or more ways meet: going straight on is free, a right angle pays half,
   a U-turn pays in full (`ENGINE.turn_meters`, 60 m at `strongly_avoid`). Hairpins inside

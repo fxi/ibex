@@ -81,3 +81,25 @@ make the router refuse a route that exists.
 **Shape of the fix:** retry a disconnected search on progressively larger areas under an
 explicit budget, and widen `legCache.ts:35`'s data dependencies to match. `route_golden.ts`
 loads through the same `searchArea`, so recapture the golden master.
+
+### R3 · A stored route is drawn by the old cost model and read by the new one
+`src/tracks.ts:291` stamps a saved track with `packVersion` but nothing about the cost
+model, and `storedResult` keeps the `geometry`, `segments` and `hikeABikeM` the router
+produced at the time. The elevation chart's steep lane and every warning are recomputed
+live against the current `capability`. After a change to the thresholds — `tractionGrade`
+is the first — a track saved earlier draws its old line while being annotated by the new
+model, so the two can disagree about which parts of it are hard.
+**Blocks:** nothing; nothing crashes and the line itself is still the line that was ridden.
+**Shape of the fix:** put `COST_MODEL_VERSION` in `storedResult` and mark a track stale
+when it differs, so the UI can offer to re-route it rather than silently mixing the two.
+
+### R4 · A tyre wider than 60 mm is priced as all cost and no benefit
+`src/routing/capability.ts:166` saturates the tire term at 60 mm (`(tire_mm - 25) / 35`,
+clamped to 1) so `surface_roughness` stops improving there, while `rollingResistance`
+(`:56`) keeps rising linearly for ever. An 80 mm bike therefore gets the full rolling
+penalty on every climb with none of the extra float, and scores *worse* on a steep gravel
+climb than the same bike on 60 mm.
+**Blocks:** nothing shipped — no profile is above 60 mm — but it misleads anyone editing
+`tire_mm` to model a fat bike, and it made an 80 mm experiment read as a routing fix.
+**Shape of the fix:** either saturate rolling resistance at the same width, or extend the
+roughness term past 60 mm. Both move costs, so audit against `tests/fixtures/gold/`.

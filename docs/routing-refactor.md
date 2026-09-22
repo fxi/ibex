@@ -30,7 +30,22 @@ Geneva→Med 30 km legs 69.3 % (68.7 % before).
 `(1 - cos angle) / 2`, never negative. The search state already carries the arrival node
 for turn restrictions, so no extra states are needed, and the reverse lower bound stays
 admissible because the charge is nonnegative. The search and the reported route price
-turns identically.
+turns identically. It charges turns and nothing else: gradient moved to `steepness`.
+
+`steepness` prices the gradient itself, in both directions, per metre outside a momentum
+band of `0.6 × comfortable_until`. The band is what makes it work — climbing effort is
+charged per metre of height, so on two ways up one hill it cancels exactly, and a term
+merely proportional to grade would cancel with it. `ENGINE.flow` is 20 at `neutral`,
+which is what `direction_changes: avoid` used to buy: every shipped gravel profile prices
+identically before and after the move, so the Voirons gold standard did not shift. Road
+and MTB, which ship `direction_changes: neutral`, went from charging nothing at all for
+gradient — 656 km and 416 km of the Voirons network respectively — to charging it in full.
+
+`tractionGrade` then lowers the uphill threshold on loose ground, scaled by the bike's own
+roughness comfort. It is deliberately not wired to `segmentMode`: coupling the walk
+boundary to it moved 23 km of that network into hike-a-bike and, on a `foot=no` way, could
+make an edge ineligible outright. It is also not wired to `climbingTechnical`, which would
+count the same roughness a third time.
 
 A rider who strongly avoids unpaved ground also pays `unpavedHazard`, outside the detour
 budget like `trafficHazard`. The preference alone was capped by the budget, and
