@@ -22,6 +22,7 @@
   "settings": {
     "detour": "prefer",
     "climbing": "neutral",
+    "steepness": "neutral",
     "direction_changes": "neutral"
   },
   "preferences": {

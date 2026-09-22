@@ -8,6 +8,7 @@ import {
   levelKey,
   REFERENCE,
   SCORED_KEYS,
+  STEEPNESS_AVERSION,
   STRENGTH,
   VOCABULARY_VERSION,
   type Level,
@@ -42,8 +43,10 @@ export type CompiledProfile = {
   uphillWeights: Weights;
   /** `weights` with the profile's `downhill` overrides, for grade runs going down. */
   downhillWeights: Weights;
-  /** How much this rider minds a gradient: 1 is neutral, below 1 enjoys it. */
+  /** How much this rider minds height gained: 1 is neutral, below 1 enjoys it. */
   climbAversion: number;
+  /** How much this rider minds the gradient itself; see `steepnessCost`. */
+  steepnessAversion: number;
   /** How much a change of direction at an intersection costs; see `turnCost`. */
   directionChanges: Level;
   capability: CapabilityProfile;
@@ -103,6 +106,7 @@ export function compileProfile(profile: Profile): CompiledProfile {
     uphillWeights: directional("uphill"),
     downhillWeights: directional("downhill"),
     climbAversion: CLIMB_AVERSION(STRENGTH[profile.settings.climbing]),
+    steepnessAversion: STEEPNESS_AVERSION(STRENGTH[profile.settings.steepness]),
     directionChanges: profile.settings.direction_changes,
     capability,
     permissions: profile.permissions,

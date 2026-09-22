@@ -64,11 +64,22 @@ export const setupSchema = z.strictObject({
   rider: riderSchema,
 });
 
+/**
+ * `steepness` defaults rather than being required, unlike every other setting.
+ *
+ * It was added after format 3 shipped, and a profile snapshot that fails to parse is not
+ * a warning here: `restoreCollection` parses the whole track collection at once, so one
+ * stored profile without the key would lose every saved track. A profile that predates
+ * the setting means the rider never expressed an opinion about gradient, which is exactly
+ * what `neutral` says. Every profile this repo ships states it outright.
+ */
 export const settingsSchema = z.strictObject(
-  Object.fromEntries(SETTING_KEYS.map((k) => [k, level])) as Record<
-    SettingKey,
-    typeof level
-  >,
+  Object.fromEntries(
+    SETTING_KEYS.map((k) => [
+      k,
+      k === "steepness" ? level.default("neutral") : level,
+    ]),
+  ) as Record<SettingKey, typeof level>,
 );
 
 const signalsSchema = z.strictObject(

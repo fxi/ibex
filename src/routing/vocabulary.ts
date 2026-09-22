@@ -33,10 +33,21 @@ export const STRENGTH: Record<Level, number> = {
 
 /**
  * Whole-ride settings: one value for the ride, never changed by direction. `detour` sets
- * the budget, `climbing` scales the climbing cost (see `CLIMB_AVERSION`), and
- * `direction_changes` prices turning at intersections.
+ * the budget, `climbing` scales the climbing cost (see `CLIMB_AVERSION`), `steepness`
+ * scales the gradient cost (see `STEEPNESS_AVERSION`), and `direction_changes` prices
+ * turning at intersections.
+ *
+ * `climbing` and `steepness` are two questions, not one. Climbing effort is charged per
+ * metre of height, so between two ways up the same hill it is identical and cancels:
+ * `climbing` can only choose how much ascent a ride has, never which side of the hill it
+ * is taken on. `steepness` is the second question.
  */
-export const SETTING_KEYS = ["detour", "climbing", "direction_changes"] as const;
+export const SETTING_KEYS = [
+  "detour",
+  "climbing",
+  "steepness",
+  "direction_changes",
+] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 /**
@@ -90,6 +101,18 @@ export const levelKey = (key: ScoredKey): SignalKey =>
  * is most of what there is to say. This scales the real cost instead.
  */
 export const CLIMB_AVERSION = (strength: number) => 1 - 0.6 * strength;
+
+/**
+ * What `steepness` multiplies the gradient cost by, from `strongly_avoid` to
+ * `strongly_prefer`. See `steepnessCost`.
+ *
+ * The same shape as `CLIMB_AVERSION`, and for the same reason: gradient has a cost of its
+ * own whatever the rider thinks of it, so `neutral` charges it in full and the word only
+ * scales what is already there. The alternative — a signed preference that vanishes at
+ * `neutral`, as `direction_changes` does — is what left Road and MTB with no opinion about
+ * gradient at all, and a 15% ramp costing the same as the 7% road beside it.
+ */
+export const STEEPNESS_AVERSION = (strength: number) => 1 - 0.6 * strength;
 
 /**
  * How much the line matters against the distance.

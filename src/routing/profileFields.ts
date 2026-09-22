@@ -125,6 +125,11 @@ export const SETTING_FIELDS: Field<SettingKey>[] = [
     hint: "Whether height gain is the point or the price. Adds up over the whole ride.",
   },
   {
+    key: "steepness",
+    label: "Steepness",
+    hint: "How the height is gained, apart from how much of it there is. Avoiding it takes the gentler way up the same hill, and the gentler way down.",
+  },
+  {
     key: "direction_changes",
     label: "Turns",
     hint: "Changing direction at intersections takes attention. Avoiding it prefers a straight line over a zigzag through side streets.",

@@ -145,7 +145,7 @@ test("imports and exports a complete profile", async ({ page }) => {
 
   // The whole point of the format: what comes out is complete and self-contained, so it
   // can go straight back in without a master file to resolve it against.
-  expect(Object.keys(exported.settings)).toHaveLength(3);
+  expect(Object.keys(exported.settings)).toHaveLength(4);
   expect(Object.keys(exported.preferences.base)).toHaveLength(6);
   expect(exported.setup.bike.lowest_gear_ratio).toBeGreaterThan(0);
 
