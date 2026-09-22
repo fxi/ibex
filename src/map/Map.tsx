@@ -55,6 +55,7 @@ export function MapView({
   onCell,
   tracks,
   activeId,
+  grid,
   cellStates,
   gridZoom,
   command,
@@ -65,6 +66,8 @@ export function MapView({
   basemap: Basemap;
   tracks: Track[];
   activeId?: string;
+  /** Whether the download grid is drawn at all: it belongs to the Data tab. */
+  grid: boolean;
   cellStates?: Map<CellId, CellState>;
   gridZoom?: number;
   command?: MapCommand;
@@ -126,6 +129,7 @@ export function MapView({
     history,
     tracks,
     activeId,
+    grid,
     cellStates,
     gridZoom,
   });
@@ -138,6 +142,7 @@ export function MapView({
     history,
     tracks,
     activeId,
+    grid,
     cellStates,
     gridZoom,
   };
@@ -610,14 +615,16 @@ export function MapView({
       diff: false,
     });
   }, [basemap]);
-  // Markers reconcile by index; only anchors can change them, so nothing else belongs
-  // in this dependency list. Recreating them on every data change dropped live drags.
+  // Markers reconcile by index; only the anchors and the editing mode can change them, so
+  // nothing else belongs in this dependency list. Recreating them on every data change
+  // dropped live drags. Waypoints are handles for editing, and editing is the Edit tab:
+  // elsewhere the map shows the route itself, with nothing on it that invites a drag.
   useEffect(() => {
     const m = map.current;
     if (!m) return;
     if (!markers.current) markers.current = new MarkerLayer(m, markerCallbacks);
-    markers.current.sync(anchors);
-  }, [anchors]);
+    markers.current.sync(editable ? anchors : []);
+  }, [anchors, editable]);
   // Redrawing the geojson sources is separate from the markers, and every rendered input
   // has to be listed here or its layer silently stops updating.
   useEffect(() => {
@@ -631,6 +638,7 @@ export function MapView({
     history,
     tracks,
     activeId,
+    grid,
     cellStates,
     gridZoom,
   ]);

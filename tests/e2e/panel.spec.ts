@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 const boxOf = async (page: import("@playwright/test").Page) =>
   (await page.locator(".panel").boundingBox())!;
 
-test("panel geometry is stable across tabs and survives collapsing", async ({
+test("panel geometry is stable across tabs and survives a tap on the handle", async ({
   page,
 }) => {
   await page.goto("./");
@@ -27,11 +27,19 @@ test("panel geometry is stable across tabs and survives collapsing", async ({
     expect(Math.round(box.y)).toBe(Math.round(start.y));
   }
 
-  await page.getByRole("button", { name: "Collapse panel" }).click();
-  await expect.poll(async () => (await boxOf(page)).height).toBeLessThan(
-    start.height,
-  );
-  await page.getByRole("button", { name: "Open panel" }).click();
+  // Tapping the handle reduces the panel to its tabs; it never closes, so the tabs are
+  // still there to switch with and a second tap restores the chosen height.
+  const handle = page.getByRole("button", { name: "Resize panel" });
+  const tabs = (await page.locator(".tabs").boundingBox())!;
+  await handle.click();
+  // The grab bar, the tabs, and nothing else: no content row is left over.
+  await expect
+    .poll(async () => (await boxOf(page)).height)
+    .toBeLessThan(tabs.height + 24);
+  await expect(
+    page.getByRole("tab", { name: "Tracks", exact: true }),
+  ).toBeVisible();
+  await handle.click();
   await expect
     .poll(async () => Math.round((await boxOf(page)).height))
     .toBe(Math.round(start.height));

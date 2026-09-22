@@ -25,6 +25,8 @@ export type MapSnapshot = {
   history: boolean;
   tracks: Track[];
   activeId?: string;
+  /** Whether the download grid is drawn at all: it belongs to the Data tab. */
+  grid: boolean;
   /** What is known about the cells that have been built; everything else is unbuilt. */
   cellStates?: Map<CellId, CellState>;
   /** The download grid zoom, from the catalogue. */
@@ -46,9 +48,10 @@ export function syncSources(m: maplibregl.Map, s: MapSnapshot) {
     // The grid covers the world, so it is generated from the viewport rather than from the
     // catalogue: a cell nobody has built yet is still drawn, in the colour that says so.
     // Below MIN_SELECT_ZOOM a screenful is thousands of cells and none of them are worth
-    // picking, so nothing is drawn at all.
+    // picking, so nothing is drawn at all. Off the Data tab the grid is not drawn either:
+    // it is a tool for downloading areas, not a permanent overlay on the route.
     const bounds = m.getBounds();
-    const selectable = m.getZoom() >= MIN_SELECT_ZOOM;
+    const selectable = s.grid && m.getZoom() >= MIN_SELECT_ZOOM;
     const states = s.cellStates;
     const visible = selectable
       ? cellsInBBox(

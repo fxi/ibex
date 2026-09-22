@@ -237,10 +237,11 @@ function App() {
         basemap={basemap}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}
-        cellStates={tab === "data" ? data.cellStates : undefined}
+        grid={tab === "data"}
+        cellStates={data.cellStates}
         gridZoom={data.gridZoom}
         onCell={(id) => data.toggleCell(id)}
-        bottomInset={panel.open ? panel.height + 90 : 90}
+        bottomInset={panel.height + 90}
         command={command}
         cursor={cursor}
         onCamera={setCamera}

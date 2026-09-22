@@ -6,7 +6,6 @@ import {
   Palette,
   Settings,
   RefreshCw,
-  ChevronDown,
   SquarePen,
 } from "lucide-react";
 import { TracksPanel } from "./TracksPanel";
@@ -39,41 +38,27 @@ export function Panel({
   panel: PanelHeight;
 }) {
   const { tracks, routing, status, setError, setStatus, setTab } = ctx;
-  const { height, open, setOpen, startResize, resizing } = panel;
+  const { height, reduced, toggle, startResize, resizing } = panel;
 
   return (
     <section
-      className={`panel glass ${open ? "" : "collapsed"} ${resizing ? "resizing" : ""}`}
+      className={`panel glass ${reduced ? "reduced" : ""} ${resizing ? "resizing" : ""}`}
       aria-label="Route planner"
       // Saving is quick and silent; the attribute lets tests wait for it before reloading.
       data-saving={tracks.saving}
     >
-      {/* Dragging the grab bar resizes; the caret alone says open or closed. */}
-      <div
+      {/* The grab bar is the whole control: drag it for any height, tap it to swing
+          between the tabs alone and the last height chosen. */}
+      <button
         className="panel-handle"
         onPointerDown={startResize}
-        role="separator"
-        aria-orientation="horizontal"
+        onClick={toggle}
         aria-label="Resize panel"
+        aria-expanded={!reduced}
       >
         <span className="grab" />
-        <button
-          className="expand-button"
-          aria-label={open ? "Collapse panel" : "Open panel"}
-          aria-expanded={open}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => setOpen(!open)}
-        >
-          <ChevronDown
-            style={{ transform: open ? undefined : "rotate(180deg)" }}
-            size={16}
-          />
-        </button>
-      </div>
-      <Tabs.Root
-        value={tab}
-        onValueChange={setTab}
-      >
+      </button>
+      <Tabs.Root value={tab} onValueChange={setTab}>
         <Tabs.List className="tabs" aria-label="Planner tabs">
           {tabs.map(([id, label, Icon]) => (
             <Tabs.Trigger key={id} value={id}>
@@ -82,9 +67,14 @@ export function Panel({
             </Tabs.Trigger>
           ))}
         </Tabs.List>
+        {/* The padding shrinks with the last 32px so the content can reach zero: with
+            border-box sizing it would otherwise hold the box open. */}
         <div
           className="panel-content"
-          style={{ height: open ? `${height}px` : 0 }}
+          style={{
+            height: `${height}px`,
+            paddingBlock: `${Math.min(16, height / 2)}px`,
+          }}
         >
           {error && (
             <p className="error" role="alert">

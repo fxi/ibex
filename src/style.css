@@ -558,8 +558,12 @@ main,
   overflow: hidden;
 }
 .panel-handle {
+  width: 100%;
   height: 20px;
-  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 0;
   display: grid;
   place-items: center;
   cursor: ns-resize;
@@ -572,18 +576,11 @@ main,
   height: 4px;
   border-radius: 4px;
 }
-.expand-button {
-  position: absolute;
-  right: 10px;
-  top: 0;
-  padding: 2px 6px;
+.panel-handle:hover:not(:disabled) {
   background: none;
-  border: 0;
-  color: var(--muted);
 }
-.expand-button:hover:not(:disabled) {
-  background: none;
-  color: var(--text);
+.panel-handle:hover .grab {
+  background: var(--text);
 }
 .tabs {
   display: flex;
@@ -628,18 +625,20 @@ main,
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #ffffff26 transparent;
-  transition: height 0.18s ease;
+  transition:
+    height 0.18s ease,
+    padding 0.18s ease;
 }
-/* A live drag must track the pointer exactly; only the collapse toggle animates. */
+/* A live drag must track the pointer exactly; only the tap toggle animates. */
 .panel.resizing .panel-content {
   transition: none;
 }
-/* Collapsed is height 0, not display:none, so the change is a transition not a jump. */
-.panel.collapsed .panel-content {
-  padding-block: 0;
+/* Reduced is the content at zero height, so the tabs are the whole panel and are still
+   the way back. Never display:none, so the change is a transition and not a jump. */
+.panel.reduced .panel-content {
   overflow: hidden;
 }
-.panel.collapsed .tabs {
+.panel.reduced .tabs {
   border-bottom-color: transparent;
 }
 .section-heading {
