@@ -33,7 +33,6 @@ import type { Point } from "../src/routing/types";
 import { DATA_VERSION } from "../src/offline/version";
 
 const DIR = process.env.IBEX_CELLS ?? DEFAULT_CELLS;
-const present = existsSync(`${DIR}/catalog.json`);
 const CELL_LIMIT = 50_000_000;
 
 const read = (path: string) => new Uint8Array(readFileSync(path));
@@ -42,11 +41,19 @@ const fileOf = (id: string, name: "index.ibx" | "graph.ibx") => {
   const entry = catalogue!.cells.find((c) => c.id === id)!;
   return `${DIR}/cells/${id}/${entry.hash}.${name}`;
 };
-const catalogue = present
+const parsed = existsSync(`${DIR}/catalog.json`)
   ? catalogueSchema.parse(
       JSON.parse(readFileSync(`${DIR}/catalog.json`, "utf8")),
     )
   : undefined;
+// The catalogue alone is not a build: `build_cells.ts --publish` sends each pack to the
+// bucket and leaves only the catalogue behind, so the packs have to be there too.
+const present =
+  parsed !== undefined &&
+  parsed.cells.every((cell) =>
+    cell.files.every((file) => existsSync(`${DIR}/cells/${cell.id}/${cell.hash}.${file.path}`)),
+  );
+const catalogue = present ? parsed : undefined;
 
 function installedFor(ids: string[]): {
   packs: Installed[];
