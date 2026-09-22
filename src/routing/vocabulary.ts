@@ -363,11 +363,18 @@ export const ENGINE = {
   technical_equipment: 60,
   /**
    * Equivalent metres per metre, per unit of grade outside the momentum band, at
-   * `direction_changes: strongly_avoid`. See `flowCost`. At 40 a gravel rider (`avoid`)
-   * pays 1.4 extra per metre of a 17% descent, which is what the Voirons gold standard
-   * needed to stay on its 11% road; 20 left half those descents, 80 lost other sections.
+   * `steepness: neutral`. See `steepnessCost`.
+   *
+   * 20 here is 40 at the old `direction_changes: avoid`, which is what every shipped
+   * gravel profile was getting: `40 x STRENGTH[avoid]` and `20 x STEEPNESS_AVERSION
+   * [neutral]` are the same number, so moving the term to `steepness` left Gravel priced
+   * exactly as it was and spent none of the Voirons gold standard's 0.8 points of
+   * headroom. That calibration still holds — at 40 a gravel rider paid 1.4 extra per
+   * metre of a 17% descent, which is what the gold standard needed to stay on its 11%
+   * road; half that left the descents, double lost other sections — it is now reached by
+   * saying `strongly_avoid` rather than by being the only setting available.
    */
-  flow: 40,
+  flow: 20,
   /**
    * The momentum band, as a share of the rider's comfortable grade in each direction:
    * about 6% up and 10% down for the shipped gravel rider.

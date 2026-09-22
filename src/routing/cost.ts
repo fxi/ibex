@@ -19,11 +19,7 @@ import {
 } from "./vocabulary";
 import { exceedance, type CapabilityProfile } from "./capability";
 import { edgeSignals, scenicValue, type Signals } from "./signals";
-import {
-  climbingTechnical,
-  isFerry,
-  traversalSegments,
-} from "./eligibility";
+import { climbingTechnical, isFerry, traversalSegments } from "./eligibility";
 import { isStreet } from "./tagging";
 import { distance } from "../geo/distance";
 import type { Attraction, Components, Edge } from "./types";
@@ -180,26 +176,36 @@ export function turnCost(
 }
 
 /**
- * Grade outside the band where a rider keeps their momentum, for one who values flow.
+ * Grade outside the band where a rider keeps their momentum.
  *
  * Climbing effort is charged per metre of height, so on its own it is indifferent to how
  * steeply the height is gained or lost, and distance then decides: the steep shortcut
  * always wins. On the Voirons gold standard that was nearly every divergence — a 17-20%
  * residential ramp off a descent on an 11% road, a 16% grade3 track off an 8% climb. The
  * capability ramp is no answer: it prices what the rider cannot do, and the same ride
- * takes short 16-26% ramps where there is no alternative. This is linear and mild, a
- * preference for staying in the band rather than a limit, and it scales with
- * `direction_changes`, the setting that already stands for a fluid line.
+ * takes short 16-26% ramps where there is no alternative.
+ *
+ * The band offset is what makes this survive the cancellation. Per metre of length it
+ * charges `|grade| - band`, so per metre of *height* it charges `1 - band/grade`, which
+ * rises with the gradient — where a term merely proportional to grade is `climb_effort`
+ * again, identical on both ways up one hill. It stays linear and mild: a preference for
+ * staying in the band, not a limit.
+ *
+ * It used to scale with `direction_changes`, borrowed because that setting stood for a
+ * fluid line and there was nothing better. But that setting vanishes at `neutral`, which
+ * both Road and MTB ship, so those two profiles had no opinion about gradient at all —
+ * 656 km and 416 km of the Voirons network priced at nothing. `steepness` is the setting
+ * this always wanted, and it charges in full at `neutral`.
  */
-export function flowCost(grade: number, p: CompiledProfile): number {
-  const strength = STRENGTH[p.directionChanges];
-  if (strength >= 0) return 0;
+export function steepnessCost(grade: number, p: CompiledProfile): number {
   const band =
     ENGINE.flow_band *
     (grade > 0
       ? p.capability.uphill_grade.comfortable_until
       : p.capability.downhill_grade.comfortable_until);
-  return ENGINE.flow * -strength * Math.max(0, Math.abs(grade) - band);
+  return (
+    ENGINE.flow * p.steepnessAversion * Math.max(0, Math.abs(grade) - band)
+  );
 }
 
 /** Physical cycle infrastructure remains distinguishable from signed route membership. */
@@ -313,7 +319,7 @@ function riddenRate(
     slope:
       grade === null
         ? 0
-        : flowCost(grade, p) +
+        : steepnessCost(grade, p) +
           (grade > 0
             ? effort + ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
             : // A steep descent on a twisty line is worse than a steep straight one,

@@ -10,6 +10,7 @@ import {
 } from "../src/routing/engine";
 import { eligible } from "../src/routing/eligibility";
 import { compileProfile } from "../src/routing/compile";
+import { ENGINE } from "../src/routing/vocabulary";
 import { exportGPX } from "../src/gpx";
 import type { Edge, Graph, Point } from "../src/routing/types";
 function fixture(
@@ -289,12 +290,22 @@ describe("routing invariants", () => {
         1000;
       const comfortable =
         compileProfile(profile).capability.uphill_grade.comfortable_until;
+      const band = ENGINE.flow_band * comfortable;
       // Climbing always costs something — lifting the bike takes energy whether or not
-      // the gradient is comfortable — and below comfort that cost is purely linear.
-      const easy = at(comfortable * 0.5),
-        easier = at(comfortable * 0.9);
+      // the gradient is comfortable — and inside the momentum band that cost is purely
+      // linear, because it is `climb_effort` alone, charged per metre of height.
+      const easy = at(band * 0.4),
+        easier = at(band * 0.8);
       expect(easy).toBeGreaterThan(0);
-      expect(easier / easy).toBeCloseTo(1.8, 1);
+      expect(easier / easy).toBeCloseTo(2, 1);
+      // Leaving the band kinks it, which is the whole point of `steepnessCost`: past here
+      // *how* the height is gained matters as well as how much, so the same step up in
+      // gradient costs several times what it cost inside. Purely linear all the way to
+      // comfort — what this test asserted before — is what let a 15% ramp cost the same
+      // as the 7% road beside it.
+      const inside = at(band * 0.9) - at(band * 0.5);
+      const outside = at(band * 1.4) - at(band * 1.0);
+      expect(outside).toBeGreaterThan(inside * 3);
       // Past it the ramp is quartic, so each step up costs far more than the last.
       const a = at(comfortable * 1.3),
         b = at(comfortable * 1.6),
