@@ -31,6 +31,14 @@ const METRES_PER_DEGREE_LAT = 111320;
 
 export type BBox = [number, number, number, number];
 
+/**
+ * How a paint operation meets what is already there.
+ *
+ * `set` is right for a mask — wood is wood however many polygons cover it. `max` is right
+ * for a strength: a viewpoint's pull should not be erased by a weaker bench overlapping it.
+ */
+export type Combine = "set" | "max";
+
 export class Surface {
   readonly width: number;
   readonly height: number;
@@ -77,7 +85,7 @@ export class Surface {
    * Every ring goes in together: a pixel inside an odd number of rings is inside the
    * polygon, which is what makes a hole a hole without tracking which ring is which.
    */
-  fill(rings: readonly (readonly Point[])[], value = 1): void {
+  fill(rings: readonly (readonly Point[])[], value = 1, combine: Combine = "set"): void {
     let minY = Infinity;
     let maxY = -Infinity;
     for (const ring of rings)
@@ -111,13 +119,14 @@ export class Surface {
       for (let k = 0; k + 1 < crossings.length; k += 2) {
         const left = Math.max(0, Math.ceil(crossings[k] - 0.5));
         const right = Math.min(this.width - 1, Math.floor(crossings[k + 1] - 0.5));
-        for (let x = left; x <= right; x++) this.values[row + x] = value;
+        for (let x = left; x <= right; x++)
+          if (combine === "set" || value > this.values[row + x]) this.values[row + x] = value;
       }
     }
   }
 
   /** Paint a disc, for a place centre or any point-with-influence. */
-  stamp(centre: Point, radiusM: number, value = 1): void {
+  stamp(centre: Point, radiusM: number, value = 1, combine: Combine = "set"): void {
     const cx = this.px(centre[0]);
     const cy = this.py(centre[1]);
     const r = radiusM / this.metresPerPixel;
@@ -129,7 +138,8 @@ export class Surface {
       const left = Math.max(0, Math.ceil(cx - span - 0.5));
       const right = Math.min(this.width - 1, Math.floor(cx + span - 0.5));
       const row = y * this.width;
-      for (let x = left; x <= right; x++) this.values[row + x] = value;
+      for (let x = left; x <= right; x++)
+        if (combine === "set" || value > this.values[row + x]) this.values[row + x] = value;
     }
   }
 
@@ -198,5 +208,30 @@ export class Surface {
     total += this.sample(coords[coords.length - 1]);
     count++;
     return total / count;
+  }
+
+  /**
+   * The strongest value anywhere along a polyline.
+   *
+   * An attraction is not diluted by the length of the way that reaches it: passing one
+   * viewpoint makes the whole way worth riding, which a mean would average away on a long
+   * edge.
+   */
+  sampleMax(coords: readonly Point[]): number {
+    let best = 0;
+    for (let i = 0; i + 1 < coords.length; i++) {
+      const a = coords[i];
+      const b = coords[i + 1];
+      const dx = this.px(b[0]) - this.px(a[0]);
+      const dy = this.py(b[1]) - this.py(a[1]);
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps;
+        const v = this.sample([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+        if (v > best) best = v;
+      }
+    }
+    const last = this.sample(coords[coords.length - 1]);
+    return last > best ? last : best;
   }
 }

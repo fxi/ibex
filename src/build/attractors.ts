@@ -153,37 +153,19 @@ export function attractorClusters(
   return clusters;
 }
 
-export type AttractorIndex = Map<string, [Point, number][]>;
-
-export function attractorIndex(clusters: Cluster[], cell = 0.001): AttractorIndex {
-  const index: AttractorIndex = new Map();
-  for (const [lon, lat, strength] of clusters) {
-    const k = `${Math.floor(lon / cell)},${Math.floor(lat / cell)}`;
-    const bucket = index.get(k);
-    const entry: [Point, number] = [[lon, lat], strength];
-    if (bucket) bucket.push(entry);
-    else index.set(k, [entry]);
+/**
+ * Collect the attractor points a cell's tagged nodes describe, in file order.
+ *
+ * Order matters: single-linkage grouping and the centroid mean both depend on it, so this
+ * walks the nodes as the extract presents them.
+ */
+export function attractorPoints(nodes: readonly { lon: number; lat: number; tags: OsmTags }[]) {
+  const points: AttractorPoint[] = [];
+  for (const node of nodes) {
+    const kind = attractorKind(node.tags);
+    if (kind) points.push([node.lon, node.lat, kind]);
   }
-  return index;
-}
-
-/** The strongest attractor within `radiusM` of a way, 0 when none is. */
-export function attractorStrength(
-  coords: readonly Point[],
-  index: AttractorIndex,
-  cell = 0.001,
-  radiusM = 60,
-): number {
-  let best = 0.0;
-  for (const p of coords) {
-    const cx = Math.floor(p[0] / cell);
-    const cy = Math.floor(p[1] / cell);
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        for (const [point, strength] of index.get(`${cx + dx},${cy + dy}`) ?? [])
-          if (strength > best && distance(p, point) <= radiusM) best = strength;
-  }
-  return best;
+  return points;
 }
 
 /** Point at fraction `t` (0..1) along a polyline, by arc length. */

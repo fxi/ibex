@@ -7,6 +7,7 @@
  * over every ring at once and overlapping woods simply paint the same pixels twice.
  */
 import { Surface, type BBox } from "./surface";
+import type { Cluster } from "./attractors";
 import { geometry, type CellSource } from "./osm/source";
 import type { OsmTags } from "./osm/pbf";
 import type { Point } from "../routing/types";
@@ -110,6 +111,27 @@ export function urbanSurface(source: CellSource, bbox: BBox, metresPerPixel?: nu
     const radius = PLACE_RADIUS[node.tags.place ?? ""];
     if (radius) surface.stamp([node.lon, node.lat], radius);
   }
+  return surface;
+}
+
+/**
+ * How far a cluster's pull reaches. A way passing within this of one is drawn to it.
+ *
+ * The vector builder searched for the strongest cluster within 60 m of any point on the
+ * way; stamping the same radius and taking the strongest pixel the way crosses says the
+ * same thing, and costs one pass instead of a search per way.
+ */
+const ATTRACTION_RADIUS_M = 60;
+
+export function attractionSurface(
+  clusters: readonly Cluster[],
+  bbox: BBox,
+  metresPerPixel?: number,
+): Surface {
+  const surface = new Surface(bbox, metresPerPixel);
+  // Strongest wins where clusters overlap, rather than whichever was painted last.
+  for (const [lon, lat, strength] of clusters)
+    surface.stamp([lon, lat], ATTRACTION_RADIUS_M, strength, "max");
   return surface;
 }
 
