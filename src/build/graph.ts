@@ -102,7 +102,7 @@ export type BuildNode = { id: number; p: Point; elevation: number | null };
 export type Restriction = { ways: string[]; only: boolean; uTurn: boolean; via?: number };
 export type Graph = {
   schemaVersion: 1;
-  bbox: number[];
+  bbox: BBox;
   nodes: BuildNode[];
   edges: BuildEdge[];
   restrictions: Restriction[];
@@ -400,7 +400,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
     ? restrictions.filter((rule) => rule.ways.every((w) => presentWays.has(w)))
     : restrictions;
 
-  const graphBBox = cell ? [...cellBBox(cell)] : [...bbox];
+  const graphBBox: BBox = cell ? cellBBox(cell) : [...bbox];
   const nodes: BuildNode[] = [...keptNodes]
     .sort((a, b) => a - b)
     .map((id) => ({
