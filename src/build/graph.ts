@@ -151,6 +151,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
     stepsSegments: 0,
     ferrySegments: 0,
     restrictionsOutsideGraph: 0,
+    restrictionsUnreachable: 0,
   };
 
   // A ferry's tags come from its relation, and it becomes a road class of its own so the
@@ -389,16 +390,15 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
   const reward = rewardPotential(passEdges, attraction);
   for (const edge of edges) edge.reward = reward.get(edge.to) ?? 0;
 
-  const trimmed = cell ? trimToCell(edges, cell, haloKm, counts) : edges;
+  const owned = cell ? trimToCell(edges, cell, haloKm, counts) : edges;
+  const { edges: trimmed, restrictions: keptRestrictions } = cell
+    ? withRestrictions(owned, edges, restrictions, counts)
+    : { edges: owned, restrictions };
   const keptNodes = new Set<number>();
   for (const edge of trimmed) {
     keptNodes.add(edge.from);
     keptNodes.add(edge.to);
   }
-  const presentWays = new Set(trimmed.map((edge) => edge.way));
-  const keptRestrictions = cell
-    ? restrictions.filter((rule) => rule.ways.every((w) => presentWays.has(w)))
-    : restrictions;
 
   const graphBBox: BBox = cell ? cellBBox(cell) : [...bbox];
   const nodes: BuildNode[] = [...keptNodes]
@@ -433,6 +433,90 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
  * Ownership is the cell containing an edge's *first* geometry point — a property of the road
  * itself, so adjacent cells agree without consulting each other.
  */
+/**
+ * The rules this cell must obey, and the borrowed edges that keep them applicable.
+ *
+ * Ownership is per edge (`trimToCell`), but a turn restriction names two or three ways that
+ * meet at one junction, and a junction on a seam has its ways owned by different cells.
+ * Keeping a rule only where the cell owns every way it names dropped exactly those from both
+ * sides, so a prohibited turn became legal wherever two cells meet (issues.md B1).
+ *
+ * A rule is this cell's business when it owns *any* of its ways, and the edges it does not
+ * own are borrowed from the halo so the rule stays applicable on this pack alone. That
+ * matters for `only_*`: a rule whose permitted way is missing forbids every departure from
+ * the junction, which is worse than not having the rule at all — so a rule that still cannot
+ * be completed is dropped, as before. Both cells at a seam keep their own copy; the provider
+ * merges by identity and deduplicates rules and edges alike.
+ */
+function withRestrictions(
+  owned: BuildEdge[],
+  all: BuildEdge[],
+  rules: Restriction[],
+  counts: Record<string, number>,
+): { edges: BuildEdge[]; restrictions: Restriction[] } {
+  const ownedWays = new Set(owned.map((edge) => edge.way));
+  const byWay = new Map<string, BuildEdge[]>();
+  for (const edge of all) {
+    const list = byWay.get(edge.way);
+    if (list) list.push(edge);
+    else byWay.set(edge.way, [edge]);
+  }
+  const ownedNodes = new Set<number>();
+  for (const edge of owned) {
+    ownedNodes.add(edge.from);
+    ownedNodes.add(edge.to);
+  }
+
+  const borrowed = new Map<number, BuildEdge>();
+  const kept: Restriction[] = [];
+  let completed = 0;
+  for (const rule of rules) {
+    if (rule.ways.every((way) => ownedWays.has(way))) {
+      kept.push(rule);
+      continue;
+    }
+    if (!rule.ways.some((way) => ownedWays.has(way))) continue; // a neighbour's business
+
+    // Grow out from what this cell already holds, so only the fragments that meet the
+    // junction are borrowed — never a whole road running kilometres into the next cell.
+    const reach = new Set(ownedNodes);
+    const take = new Map<number, BuildEdge>();
+    const missing = new Set(rule.ways.filter((way) => !ownedWays.has(way)));
+    // A via-way rule reaches its last way only through its middle one, so repeat until the
+    // sequence stops growing — at most once per way the rule names.
+    for (let pass = 0; pass < rule.ways.length && missing.size; pass++)
+      for (const way of [...missing]) {
+        const touching = (byWay.get(way) ?? []).filter(
+          (edge) => reach.has(edge.from) || reach.has(edge.to),
+        );
+        if (!touching.length) continue;
+        for (const edge of touching) {
+          take.set(edge.id, edge);
+          reach.add(edge.from);
+          reach.add(edge.to);
+        }
+        missing.delete(way);
+      }
+    if (missing.size) {
+      counts.restrictionsUnreachable++;
+      continue;
+    }
+    for (const [id, edge] of take) borrowed.set(id, edge);
+    kept.push(rule);
+    completed++;
+  }
+
+  counts.restrictionsCompleted = completed;
+  if (!borrowed.size) {
+    counts.restrictionEdgesBorrowed = 0;
+    return { edges: owned, restrictions: kept };
+  }
+  const ownedIds = new Set(owned.map((edge) => edge.id));
+  const extra = [...borrowed.values()].filter((edge) => !ownedIds.has(edge.id));
+  counts.restrictionEdgesBorrowed = extra.length;
+  return { edges: [...owned, ...extra], restrictions: kept };
+}
+
 function trimToCell(
   edges: BuildEdge[],
   cell: Cell,

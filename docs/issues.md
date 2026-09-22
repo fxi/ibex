@@ -8,33 +8,46 @@ Last reviewed 2026-09-22, when the region/release model was replaced by the glob
 B5 (two split rules), B4 (stale manifest on a failed rebuild), B3 (same-size content
 accepted) and CI-3 (range read unchecked) went with it: per-cell splits are now the only
 rule, there is no manifest, an object is named by its digest, and the verifier compares the
-ranged bytes. CI-2 is gone with the release pointer it guarded.
+ranged bytes. CI-2 is gone with the release pointer it guarded. B1 (cross-cell turn
+restrictions) and B6 (a cell dated by the clock) were fixed before the 2026-09-22 rebuild;
+B7 below was found while measuring B1.
 
 ## Data and publication
 
-### B1 · Cross-cell turn restrictions can disappear
-`scripts/build_region.py:976-979` keeps a restriction only when *every* way it names has an
-edge owned by that cell (ownership is the cell holding an edge's first point, `:915`). A
-restriction whose from-way and to-way fall in different cells is dropped by both, and
-merging packs cannot restore it, so a prohibited turn becomes legal. Via-way sequences fail
-the same way.
-**Blocks:** nothing measurable on two cells; at Europe scale it is a systematic hole along
-every seam, so fix it before a wide build. Was: fix it before the next
-full rebuild, not after.
-**Shape of the fix:** keep halo-derived restrictions that an owned edge needs, with explicit
-rule ownership and replication; the provider already deduplicates.
+### B7 · A road inside a cell can produce no edges at all
 
-### B6 · A cell is built from whatever OpenStreetMap said that minute
+Measured 2026-09-22 on `9-264-181`. Way `242768222` ("Chemin de la Voile",
+`highway=residential`, `access=destination`) sits 12.7 km inside the cell, is present in the
+subset source (`slice.wayById.has(242768222)`), and `permitted()` returns true for its tags
+— yet `buildGraph` yields **zero** edges for it, with or without `cell`, so `trimToCell` is
+not the cause. The same holds for `1157169696` (`service=parking_aisle`) and `1472013285`
+(`service=driveway`). All three do get edges when the same extracts are built over a wider
+box, so the loss depends on the subset, not on the way.
 
-`scripts/build_cells.ts` records `osm` as the wall-clock time of the build, not the
-timestamp of the data. The extract's own `osmosis_replication_timestamp` header is right
-there in the PBF and is not read, so two cells built a month apart from the same download
-claim different freshness, and a cell's age cannot be trusted to decide a refresh.
+Nine of the eleven restrictions B1's measurement found missing were missing for this reason
+rather than B1's: the rule named a way that had no edges to attach to.
 
-**Blocks:** nothing today — staleness is decided by hash, not by date. It blocks any
-"rebuild cells older than N months" policy, which is the point of a yearly refresh.
-**Shape of the fix:** read the header block's replication timestamp in `readPbf` and carry
-it through to the catalogue entry.
+**Blocks:** unknown, and that is the problem. If it generalises it is a routing hole, not
+merely a restriction hole. The three known cases are a cul-de-sac, a parking aisle and a
+driveway, which is why it has not shown up in a route.
+**Shape of the fix:** unknown. Bisect `buildGraph` between `roads` and the split pass on the
+`9-264-181` slice from `switzerland.osm.pbf`; the way survives into `candidates`, so the
+loss is after `permitted()` and before the edge list.
+
+### B8 · `build_parity.ts` cannot read a cell build
+
+`scripts/build_parity.ts:50` reads `<dir>/graph.json`, which the Python pipeline wrote and
+nothing writes now — a cell build is `catalog.json` plus `.ibx` packs. Running it on two
+cell builds fails with `ENOENT: .cache/cells/graph.json`, so the guard AGENTS.md requires
+around a builder change is not actually available.
+
+**Blocks:** every builder change from here on. The B1 fix of 2026-09-22 had to be justified
+by construction (`withRestrictions` only ever adds edges and rules, never removes one) and
+by counting edges and restrictions on both sides, rather than by this tool.
+**Shape of the fix:** read a build through `loadReleaseGraph` (`scripts/local_cells.ts:21`),
+as the audit scripts do. Note that two builds can only be compared within one
+`BUILD_VERSION`: the provider refuses a pack from another generation, which is exactly when
+a parity run is most wanted, so the loader needs the generation as an argument.
 
 ## Routing
 

@@ -21,7 +21,7 @@ export const DATA_VERSION = 1;
  * It replaces the release id, which pinned a cell to one publishing run and made a cell
  * downloaded on Tuesday refuse to route beside one downloaded on Wednesday.
  */
-export const BUILD_VERSION = 1;
+export const BUILD_VERSION = 2;
 
 /** The generation as it is written into a pack header and a catalogue. */
 export const GENERATION = `b${BUILD_VERSION}`;
