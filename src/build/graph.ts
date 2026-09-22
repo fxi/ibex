@@ -131,6 +131,18 @@ function haloDegrees(bbox: BBox, haloKm: number): [number, number] {
   ];
 }
 
+/**
+ * The bounds a cell must be built from: its own, grown by the halo.
+ *
+ * `extract_cells.py` cut one pbf per cell on exactly this box. A builder reading a whole
+ * country instead subsets to it, so both paths see the same ground.
+ */
+export function sourceBBox(cell: Cell, haloKm: number = HALO_KM): BBox {
+  const bbox = cellBBox(cell);
+  const [dx, dy] = haloDegrees(bbox, haloKm);
+  return [bbox[0] - dx, bbox[1] - dy, bbox[2] + dx, bbox[3] + dy];
+}
+
 export function buildGraph(source: CellSource, options: BuildOptions = {}): BuildResult {
   const { cell, elevations = new Map<number, number>(), haloKm = HALO_KM } = options;
   const counts: Record<string, number> = {

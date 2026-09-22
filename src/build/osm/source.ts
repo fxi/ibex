@@ -12,6 +12,8 @@
  * while every node's location stays available for way geometry.
  */
 import { readPbf, type Inflate, type OsmNode, type OsmRelation, type OsmWay } from "./pbf";
+import { keepNode, keepRelation, keepWay } from "./filter";
+import type { BBox } from "../../geo/grid";
 
 export type { OsmNode, OsmRelation, OsmWay };
 /** Matches `Point` in `src/routing/types`, so geometry flows into the rest of the build. */
@@ -32,14 +34,18 @@ export class NodeIndex {
   ) {}
 
   static from(ids: number[], lons: number[], lats: number[]): NodeIndex {
+    return NodeIndex.of(Float64Array.from(ids), Float64Array.from(lons), Float64Array.from(lats));
+  }
+
+  /** The same, for callers that already hold typed arrays and want no further copy. */
+  static of(ids: Float64Array, lons: Float64Array, lats: Float64Array): NodeIndex {
     let sorted = true;
     for (let i = 1; i < ids.length; i++)
       if (ids[i] < ids[i - 1]) {
         sorted = false;
         break;
       }
-    if (sorted)
-      return new NodeIndex(Float64Array.from(ids), Float64Array.from(lons), Float64Array.from(lats));
+    if (sorted) return new NodeIndex(ids, lons, lats);
     // PBF writers emit elements in id order, so this is a fallback rather than the path.
     const order = Array.from(ids, (_, i) => i).sort((a, b) => ids[a] - ids[b]);
     const n = order.length;
@@ -109,13 +115,68 @@ export function geometry(way: OsmWay, positions: NodeIndex): Position[] | undefi
   return coords;
 }
 
-export async function readSource(data: Uint8Array, inflate: Inflate): Promise<CellSource> {
+/**
+ * A growable `Float64Array`. A country extract holds tens of millions of nodes, and
+ * collecting them in a JS array first costs the same memory twice over before the copy.
+ */
+class Doubles {
+  private data = new Float64Array(1 << 16);
+  private used = 0;
+  push(value: number) {
+    if (this.used === this.data.length) {
+      const next = new Float64Array(this.data.length * 2);
+      next.set(this.data);
+      this.data = next;
+    }
+    this.data[this.used++] = value;
+  }
+  /** A right-sized copy, so the index does not retain the growth buffer. */
+  take(): Float64Array {
+    return this.data.slice(0, this.used);
+  }
+}
+
+export type ReadOptions = {
+  /**
+   * Drop elements the graph build never reads, the way `clip_region.py`'s `tags-filter`
+   * did. A per-cell extract cut by that script is already reduced, so this changes nothing
+   * for one; a raw Geofabrik download is mostly elements we do not want.
+   */
+  filter?: boolean;
+};
+
+export async function readSource(
+  data: Uint8Array,
+  inflate: Inflate,
+  options: ReadOptions = {},
+): Promise<CellSource> {
+  const filter = options.filter ?? false;
+  // `osmium tags-filter` keeps the objects a matched object references, and a multipolygon
+  // names its outline in ways that usually carry no tags of their own. Ways come before
+  // relations in a PBF, so which ones those are is only known after a first pass — without
+  // it a forest relation arrives with no rings and the cost surfaces come out empty.
+  const referencedWays = new Set<number>();
+  const referencedNodes = new Set<number>();
+  if (filter)
+    await readPbf(
+      data,
+      {
+        relation: (relation) => {
+          if (!keepRelation(relation.tags)) return;
+          for (const m of relation.members)
+            if (m.type === "way") referencedWays.add(m.ref);
+            else if (m.type === "node") referencedNodes.add(m.ref);
+        },
+      },
+      inflate,
+    );
+
   const nodes: OsmNode[] = [];
   const ways: OsmWay[] = [];
   const relations: OsmRelation[] = [];
-  const ids: number[] = [];
-  const lons: number[] = [];
-  const lats: number[] = [];
+  const ids = new Doubles();
+  const lons = new Doubles();
+  const lats = new Doubles();
 
   await readPbf(
     data,
@@ -126,10 +187,15 @@ export async function readSource(data: Uint8Array, inflate: Inflate): Promise<Ce
         lats.push(node.lat);
         // Untagged nodes exist only to give ways their shape, so they stay in the index
         // but are not elements — the same distinction Overpass `out geom;` made.
-        if (Object.keys(node.tags).length > 0) nodes.push(node);
+        if (Object.keys(node.tags).length === 0) return;
+        if (!filter || keepNode(node.tags) || referencedNodes.has(node.id)) nodes.push(node);
       },
-      way: (way) => ways.push(way),
-      relation: (relation) => relations.push(relation),
+      way: (way) => {
+        if (!filter || keepWay(way.tags) || referencedWays.has(way.id)) ways.push(way);
+      },
+      relation: (relation) => {
+        if (!filter || keepRelation(relation.tags)) relations.push(relation);
+      },
     },
     inflate,
   );
@@ -138,7 +204,66 @@ export async function readSource(data: Uint8Array, inflate: Inflate): Promise<Ce
     nodes,
     ways,
     relations,
-    positions: NodeIndex.from(ids, lons, lats),
+    positions: NodeIndex.of(ids.take(), lons.take(), lats.take()),
     wayById: new Map(ways.map((way) => [way.id, way])),
   };
+}
+
+/**
+ * The part of a larger extract that one cell needs, on the rule `osmium extract
+ * --strategy=complete_ways` used: a way is in if any of its nodes is in the box, and it
+ * comes in whole.
+ *
+ * The node index is shared rather than copied, so a way reaching past the box still
+ * resolves every coordinate — which is what `complete_ways` was for, and is why building a
+ * cell from its country's extract needs no second pass to chase missing nodes.
+ */
+export function subsetSource(source: CellSource, bbox: BBox): CellSource {
+  const [west, south, east, north] = bbox;
+  const { positions } = source;
+  const inBox = (ref: number): boolean => {
+    const p = positions.get(ref);
+    return !!p && p[0] >= west && p[0] <= east && p[1] >= south && p[1] <= north;
+  };
+
+  const ways: OsmWay[] = [];
+  // Every node of a kept way, in or out of the box. `complete_ways` pulls these in, and a
+  // barrier or a village sitting just outside on a road that crosses the boundary is the
+  // reason: dropping it changes what the cell sees inside its own halo.
+  const reachable = new Set<number>();
+  for (const way of source.ways)
+    for (const ref of way.refs)
+      if (inBox(ref)) {
+        ways.push(way);
+        for (const r of way.refs) reachable.add(r);
+        break;
+      }
+  const wayById = new Map(ways.map((way) => [way.id, way]));
+  const nodes = source.nodes.filter((n) => reachable.has(n.id) || inBox(n.id));
+
+  // A relation comes in when a member way is in, or a member node is in the box itself —
+  // a restriction whose via node fell outside is not this cell's business, even when the
+  // road carrying it reaches in.
+  const kept = new Set<number>();
+  for (const relation of source.relations)
+    if (
+      relation.members.some((m) =>
+        m.type === "way" ? wayById.has(m.ref) : m.type === "node" && inBox(m.ref),
+      )
+    )
+      kept.add(relation.id);
+  // Then the relations that hold those: a EuroVelo superroute names its national parts and
+  // no way at all, so without this pass a cell on the route never sees it.
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const relation of source.relations) {
+      if (kept.has(relation.id)) continue;
+      if (relation.members.some((m) => m.type === "relation" && kept.has(m.ref))) {
+        kept.add(relation.id);
+        grew = true;
+      }
+    }
+  }
+  const relations = source.relations.filter((relation) => kept.has(relation.id));
+  return { nodes, ways, relations, positions, wayById };
 }
