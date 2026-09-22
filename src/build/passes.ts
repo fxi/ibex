@@ -42,39 +42,54 @@ export function networkUtility(
   edges: readonly PassEdge[],
   nodeIds: Iterable<number>,
 ): Map<number, number> {
-  const adjacency = new Map<number, PassEdge[]>();
+  /** What the search reads of an edge, with the physical segment reduced to a dense id. */
+  type Step = { to: number; length: number; segment: number };
+  const adjacency = new Map<number, Step[]>();
+  const segments = new Map<string, number>();
   for (const edge of edges) {
     if (edge.stress >= LOW_STRESS || edge.highway === "steps" || edge.highway === "ferry")
       continue;
+    // Keyed on the segment, not the directed edge, so both directions count once.
+    const low = edge.from < edge.to ? edge.from : edge.to;
+    const high = edge.from < edge.to ? edge.to : edge.from;
+    const key = `${edge.way},${low},${high}`;
+    let segment = segments.get(key);
+    if (segment === undefined) {
+      segment = segments.size;
+      segments.set(key, segment);
+    }
+    const step = { to: edge.to, length: edge.length, segment };
     const list = adjacency.get(edge.from);
-    if (list) list.push(edge);
-    else adjacency.set(edge.from, [edge]);
+    if (list) list.push(step);
+    else adjacency.set(edge.from, [step]);
   }
 
+  // One stamp per segment, compared against the origin's turn, replaces a Set of template
+  // strings rebuilt for every edge the search touched: 4.6 s of a 12 s z9 build was here.
+  // Segments keep their insertion order in `adjacency`, so `reach` accumulates in the same
+  // order as before and sums to the same float.
+  const stamp = new Int32Array(segments.size).fill(-1);
   const utility = new Map<number, number>();
   const saturation = Math.log1p(UTILITY_SATURATION_M);
+  let turn = 0;
   for (const origin of nodeIds) {
+    const visit = turn++;
     const queue = new Heap<number>();
     queue.push(0, origin);
     const best = new Map<number, number>([[origin, 0]]);
-    const seenWays = new Set<string>();
     let reach = 0;
     for (let top = queue.pop(); top; top = queue.pop()) {
       const { key: cost, value: node } = top;
       if (cost !== best.get(node)) continue;
-      for (const edge of adjacency.get(node) ?? []) {
-        // Keyed on the segment, not the directed edge, so both directions count once.
-        const low = edge.from < edge.to ? edge.from : edge.to;
-        const high = edge.from < edge.to ? edge.to : edge.from;
-        const key = `${edge.way},${low},${high}`;
-        if (!seenWays.has(key)) {
-          reach += Math.min(edge.length, UTILITY_RADIUS_M - cost);
-          seenWays.add(key);
+      for (const step of adjacency.get(node) ?? []) {
+        if (stamp[step.segment] !== visit) {
+          reach += Math.min(step.length, UTILITY_RADIUS_M - cost);
+          stamp[step.segment] = visit;
         }
-        const next = cost + edge.length;
-        if (next <= UTILITY_RADIUS_M && next < (best.get(edge.to) ?? Infinity)) {
-          best.set(edge.to, next);
-          queue.push(next, edge.to);
+        const next = cost + step.length;
+        if (next <= UTILITY_RADIUS_M && next < (best.get(step.to) ?? Infinity)) {
+          best.set(step.to, next);
+          queue.push(next, step.to);
         }
       }
     }

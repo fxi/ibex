@@ -84,6 +84,11 @@ export class Surface {
    *
    * Every ring goes in together: a pixel inside an odd number of rings is inside the
    * polygon, which is what makes a hole a hole without tracking which ring is which.
+   *
+   * Vertices are projected once into pixel space and bucketed by the first row they can
+   * cross, because callers hand this every ring in the cell at once. Re-projecting each
+   * ring on every row cost 17.9 s of a 30 s z9 build — the scan is thousands of rows deep
+   * and a dense cell's forest rings hold tens of thousands of vertices.
    */
   fill(rings: readonly (readonly Point[])[], value = 1, combine: Combine = "set"): void {
     let minY = Infinity;
@@ -97,30 +102,80 @@ export class Surface {
     if (!Number.isFinite(minY)) return;
     const from = Math.max(0, Math.floor(minY));
     const to = Math.min(this.height - 1, Math.ceil(maxY));
-    const crossings: number[] = [];
+    if (to < from) return;
+
+    // One entry per ring segment, oriented from vertex i to the vertex before it, which is
+    // the pairing the even-odd test below reads.
+    const xi: number[] = [];
+    const yi: number[] = [];
+    const xj: number[] = [];
+    const yj: number[] = [];
+    const last: number[] = [];
+    const buckets: number[][] = [];
+    for (const ring of rings) {
+      const n = ring.length;
+      if (n < 2) continue;
+      let bx = this.px(ring[n - 1][0]);
+      let by = this.py(ring[n - 1][1]);
+      for (let i = 0; i < n; i++) {
+        const ax = this.px(ring[i][0]);
+        const ay = this.py(ring[i][1]);
+        const prevX = bx;
+        const prevY = by;
+        bx = ax;
+        by = ay;
+        // A segment crosses the scan at `y + 0.5` exactly when one end is above it and the
+        // other is not, so it is live for `min <= y + 0.5 < max` and nowhere else.
+        const lo = ay < prevY ? ay : prevY;
+        const hi = ay < prevY ? prevY : ay;
+        if (lo === hi) continue;
+        const first = Math.max(from, Math.ceil(lo - 0.5));
+        const stop = Math.min(to, Math.ceil(hi - 0.5) - 1);
+        if (first > stop) continue;
+        const at = xi.length;
+        xi.push(ax);
+        yi.push(ay);
+        xj.push(prevX);
+        yj.push(prevY);
+        last.push(stop);
+        (buckets[first] ??= []).push(at);
+      }
+    }
+    if (!xi.length) return;
+
+    const ex = Float64Array.from(xi);
+    const ey = Float64Array.from(yi);
+    const px = Float64Array.from(xj);
+    const py = Float64Array.from(yj);
+    const ends = Int32Array.from(last);
+    const crossings = new Float64Array(xi.length);
+    const overwrite = combine === "set";
+    const active: number[] = [];
+
     for (let y = from; y <= to; y++) {
-      // Sample at the pixel centre so a horizontal edge along a pixel boundary cannot
-      // produce an ambiguous crossing count.
+      const entering = buckets[y];
+      if (entering) for (const e of entering) active.push(e);
+      if (!active.length) continue;
       const scan = y + 0.5;
-      crossings.length = 0;
-      for (const ring of rings)
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-          const yi = this.py(ring[i][1]);
-          const yj = this.py(ring[j][1]);
-          if (yi > scan !== yj > scan) {
-            const xi = this.px(ring[i][0]);
-            const xj = this.px(ring[j][0]);
-            crossings.push(xi + ((scan - yi) / (yj - yi)) * (xj - xi));
-          }
-        }
-      if (crossings.length < 2) continue;
-      crossings.sort((a, b) => a - b);
-      const row = y * this.width;
-      for (let k = 0; k + 1 < crossings.length; k += 2) {
-        const left = Math.max(0, Math.ceil(crossings[k] - 0.5));
-        const right = Math.min(this.width - 1, Math.floor(crossings[k + 1] - 0.5));
+      let count = 0;
+      let live = 0;
+      for (let k = 0; k < active.length; k++) {
+        const e = active[k];
+        if (ends[e] < y) continue;
+        active[live++] = e;
+        const a = ey[e];
+        crossings[count++] = ex[e] + ((scan - a) / (py[e] - a)) * (px[e] - ex[e]);
+      }
+      active.length = live;
+      if (count < 2) continue;
+      const row = crossings.subarray(0, count);
+      row.sort();
+      const at = y * this.width;
+      for (let k = 0; k + 1 < count; k += 2) {
+        const left = Math.max(0, Math.ceil(row[k] - 0.5));
+        const right = Math.min(this.width - 1, Math.floor(row[k + 1] - 0.5));
         for (let x = left; x <= right; x++)
-          if (combine === "set" || value > this.values[row + x]) this.values[row + x] = value;
+          if (overwrite || value > this.values[at + x]) this.values[at + x] = value;
       }
     }
   }
@@ -149,32 +204,62 @@ export class Surface {
    * The Python buffers urban land use by 40 m so the streets *between* plots count as town
    * rather than only the plots themselves. Two separable passes approximate the disc, which
    * is all a 30 m grid can express anyway.
+   *
+   * Each pass reads a copy of the row band it needs rather than a copy of the whole
+   * surface: a z9 cell is 41 million pixels, so the two full `Float32Array` copies the
+   * obvious version makes are 164 MB of allocation, and the column-major inner loop touched
+   * a fresh cache line per pixel.
    */
   dilate(radiusM: number): void {
     const r = Math.round(radiusM / this.metresPerPixel);
     if (r < 1) return;
     const { width, height, values } = this;
-    const pass = (horizontal: boolean) => {
-      const source = Float32Array.from(values);
-      const outer = horizontal ? height : width;
-      const inner = horizontal ? width : height;
-      for (let a = 0; a < outer; a++)
-        for (let b = 0; b < inner; b++) {
-          let best = 0;
-          for (let d = -r; d <= r; d++) {
-            const c = b + d;
-            if (c < 0 || c >= inner) continue;
-            const v = horizontal ? source[a * width + c] : source[c * width + a];
-            if (v > best) best = v;
-          }
-          if (best > 0) {
-            if (horizontal) values[a * width + b] = best;
-            else values[b * width + a] = best;
-          }
+    const out = new Float32Array(width);
+
+    const source = new Float32Array(width);
+    for (let y = 0; y < height; y++) {
+      const at = y * width;
+      source.set(values.subarray(at, at + width));
+      out.fill(0);
+      for (let d = -r; d <= r; d++) {
+        const lo = Math.max(0, -d);
+        const hi = Math.min(width, width - d);
+        for (let x = lo; x < hi; x++) {
+          const v = source[x + d];
+          if (v > out[x]) out[x] = v;
         }
+      }
+      for (let x = 0; x < width; x++) if (out[x] > 0) values[at + x] = out[x];
+    }
+
+    // The vertical pass needs rows this pass has not overwritten yet, so it keeps the last
+    // 2r+1 original rows in a ring. Row y+r is read before output row y+r is written.
+    const span = 2 * r + 1;
+    const ring = new Float32Array(span * width);
+    const held = new Int32Array(span).fill(-1);
+    const load = (y: number) => {
+      if (y < 0 || y >= height) return;
+      const slot = y % span;
+      if (held[slot] === y) return;
+      ring.set(values.subarray(y * width, (y + 1) * width), slot * width);
+      held[slot] = y;
     };
-    pass(true);
-    pass(false);
+    for (let y = 0; y <= r; y++) load(y);
+    for (let y = 0; y < height; y++) {
+      load(y + r);
+      const at = y * width;
+      out.fill(0);
+      const lo = Math.max(0, y - r);
+      const hi = Math.min(height - 1, y + r);
+      for (let sy = lo; sy <= hi; sy++) {
+        const from = (sy % span) * width;
+        for (let x = 0; x < width; x++) {
+          const v = ring[from + x];
+          if (v > out[x]) out[x] = v;
+        }
+      }
+      for (let x = 0; x < width; x++) if (out[x] > 0) values[at + x] = out[x];
+    }
   }
 
   /** The surface's value at a point. */
