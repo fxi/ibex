@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { GRAVEL, ROAD, TOURING, TRAIL, withPreferences } from "./helpers";
+import {
+  GRAVEL,
+  ROAD,
+  SHIPPED,
+  TOURING,
+  TRAIL,
+  withPreferences,
+} from "./helpers";
 import {
   distance,
   Heap,
@@ -13,6 +20,8 @@ import { compileProfile } from "../src/routing/compile";
 import { ENGINE } from "../src/routing/vocabulary";
 import { exportGPX } from "../src/gpx";
 import type { Edge, Graph, Point } from "../src/routing/types";
+import type { Level } from "../src/routing/vocabulary";
+import type { Profile } from "../src/routing/profiles";
 function fixture(
   points: Point[],
   links: [number, number, string?, Partial<Edge>?][],
@@ -279,6 +288,36 @@ describe("routing invariants", () => {
       expect(r.status).toBe("ok");
       expect(r.edgeIds).toEqual([1, 2]);
       expect(r.distanceM).toBeCloseTo(1400, 0);
+    }
+  });
+  it("prices how the height is gained, not only how much of it", () => {
+    const base = fixture(p, [[0, 1]]).edges[0];
+    // The same 150 m of height, gained at 15% and at 7%.
+    const climb = (profile: Profile, grade: number) => {
+      const length = 150 / grade;
+      return scoreEdge(
+        { ...base, length, grades: [[length, grade]] as [number, number][] },
+        profile,
+      );
+    };
+    for (const profile of SHIPPED) {
+      // `climb_effort` is charged per metre of height, so it is identical on the two and
+      // cancels. Road and MTB ship `direction_changes: neutral`, which switched the old
+      // `flowCost` off entirely, so before `steepness` they charged the 15% ramp and the
+      // 7% road exactly the same and the shorter one always won.
+      expect(climb(profile, 0.15).slope).toBeGreaterThan(
+        climb(profile, 0.07).slope,
+      );
+      // Which of the two a rider is sent up also depends on what they think of the ground
+      // — a profile gets a surface it dislikes over with quickly — so what is pinned here
+      // is that the knob moves the choice, monotonically, in the direction the word says.
+      const margin = (steepness: Level) => {
+        const q = withPreferences(profile, { steepness });
+        return total(climb(q, 0.15)) - total(climb(q, 0.07));
+      };
+      expect(margin("strongly_avoid")).toBeGreaterThan(margin("avoid"));
+      expect(margin("avoid")).toBeGreaterThan(margin("neutral"));
+      expect(margin("neutral")).toBeGreaterThan(margin("strongly_prefer"));
     }
   });
   it("prices grade non-linearly, and only past what the rider is comfortable with", () => {
