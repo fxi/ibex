@@ -7,7 +7,7 @@
  * the resolved values into every route result, so "prefer" is never a claim the app
  * makes without showing its work.
  */
-export const VOCABULARY_VERSION = "vocabulary-v1";
+export const VOCABULARY_VERSION = "vocabulary-v2";
 
 export const LEVELS = [
   "strongly_avoid",

@@ -2,7 +2,7 @@ import type { Profile } from "./profiles";
 import type { CompiledProfile } from "./compile";
 import type { RideClass } from "./eligibility";
 export type { RideClass };
-export const COST_MODEL_VERSION = 4;
+export const COST_MODEL_VERSION = 5;
 export type Point = [number, number];
 export type Node = { id: number; p: Point; elevation: number | null };
 export type Edge = {
