@@ -194,8 +194,10 @@ export async function routeLeg(
   for (const result of new Set([value.reference, value.corridor]))
     result.metrics.loadMs = loadMs;
   // A search that ran out of graph next to uninstalled coverage is missing data, not a
-  // disconnected network.
-  if (value.reference.status === "no-path") {
+  // disconnected network. The same is true of a failed snap: an anchor with no road within
+  // 250 m is a hole in the data whenever coverage next to it is uninstalled, and blaming
+  // the waypoint sends the rider to move a marker that was never the problem.
+  if (value.reference.status === "no-path" || value.reference.status === "snap-failed") {
     const needed = source.missing(area);
     if (needed.length)
       for (const r of [value.reference, value.corridor]) {
