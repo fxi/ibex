@@ -8,7 +8,8 @@ Scripts that read a local release take its packs directory as an argument, defau
 
 | Group | Script | Purpose |
 |---|---|---|
-| Release pipeline | `fetch_extracts.py` | Download + md5-verify Geofabrik extracts (`--prune` after clipping) |
+| Cell pipeline | `build_cells.ts` | **The pipeline.** `--bbox W,S,E,N` or `--cells`: picks the Geofabrik downloads that cover each cell, parses each one once, cuts every cell it touches, builds and packs them. `--dry-run`, `--out`, `--extracts`, `--zoom`, `--no-terrain`, `--keep-extracts`, `--limit`. Run it as `npm run data:build -- --bbox …` |
+| Superseded by it | `fetch_extracts.py` | Download + md5-verify Geofabrik extracts (`--prune` after clipping) |
 | | `clip_region.py` | Clip, merge, tag-filter → `release.osm.pbf` |
 | | `global_splits.py` | Release-wide way-split nodes (required for consistent cell edge ids) |
 | | `extract_cells.py` | One pbf per z9 cell plus halo |
@@ -29,7 +30,7 @@ Scripts that read a local release take its packs directory as an argument, defau
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `build_parity.ts` | Diff two cell builds: ids and extents exactly, derived values to a tolerance (use around builder changes) |
-| | `build_cell.ts` | Build one cell's graph in TypeScript from its extract; `--cell`, `--no-terrain`, `--terrain-cache` |
+| | `build_cell.ts` | Build one cell's graph from an extract already on disk; `--cell`, `--no-terrain`, `--terrain-cache`. `build_cells.ts` is the one to reach for |
 | | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
 | | `local_release.ts` | **lib**: load a local release through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_signals.ts` | Routing audits → `data/derived/` |
