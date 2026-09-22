@@ -60,6 +60,30 @@ export class NodeIndex {
     return new NodeIndex(sortedIds, sortedLons, sortedLats);
   }
 
+  /** The slot a node sits in, or -1. Paired with `lonAt`/`latAt` it reads a position
+   * without building the `[lon, lat]` pair `get` returns — which matters when the caller
+   * asks about tens of millions of node refs. */
+  locate(id: number): number {
+    return this.find(id);
+  }
+
+  lonAt(at: number): number {
+    return this.lons[at];
+  }
+
+  latAt(at: number): number {
+    return this.lats[at];
+  }
+
+  /** Whether a node exists and falls in the box, with no position object built. */
+  within(id: number, west: number, south: number, east: number, north: number): boolean {
+    const at = this.find(id);
+    if (at < 0) return false;
+    const lon = this.lons[at];
+    const lat = this.lats[at];
+    return lon >= west && lon <= east && lat >= south && lat <= north;
+  }
+
   private find(id: number): number {
     let low = 0;
     let high = this.ids.length - 1;
@@ -210,36 +234,89 @@ export async function readSource(
 }
 
 /**
- * The part of a larger extract that one cell needs, on the rule `osmium extract
- * --strategy=complete_ways` used: a way is in if any of its nodes is in the box, and it
- * comes in whole.
+ * Each way's own bounding box, computed once for a whole extract.
  *
- * The node index is shared rather than copied, so a way reaching past the box still
- * resolves every coordinate — which is what `complete_ways` was for, and is why building a
- * cell from its country's extract needs no second pass to chase missing nodes.
+ * `subsetSource` asks whether any node of a way falls in a cell's box, which costs a binary
+ * search per node ref — over a country extract that is more than a billion of them, and
+ * paying it again for every cell made the subset cost twice the build. These bounds answer
+ * "certainly not" for almost every way in constant time, and the exact test then runs only
+ * on what survives.
  */
-export function subsetSource(source: CellSource, bbox: BBox): CellSource {
+export class WayBounds {
+  private constructor(
+    private readonly west: Float64Array,
+    private readonly south: Float64Array,
+    private readonly east: Float64Array,
+    private readonly north: Float64Array,
+  ) {}
+
+  static of(source: CellSource): WayBounds {
+    const n = source.ways.length;
+    const west = new Float64Array(n);
+    const south = new Float64Array(n);
+    const east = new Float64Array(n);
+    const north = new Float64Array(n);
+    const { positions } = source;
+    for (let i = 0; i < n; i++) {
+      let w = Infinity;
+      let s = Infinity;
+      let e = -Infinity;
+      let no = -Infinity;
+      for (const ref of source.ways[i].refs) {
+        const at = positions.locate(ref);
+        if (at < 0) continue;
+        const lon = positions.lonAt(at);
+        const lat = positions.latAt(at);
+        if (lon < w) w = lon;
+        if (lon > e) e = lon;
+        if (lat < s) s = lat;
+        if (lat > no) no = lat;
+      }
+      west[i] = w;
+      south[i] = s;
+      east[i] = e;
+      north[i] = no;
+    }
+    return new WayBounds(west, south, east, north);
+  }
+
+  /** A way whose own box misses the cell's cannot have a node inside it. */
+  mayTouch(index: number, bbox: BBox): boolean {
+    return (
+      this.east[index] >= bbox[0] &&
+      this.west[index] <= bbox[2] &&
+      this.north[index] >= bbox[1] &&
+      this.south[index] <= bbox[3]
+    );
+  }
+}
+
+export function subsetSource(source: CellSource, bbox: BBox, bounds?: WayBounds): CellSource {
   const [west, south, east, north] = bbox;
   const { positions } = source;
-  const inBox = (ref: number): boolean => {
-    const p = positions.get(ref);
-    return !!p && p[0] >= west && p[0] <= east && p[1] >= south && p[1] <= north;
-  };
+  const inBox = (ref: number) => positions.within(ref, west, south, east, north);
 
   const ways: OsmWay[] = [];
   // Every node of a kept way, in or out of the box. `complete_ways` pulls these in, and a
   // barrier or a village sitting just outside on a road that crosses the boundary is the
   // reason: dropping it changes what the cell sees inside its own halo.
   const reachable = new Set<number>();
-  for (const way of source.ways)
+  for (let i = 0; i < source.ways.length; i++) {
+    if (bounds && !bounds.mayTouch(i, bbox)) continue;
+    const way = source.ways[i];
     for (const ref of way.refs)
       if (inBox(ref)) {
         ways.push(way);
         for (const r of way.refs) reachable.add(r);
         break;
       }
+  }
   const wayById = new Map(ways.map((way) => [way.id, way]));
-  const nodes = source.nodes.filter((n) => reachable.has(n.id) || inBox(n.id));
+  const nodes = source.nodes.filter(
+    (n) =>
+      reachable.has(n.id) ||
+      (n.lon >= west && n.lon <= east && n.lat >= south && n.lat <= north),
+  );
 
   // A relation comes in when a member way is in, or a member node is in the box itself —
   // a restriction whose via node fell outside is not this cell's business, even when the
