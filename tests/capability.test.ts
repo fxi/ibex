@@ -5,6 +5,7 @@ import {
   gearSpeed,
   powerRequired,
   rollingResistance,
+  tractionGrade,
   wheelCircumferenceM,
 } from "../src/routing/capability";
 import { BIKE_PRESETS, RIDER_PRESETS } from "../src/routing/presets";
@@ -71,8 +72,12 @@ describe("the climbing model", () => {
     const loaded = up("touring_45", "steady", { load_kg: 30 });
     expect(loaded.comfortable_until).toBeLessThan(light.comfortable_until);
 
-    const heavy = deriveCapability(setup("gravel_40", "expert", { load_kg: 25 }));
-    const empty = deriveCapability(setup("gravel_40", "expert", { load_kg: 0 }));
+    const heavy = deriveCapability(
+      setup("gravel_40", "expert", { load_kg: 25 }),
+    );
+    const empty = deriveCapability(
+      setup("gravel_40", "expert", { load_kg: 0 }),
+    );
     expect(heavy.surface_roughness.comfortable_until).toBeLessThan(
       empty.surface_roughness.comfortable_until,
     );
@@ -108,7 +113,9 @@ describe("the handling heuristics", () => {
     expect(bold.comfortable_until).toBeGreaterThan(timid.comfortable_until);
 
     const rigid = deriveCapability(setup("mtb_60", "expert")).downhill_grade;
-    const sprung = deriveCapability(setup("mtb_full_60", "expert")).downhill_grade;
+    const sprung = deriveCapability(
+      setup("mtb_full_60", "expert"),
+    ).downhill_grade;
     expect(sprung.comfortable_until).toBeGreaterThan(rigid.comfortable_until);
   });
 
@@ -152,5 +159,63 @@ describe("the threshold ramp", () => {
     // strongly discouraged — but it stays finite, so it is never impossible.
     expect(exceedance(0.4, t)).toBeGreaterThan(exceedance(0.3, t));
     expect(Number.isFinite(exceedance(1, t))).toBe(true);
+  });
+});
+
+describe("traction on loose ground", () => {
+  const climb = { comfortable_until: 0.105, high_cost_at: 0.221 };
+  // The shipped 50 mm gravel bike, and a 60 mm trail bike on suspension.
+  const gravelGrip = { comfortable_until: 0.45, high_cost_at: 0.88 };
+  const trailGrip = { comfortable_until: 0.62, high_cost_at: 1.06 };
+
+  it("leaves sealed and compacted ground exactly as the power balance found it", () => {
+    for (const roughness of [0.02, 0.1, 0.15])
+      expect(tractionGrade(climb, roughness, true, gravelGrip)).toEqual(climb);
+  });
+
+  it("lowers both ends together on loose ground, keeping the ramp's shape", () => {
+    const loose = tractionGrade(climb, 0.45, true, gravelGrip);
+    expect(loose.comfortable_until).toBeLessThan(climb.comfortable_until);
+    expect(loose.high_cost_at).toBeLessThan(climb.high_cost_at);
+    expect(loose.high_cost_at).toBeGreaterThan(loose.comfortable_until);
+    // The two ends move by the same factor, so `exceedance` is the same curve moved, not
+    // a different one: what was 1 at the old high-cost grade is still 1 at the new one.
+    expect(loose.comfortable_until / climb.comfortable_until).toBeCloseTo(
+      loose.high_cost_at / climb.high_cost_at,
+      6,
+    );
+    expect(exceedance(loose.high_cost_at, loose)).toBeCloseTo(1, 6);
+  });
+
+  it("takes less away from a bike that floats over rough ground", () => {
+    const onGravel = (grip: typeof gravelGrip) =>
+      tractionGrade(climb, 0.45, true, grip).comfortable_until;
+    // A trail bike keeps more of its climbing grade on the same track than a gravel bike,
+    // which keeps more than a road bike. Without this the trail bike was pushed off the
+    // rough lines it exists to ride (`tests/voirons.test.ts`, the Sauget crossing).
+    expect(onGravel(trailGrip)).toBeGreaterThan(onGravel(gravelGrip));
+    expect(onGravel(gravelGrip)).toBeGreaterThan(
+      onGravel({ comfortable_until: 0.25, high_cost_at: 0.5 }),
+    );
+  });
+
+  it("charges an unsurveyed way less than one someone described", () => {
+    // Most of the network carries no `surface`, and the fallback roughness would
+    // otherwise take very nearly the full degrade on the strength of silence alone.
+    const guessed = tractionGrade(climb, 0.45, false, gravelGrip);
+    const known = tractionGrade(climb, 0.45, true, gravelGrip);
+    expect(guessed.comfortable_until).toBeGreaterThan(known.comfortable_until);
+    expect(guessed.comfortable_until).toBeLessThan(climb.comfortable_until);
+  });
+
+  it("never inverts the threshold, however bad the ground", () => {
+    for (const roughness of [0.6, 0.8, 0.95, 1]) {
+      const t = tractionGrade(climb, roughness, true, {
+        comfortable_until: 0.22,
+        high_cost_at: 0.45,
+      });
+      expect(t.comfortable_until).toBeGreaterThan(0);
+      expect(t.high_cost_at).toBeGreaterThan(t.comfortable_until);
+    }
   });
 });

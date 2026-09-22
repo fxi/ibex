@@ -380,4 +380,24 @@ export const ENGINE = {
    * about 6% up and 10% down for the shipped gravel rider.
    */
   flow_band: 0.6,
+  /**
+   * How much of the climbing threshold loose ground takes away, per unit of roughness
+   * past `traction_free`. See `tractionGrade`.
+   *
+   * At 0.45 the shipped gravel rider's comfortable grade falls from 10.5% on tarmac to
+   * 9.1% on gravel and 8.3% on loose ground — about a point and a half, which is where a
+   * seated rear wheel starts to break loose on the tracks this was measured against.
+   */
+  traction_loss: 0.45,
+  /**
+   * Roughness up to which the ground holds a tyre as well as tarmac. `compacted` is the
+   * last surface a climbing wheel does not have to think about.
+   */
+  traction_free: 0.15,
+  /**
+   * The roughness comfort of the bike `traction_loss` was calibrated on: the shipped
+   * 50 mm gravel bike. A bike that floats over rougher ground than this loses less grip
+   * on a climb, and a 28 mm tyre loses more. See `tractionGrade`.
+   */
+  traction_reference: 0.45,
 } as const;

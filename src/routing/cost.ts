@@ -17,7 +17,12 @@ import {
   STRENGTH,
   type ScoredKey,
 } from "./vocabulary";
-import { exceedance, type CapabilityProfile } from "./capability";
+import {
+  exceedance,
+  tractionGrade,
+  type CapabilityProfile,
+  type Threshold,
+} from "./capability";
 import { edgeSignals, scenicValue, type Signals } from "./signals";
 import { climbingTechnical, isFerry, traversalSegments } from "./eligibility";
 import { isStreet } from "./tagging";
@@ -197,11 +202,16 @@ export function turnCost(
  * 656 km and 416 km of the Voirons network priced at nothing. `steepness` is the setting
  * this always wanted, and it charges in full at `neutral`.
  */
-export function steepnessCost(grade: number, p: CompiledProfile): number {
+export function steepnessCost(
+  grade: number,
+  p: CompiledProfile,
+  /** The climbing threshold as the ground leaves it; see `tractionGrade`. */
+  uphill: Threshold = p.capability.uphill_grade,
+): number {
   const band =
     ENGINE.flow_band *
     (grade > 0
-      ? p.capability.uphill_grade.comfortable_until
+      ? uphill.comfortable_until
       : p.capability.downhill_grade.comfortable_until);
   return (
     ENGINE.flow * p.steepnessAversion * Math.max(0, Math.abs(grade) - band)
@@ -233,6 +243,17 @@ function riddenRate(
   const technical = down
     ? s.technicalDown
     : climbingTechnical(s.technicalUp, grade, k);
+  // What the rider can climb, on the ground actually under the wheel. Only the cost terms
+  // below read this: `climbingTechnical` above and the ride/walk decision in
+  // `traversalSegments` both keep the undegraded threshold on purpose — see
+  // `tractionGrade`. Charging the same roughness through the technical channel as well
+  // would be counting it a third time.
+  const uphill = tractionGrade(
+    k.uphill_grade,
+    s.roughness,
+    s.surfaceKnown,
+    k.surface_roughness,
+  );
 
   // Past a false flat, the profile's uphill or downhill preferences take over: the same
   // rider can want good gravel on the way up and smooth tarmac, or singletrack, down.
@@ -319,9 +340,9 @@ function riddenRate(
     slope:
       grade === null
         ? 0
-        : steepnessCost(grade, p) +
+        : steepnessCost(grade, p, uphill) +
           (grade > 0
-            ? effort + ENGINE.threshold_rate * exceedance(grade, k.uphill_grade)
+            ? effort + ENGINE.threshold_rate * exceedance(grade, uphill)
             : // A steep descent on a twisty line is worse than a steep straight one,
               // and this is the only place curvature is used.
               ENGINE.threshold_rate *

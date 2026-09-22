@@ -1,4 +1,5 @@
 import type { Bike, Rider, Setup } from "./profiles";
+import { ENGINE } from "./vocabulary";
 
 /**
  * What this rider on this bike can actually do.
@@ -219,6 +220,62 @@ export function deriveCapability(setup: Setup): CapabilityProfile {
  * router could no longer tell them apart. It still rises forever, so absurd ground is
  * strongly discouraged, and it stays finite, so nothing is ever impossible.
  */
+/**
+ * The same climbing threshold, on ground that will not hold a tyre.
+ *
+ * `uphill_grade` comes out of a power balance whose rolling resistance is documented for
+ * good tarmac, and is then asked about a 45%-roughness track. Past a certain gradient on
+ * loose ground the limit stops being what the rider can turn over and becomes whether the
+ * rear wheel holds: seated it spins, and standing up spins it sooner. That is a property
+ * of the surface, which `deriveCapability` never sees, so it cannot be in the balance.
+ *
+ * Both ends move together, so the ramp keeps its shape and only changes position. Tarmac
+ * and compacted gravel are untouched.
+ *
+ * This is deliberately *not* what decides whether a run is ridden or pushed. `high_cost_at`
+ * is derived as the grade where full effort in the lowest gear falls to a 40 rpm grind —
+ * a fact about gearing, and losing traction does not stop the pedals turning. Coupling the
+ * two moved 23 km of the Voirons network into hike-a-bike and, on a `foot=no` way, could
+ * make an edge ineligible outright. Spinning a wheel is a cost, not a mode.
+ *
+ * A guess is not evidence of loose ground. Three quarters of the network carries no
+ * `surface`, and `edgeSignals` then falls back to a value that would otherwise take very
+ * nearly the full degrade — so silence is charged at `unpaved_guess_share`, as everywhere
+ * else.
+ */
+export function tractionGrade(
+  t: Threshold,
+  roughness: number,
+  surfaceKnown: boolean,
+  grip: Threshold,
+): Threshold {
+  const share = surfaceKnown ? 1 : ENGINE.unpaved_guess_share;
+  // How much grip the bike has, against the 50 mm gravel bike this was calibrated on. A
+  // 60 mm knobbly on suspension holds a loose 15% climb that spits a 28 mm tyre out of
+  // it, and a degrade that ignored the bike said the opposite: it took the trail bike off
+  // the rough Sauget line it exists to ride and sent it round with the gravel rider.
+  //
+  // `surface_roughness.comfortable_until` is the only thing the model knows about tyre
+  // volume and suspension, so it stands in for grip — but only as a ratio. Used as a
+  // threshold it says a gravel bike is "comfortable" at exactly gravel's roughness and
+  // therefore loses no grip on it, which confuses riding along a surface with climbing
+  // up one.
+  const grippiness = Math.min(
+    2,
+    Math.max(0.5, ENGINE.traction_reference / grip.comfortable_until),
+  );
+  const loss =
+    ENGINE.traction_loss *
+    grippiness *
+    share *
+    Math.max(0, roughness - ENGINE.traction_free);
+  if (loss <= 0) return t;
+  return {
+    comfortable_until: t.comfortable_until * (1 - loss),
+    high_cost_at: t.high_cost_at * (1 - loss),
+  };
+}
+
 export function exceedance(value: number, t: Threshold): number {
   if (value <= t.comfortable_until) return 0;
   const span = Math.max(1e-6, t.high_cost_at - t.comfortable_until);
