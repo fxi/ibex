@@ -110,6 +110,11 @@ export class NodeIndex {
   get size(): number {
     return this.ids.length;
   }
+
+  /** Every id it holds, in order, for callers merging two indexes. */
+  everyId(): Float64Array {
+    return this.ids;
+  }
 }
 
 export type CellSource = {
@@ -342,5 +347,79 @@ export function subsetSource(source: CellSource, bbox: BBox, bounds?: WayBounds)
     }
   }
   const relations = source.relations.filter((relation) => kept.has(relation.id));
-  return { nodes, ways, relations, positions, wayById };
+
+  // Carry only the positions this cell can ask about, so the subset stands on its own: a
+  // cell straddling a border is built by merging one of these per country, and a country
+  // extract's whole node index is sixty million entries nobody here needs.
+  const wanted = new Doubles();
+  const seen = new Set<number>();
+  const want = (ref: number) => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    wanted.push(ref);
+  };
+  for (const way of ways) for (const ref of way.refs) want(ref);
+  for (const relation of relations)
+    for (const m of relation.members) if (m.type === "node") want(m.ref);
+  for (const node of nodes) want(node.id);
+  const ids = wanted.take();
+  ids.sort();
+  const lons = new Float64Array(ids.length);
+  const lats = new Float64Array(ids.length);
+  let held = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const at = positions.locate(ids[i]);
+    if (at < 0) continue;
+    ids[held] = ids[i];
+    lons[held] = positions.lonAt(at);
+    lats[held] = positions.latAt(at);
+    held++;
+  }
+
+  return {
+    nodes,
+    ways,
+    relations,
+    positions: NodeIndex.of(ids.slice(0, held), lons.slice(0, held), lats.slice(0, held)),
+    wayById,
+  };
+}
+
+/**
+ * Join subsets of the same cell taken from different extracts.
+ *
+ * A cell on a border is the union of what each country published for it. Elements repeat
+ * where the extracts overlap — Geofabrik buffers each polygon past the boundary — so
+ * everything is keyed by its OSM id and the first copy wins.
+ */
+export function mergeSources(parts: readonly CellSource[]): CellSource {
+  if (parts.length === 1) return parts[0];
+  const nodes = new Map<number, OsmNode>();
+  const wayById = new Map<number, OsmWay>();
+  const relations = new Map<number, OsmRelation>();
+  const ids = new Doubles();
+  const lons = new Doubles();
+  const lats = new Doubles();
+  const seen = new Set<number>();
+  for (const part of parts) {
+    for (const node of part.nodes) if (!nodes.has(node.id)) nodes.set(node.id, node);
+    for (const way of part.ways) if (!wayById.has(way.id)) wayById.set(way.id, way);
+    for (const relation of part.relations)
+      if (!relations.has(relation.id)) relations.set(relation.id, relation);
+    for (const id of part.positions.everyId()) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const at = part.positions.locate(id);
+      ids.push(id);
+      lons.push(part.positions.lonAt(at));
+      lats.push(part.positions.latAt(at));
+    }
+  }
+  return {
+    nodes: [...nodes.values()],
+    ways: [...wayById.values()],
+    relations: [...relations.values()],
+    positions: NodeIndex.from([...ids.take()], [...lons.take()], [...lats.take()]),
+    wayById,
+  };
 }
