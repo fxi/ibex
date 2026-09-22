@@ -51,14 +51,28 @@ changes. OPFS is preferred, with IndexedDB as the fallback (database `ibex`). Gr
 are decoded in a worker with a 32 MB allocation cap per block. Cells installed under another
 data version are removed on start-up.
 
-Building cells needs nothing but Node. Give it a box and it works out which OpenStreetMap
-downloads cover it, reads each one once, and builds every cell that has roads under it:
+Building cells needs nothing but Node. Give it a box or a set of OpenStreetMap regions and
+it works out which downloads cover them, reads each one once, and builds every cell that has
+roads under it:
 
 ```sh
-npm run data:build -- --bbox 5.9,46.1,6.5,46.4    # a couple of cells
-npm run data:build -- --bbox -11,35,32,72 --dry-run   # what Europe would cost
-npm run dev                                        # serves .cache/cells
+npm run data:build -- --bbox 5.9,46.1,6.5,46.4         # a couple of cells
+npm run data:build -- --regions switzerland --dry-run  # a region, and what it would cost
+npm run dev                                            # serves .cache/cells
 ```
+
+A region is a Geofabrik extract id, which is not always today's administrative name —
+Occitanie is `languedoc-roussillon,midi-pyrenees`. Asking by region rather than by rectangle
+skips the cells that are only somebody else's ground.
+
+Anything larger than a handful of cells should publish itself rather than pile up on disk:
+
+```sh
+npm run data:build -- --regions switzerland --publish --skip-built --terrain-budget 4000
+```
+
+Each cell goes to the bucket as it is packed and leaves the disk again, the catalogue is
+uploaded after every download, and `--skip-built` resumes an interrupted run.
 
 ## Deploy your own
 
@@ -80,8 +94,10 @@ bucket.
 | ------------- | ---------------------------- | ---------------------------------------------------------------------- |
 | `ci.yml`      | pull requests, branch pushes | lint, typecheck, unit and browser tests                                |
 | `deploy.yml`  | push to `main`, manual       | the checks above, then build and publish to Pages                      |
-| `data.yml`    | manual, weekly               | promote or prune releases; verify hashes, cache, CORS and Range on S3  |
 | `release.yml` | tag `v*`                     | GitHub release with generated notes (tag must match `package.json`)    |
+
+Publishing data is a local step, not a workflow: cells are built on a machine with the
+disk and the OpenStreetMap downloads, and sent straight to the bucket.
 
 | Name                                                  | Kind     | Used by              |
 | ----------------------------------------------------- | -------- | -------------------- |
@@ -96,8 +112,6 @@ The MapTiler key ends up in the public bundle: restrict it to your origins in th
 
 ```sh
 npm run lint && npm run typecheck && npm test
-uv run ruff check scripts
-uv run python -m unittest discover -s scripts -p 'test_*.py'
 npm run build:test && npx playwright install chromium webkit && npm run test:e2e
 ```
 
@@ -113,7 +127,7 @@ For audits, `node --import tsx scripts/audit_route.ts [packs dir]` writes select
 
 ## Privacy
 
-The app never uploads waypoints, routes or profiles. The optional "your rides" overlay (`VITE_HEATMAP_URL`) requests tiles from a public PMTiles archive and sends no route geometry. Personal activity traces used for calibration stay under the ignored `data/` directory and are never published.
+The app never uploads waypoints, routes or profiles. The optional "your rides" overlay (`VITE_HEATMAP_URL`) requests tiles from a public PMTiles archive and sends no route geometry. Personal activity traces used for calibration stay under the ignored `.cache/` directory and are never published.
 
 ## Limits
 
