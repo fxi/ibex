@@ -118,6 +118,13 @@ export type RouteSegment = {
   grade: number | null;
   /** Traffic stress as ridden, 0..1, calmed where a cycle route is signed. */
   stress: number;
+  /**
+   * The router's own roughness, 0..1 — the worst of `surface`, `smoothness` and
+   * `tracktype`, not a second opinion derived from `surface` alone. It is here because
+   * the elevation chart has to know what the ground was to paint the same steep lane the
+   * router priced; see `tractionGrade`.
+   */
+  roughness: number;
   lengthM: number;
 };
 export type RouteStatus =

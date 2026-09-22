@@ -30,6 +30,7 @@ import type { Profile } from "./profiles";
 import { toCompiled, type CompiledProfile } from "./compile";
 import { ENGINE } from "./vocabulary";
 import { eligible, isFerry, rideClass, traversalSegments } from "./eligibility";
+import { edgeSignals } from "./signals";
 import type {
   Components,
   Edge,
@@ -64,7 +65,6 @@ export {
   unpavedHazard,
   type HardTerm,
 };
-
 
 // Re-exported: snapping and the map both project onto the same segments.
 export { pointInBounds, project };
@@ -283,6 +283,7 @@ function appendSegments(
       // Constant per edge, so segments split out of one edge share it. Two decimals because
       // stress is a road-class proxy: more digits would be noise in every stored route.
       stress: Math.round(effectiveStress(edge) * 100) / 100,
+      roughness: Math.round(edgeSignals(edge).roughness * 100) / 100,
       lengthM,
     });
   };
@@ -419,13 +420,11 @@ export function route(
       ? [fixedRadius]
       : [corridor, corridor * 2.5, Infinity]
     : [Infinity];
-  const { estimate, scale: heuristicScale, preparedStates } = buildHeuristic(
-    graph,
-    snap,
-    request,
-    reverse,
-    cost_,
-  );
+  const {
+    estimate,
+    scale: heuristicScale,
+    preparedStates,
+  } = buildHeuristic(graph, snap, request, reverse, cost_);
   result.metrics.heuristicScale = +heuristicScale.toFixed(6);
   if (preparedStates !== undefined)
     result.metrics.preparedStates = preparedStates;

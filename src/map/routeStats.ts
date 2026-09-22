@@ -1,4 +1,8 @@
-import { exceedance, type CapabilityProfile } from "../routing/capability";
+import {
+  exceedance,
+  tractionGrade,
+  type CapabilityProfile,
+} from "../routing/capability";
 import { surfaceRoughness } from "../routing/signals";
 import { ENGINE } from "../routing/vocabulary";
 import type { RideClass, RouteResult, RouteSegment } from "../routing/types";
@@ -183,7 +187,8 @@ export function profileGeometry(
   // A 20 m floor on the height range keeps a flat route from being drawn as a mountain of
   // rounding noise.
   const y = (height: number) =>
-    box.base - ((height - min) / Math.max(20, max - min)) * (box.base - box.top);
+    box.base -
+    ((height - min) / Math.max(20, max - min)) * (box.base - box.top);
 
   const lines: string[] = [];
   const areas: string[] = [];
@@ -228,14 +233,37 @@ export type LaneBand = Span & { color: string; label: string };
 export function steepLaneBands(
   profile: [number, number | null][],
   capability: CapabilityProfile,
+  segments: RouteSegment[] = [],
+  distanceM = 0,
 ): LaneBand[] {
+  // The router charges a climb against the ground under it, so the lane has to as well or
+  // the chart quietly disagrees with the line it is drawing. `elevationProfile` is metres
+  // and height and knows nothing about surfaces, so the roughness comes from the segment
+  // the run sits in. With no segments — a synthetic profile, or a route stored before
+  // segments carried roughness — this falls back to the untouched threshold.
+  const spans = segmentSpans(segments, distanceM);
+  const roughnessAt = (startM: number, endM: number) => {
+    const middle = (startM + endM) / 2;
+    const span = spans.find((s) => middle >= s.startM && middle <= s.endM);
+    return span?.segment.roughness;
+  };
   const bands: LaneBand[] = [];
   for (const run of gradeRuns(profile)) {
     const uphill = run.grade > 0;
     const value = uphill ? run.grade : -run.grade;
+    const roughness = roughnessAt(run.startM, run.endM);
+    const climbing =
+      roughness === undefined || !Number.isFinite(roughness)
+        ? capability.uphill_grade
+        : tractionGrade(
+            capability.uphill_grade,
+            roughness,
+            true,
+            capability.surface_roughness,
+          );
     const over = exceedance(
       value,
-      uphill ? capability.uphill_grade : capability.downhill_grade,
+      uphill ? climbing : capability.downhill_grade,
     );
     if (over <= 0) continue;
     bands.push({
@@ -343,7 +371,9 @@ export function heightAtM(
     const [toM, to] = profile[i];
     if (meters < fromM || meters > toM) continue;
     if (from === null || to === null) return null;
-    return toM > fromM ? from + ((to - from) * (meters - fromM)) / (toM - fromM) : to;
+    return toM > fromM
+      ? from + ((to - from) * (meters - fromM)) / (toM - fromM)
+      : to;
   }
   return null;
 }
@@ -506,27 +536,29 @@ export function routeWarnings(
 
   // Broken ground, judged against this rider's tyres and suspension rather than a fixed
   // idea of rough: the same gravel is a warning on 28 mm and the point of the ride on 60.
+  //
+  // The router's own roughness where the route carries it, since that is the number the
+  // ride was priced with. `surfaceRoughness` reads `surface` alone and so disagrees on
+  // exactly the ways that matter — a `track` with a `tracktype` and no `surface`. A route
+  // stored before segments carried roughness falls back to the old reading.
+  const roughnessOf = (s: SegmentSpan) =>
+    Number.isFinite(s.segment.roughness)
+      ? s.segment.roughness
+      : surfaceRoughness(s.segment.surface, s.segment.highway);
   const roughSpans = spans.filter((s) => {
     if (s.segment.ride !== "rough") return false;
-    const value = surfaceRoughness(s.segment.surface, s.segment.highway);
-    return exceedance(value, capability.surface_roughness) > 0;
+    return exceedance(roughnessOf(s), capability.surface_roughness) > 0;
   });
   for (const section of sectionsOf(roughSpans)) {
     const worst = section.parts.reduce(
-      (max, part) =>
-        Math.max(
-          max,
-          surfaceRoughness(part.segment.surface, part.segment.highway),
-        ),
+      (max, part) => Math.max(max, roughnessOf(part)),
       0,
     );
     warnings.push({
       startM: section.startM,
       endM: section.endM,
       kind: "rough",
-      severity: severityOf(
-        exceedance(worst, capability.surface_roughness),
-      ),
+      severity: severityOf(exceedance(worst, capability.surface_roughness)),
       headline: "Rough surface",
       detail: `${km(section.endM - section.startM)} km of broken ground`,
     });

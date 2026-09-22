@@ -121,7 +121,12 @@ export function Elevation({
   // ordinary — so they share one set of rects and differ only in what fills them.
   const warm =
     showing === "steep" && detail
-      ? steepLaneBands(route.elevationProfile, detail.capability)
+      ? steepLaneBands(
+          route.elevationProfile,
+          detail.capability,
+          route.segments,
+          route.distanceM,
+        )
       : showing === "stress"
         ? stressLaneBands(route.segments, route.distanceM)
         : [];
@@ -156,8 +161,7 @@ export function Elevation({
   return (
     <figure className={`elevation${detail ? " interactive" : ""}`}>
       <figcaption>
-        Elevation · {Math.round(min)}–{Math.round(max)} m{" "}
-        <span>{legend}</span>
+        Elevation · {Math.round(min)}–{Math.round(max)} m <span>{legend}</span>
       </figcaption>
       <svg
         ref={svg}
@@ -281,7 +285,11 @@ export function Elevation({
         ))}
       </svg>
       {detail && (
-        <div className="lane-switcher" role="group" aria-label="Fill under the curve">
+        <div
+          className="lane-switcher"
+          role="group"
+          aria-label="Fill under the curve"
+        >
           {LANES.map(({ lane: value, label }) => (
             <button
               key={value}

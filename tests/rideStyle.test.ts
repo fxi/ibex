@@ -35,6 +35,7 @@ const segment = (
   surface: "asphalt",
   highway: "cycleway",
   grade: 0,
+  roughness: 0.02,
   stress: 0.02,
   lengthM: (end - start) * 100,
 });

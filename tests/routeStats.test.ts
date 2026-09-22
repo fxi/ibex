@@ -28,7 +28,12 @@ import {
 } from "../src/map/rideStyle";
 import { compileProfile } from "../src/routing/compile";
 import { exceedance } from "../src/routing/capability";
-import type { RideClass, RouteResult, RouteSegment } from "../src/routing/types";
+import { surfaceRoughness } from "../src/routing/signals";
+import type {
+  RideClass,
+  RouteResult,
+  RouteSegment,
+} from "../src/routing/types";
 import { route } from "../src/routing/engine";
 import { importedTrack } from "../src/tracks";
 import { ROAD, TRAIL, voironsGraph } from "./helpers";
@@ -50,6 +55,7 @@ const segment = (
   surface,
   highway,
   grade: 0,
+  roughness: surfaceRoughness(surface, highway),
   stress,
   lengthM: (end - start) * 100,
 });
@@ -86,7 +92,10 @@ describe("segment spans", () => {
   });
 
   it("carries the segment and its index so a span can be traced back", () => {
-    const spans = segmentSpans([segment(0, 1, "paved"), segment(1, 2, "walk")], 200);
+    const spans = segmentSpans(
+      [segment(0, 1, "paved"), segment(1, 2, "walk")],
+      200,
+    );
     expect(spans[1].index).toBe(1);
     expect(spans[1].segment.ride).toBe("walk");
   });
@@ -189,14 +198,18 @@ describe("grade runs", () => {
       graph,
       {
         profile: TRAIL,
-        anchors: [graph.nodes[0].p, graph.nodes[Math.floor(graph.nodes.length / 2)].p],
+        anchors: [
+          graph.nodes[0].p,
+          graph.nodes[Math.floor(graph.nodes.length / 2)].p,
+        ],
       },
       "reference",
     );
     expect(r.status).toBe("ok");
     const runs = gradeRuns(r.elevationProfile);
     expect(runs.length).toBeGreaterThan(0);
-    for (const run of runs) expect(Math.abs(run.grade)).toBeLessThanOrEqual(MAX_GRADE);
+    for (const run of runs)
+      expect(Math.abs(run.grade)).toBeLessThanOrEqual(MAX_GRADE);
     for (const w of routeWarnings(r, compileProfile(TRAIL).capability))
       if (w.kind === "steep") expect(w.detail).not.toMatch(/\d{3,}%/);
   });
@@ -204,7 +217,12 @@ describe("grade runs", () => {
   it("has nothing to say about fewer than two known points", () => {
     expect(gradeRuns([])).toEqual([]);
     expect(gradeRuns([[0, 100]])).toEqual([]);
-    expect(gradeRuns([[0, null], [100, null]])).toEqual([]);
+    expect(
+      gradeRuns([
+        [0, null],
+        [100, null],
+      ]),
+    ).toEqual([]);
   });
 });
 
@@ -457,14 +475,34 @@ describe("steep lane", () => {
     expect(steepLaneBands(flat, TRAIL_CAPABILITY)).toEqual([]);
   });
 
+  it("paints the climb against the ground it is ridden on", () => {
+    // The router charges a climb by `tractionGrade`, so the lane has to as well or the
+    // chart contradicts the line it is drawing. One gradient, chosen to sit inside the
+    // rider's comfortable range on tarmac and outside it on a loose track.
+    const capability = ROAD_CAPABILITY;
+    const grade = capability.uphill_grade.comfortable_until * 0.95;
+    const onGround = (surface: string, highway: string) =>
+      steepLaneBands(
+        ramp(grade),
+        capability,
+        [segment(0, 1, "paved", surface, highway)],
+        400,
+      );
+    expect(onGround("asphalt", "residential")).toEqual([]);
+    expect(onGround("gravel", "track").length).toBeGreaterThan(0);
+    // With no segments at all — a synthetic profile, or a route stored before segments
+    // carried roughness — it falls back to the untouched threshold rather than guessing.
+    expect(steepLaneBands(ramp(grade), capability)).toEqual([]);
+  });
+
   it("starts painting exactly where this rider stops being comfortable", () => {
     // Driven off each profile's own threshold rather than a guessed gradient, so the test
     // says what the lane promises: the line is the rider's, not the house's.
     for (const capability of [ROAD_CAPABILITY, TRAIL_CAPABILITY]) {
       const threshold = capability.uphill_grade;
-      expect(steepLaneBands(ramp(threshold.comfortable_until * 0.8), capability)).toEqual(
-        [],
-      );
+      expect(
+        steepLaneBands(ramp(threshold.comfortable_until * 0.8), capability),
+      ).toEqual([]);
       const hard = steepLaneBands(ramp(threshold.high_cost_at), capability);
       expect(hard).toHaveLength(1);
       expect(hard[0].label).toContain("climb");
@@ -475,7 +513,10 @@ describe("steep lane", () => {
   it("never paints a worse ramp cooler than a milder one", () => {
     const green = (hex: string) => parseInt(hex.slice(3, 5), 16);
     const threshold = ROAD_CAPABILITY.uphill_grade;
-    const milder = steepLaneBands(ramp(threshold.high_cost_at), ROAD_CAPABILITY);
+    const milder = steepLaneBands(
+      ramp(threshold.high_cost_at),
+      ROAD_CAPABILITY,
+    );
     // Worse, but still a grade a real pack can hold.
     const steeper = Math.min(MAX_GRADE, threshold.high_cost_at * 2);
     expect(steeper).toBeGreaterThan(threshold.high_cost_at);
@@ -498,7 +539,6 @@ describe("steep lane", () => {
     expect(bands[0].label).toContain("descent");
     expect(bands[0].label).toContain("40%");
   });
-
 });
 
 describe("stress lane", () => {
@@ -596,8 +636,24 @@ describe("distance and height lookups", () => {
   });
 
   it("refuses to guess across a hole in the terrain or past the ends", () => {
-    expect(heightAtM([[0, 100], [200, null]], 100)).toBeNull();
-    expect(heightAtM([[0, 100], [200, 200]], 500)).toBeNull();
+    expect(
+      heightAtM(
+        [
+          [0, 100],
+          [200, null],
+        ],
+        100,
+      ),
+    ).toBeNull();
+    expect(
+      heightAtM(
+        [
+          [0, 100],
+          [200, 200],
+        ],
+        500,
+      ),
+    ).toBeNull();
     expect(heightAtM([], 0)).toBeNull();
   });
 });
@@ -616,9 +672,9 @@ describe("severity", () => {
     const threshold = ROAD_CAPABILITY.uphill_grade;
     const atLimit = threshold.high_cost_at;
     expect(exceedance(atLimit, threshold)).toBeCloseTo(1);
-    expect(rank(severityOf(exceedance(atLimit, threshold)))).toBeGreaterThanOrEqual(
-      rank("hard"),
-    );
+    expect(
+      rank(severityOf(exceedance(atLimit, threshold))),
+    ).toBeGreaterThanOrEqual(rank("hard"));
     expect(severityOf(exceedance(threshold.comfortable_until, threshold))).toBe(
       "caution",
     );
@@ -720,15 +776,11 @@ describe("route warnings", () => {
 
   it("flags a steep climb and names how steep it got", () => {
     const warnings = routeWarnings(
-      result(
-        [segment(0, 4, "paved")],
-        400,
-        [
-          [0, 100],
-          [200, 110],
-          [400, 170],
-        ],
-      ),
+      result([segment(0, 4, "paved")], 400, [
+        [0, 100],
+        [200, 110],
+        [400, 170],
+      ]),
       ROAD_CAPABILITY,
     );
     const steep = warnings.filter((w) => w.kind === "steep");
@@ -787,11 +839,7 @@ describe("route warnings", () => {
 describe("composition", () => {
   it("shares out the whole route and sums to one", () => {
     const entries = composition(
-      [
-        segment(0, 6, "paved"),
-        segment(6, 9, "gravel"),
-        segment(9, 10, "walk"),
-      ],
+      [segment(0, 6, "paved"), segment(6, 9, "gravel"), segment(9, 10, "walk")],
       1000,
     );
     expect(entries.map((e) => e.ride)).toEqual(["paved", "gravel", "walk"]);
@@ -813,7 +861,10 @@ describe("composition", () => {
     // `RouteResult.surfaceM` is keyed by OSM surface and does not agree with these classes,
     // which is exactly why composition is built from the segments instead.
     const entries = composition(
-      [segment(0, 5, "gravel", "compacted"), segment(5, 10, "gravel", "fine_gravel")],
+      [
+        segment(0, 5, "gravel", "compacted"),
+        segment(5, 10, "gravel", "fine_gravel"),
+      ],
       1000,
     );
     expect(entries).toHaveLength(1);
