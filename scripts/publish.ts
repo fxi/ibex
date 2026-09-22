@@ -16,20 +16,10 @@
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
-import {
-  S3Client,
-  PutObjectCommand,
-  HeadObjectCommand,
-  CreateBucketCommand,
-  PutBucketCorsCommand,
-} from "@aws-sdk/client-s3";
-import { config as loadEnv } from "dotenv";
+import { CreateBucketCommand, PutBucketCorsCommand } from "@aws-sdk/client-s3";
 import { catalogueSchema, type Catalogue } from "../src/offline/catalogue";
 import { DEFAULT_CELLS } from "./local_cells";
-
-// `override` matters: a stray exported S3_BUCKET from another project would otherwise send
-// a few hundred megabytes of public objects to the wrong place.
-loadEnv({ path: ".env", override: true, quiet: true });
+import { client, putCatalogue, putCellFile } from "./s3";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(`--${name}`);
@@ -40,35 +30,6 @@ const option = (name: string) => {
 
 const from = option("from") ?? DEFAULT_CELLS;
 const dryRun = flag("dry-run");
-/** Release objects never change, so they are cached for a year; the catalogue is the index. */
-const IMMUTABLE = "public, max-age=31536000, immutable";
-const CATALOGUE = "public, max-age=300, must-revalidate";
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set in .env`);
-  return value;
-}
-
-function client(): { s3: S3Client; bucket: string; prefix: string } {
-  const endpoint = required("S3_ENDPOINT");
-  const bucket = required("S3_BUCKET");
-  const prefix = (process.env.S3_PREFIX ?? "").replace(/^\/+|\/+$/g, "");
-  const s3 = new S3Client({
-    endpoint,
-    // S3-compatible endpoints ignore it, but the SDK insists on one.
-    region: process.env.S3_REGION ?? "us-east-1",
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: required("S3_KEY"),
-      secretAccessKey: required("S3_SECRET"),
-    },
-  });
-  console.log(`${new URL(endpoint).hostname} bucket=${bucket}${prefix ? ` prefix=${prefix}` : ""}`);
-  return { s3, bucket, prefix };
-}
-
-const key = (prefix: string, path: string) => (prefix ? `${prefix}/${path}` : path);
 
 async function readCatalogue(): Promise<Catalogue> {
   const text = await fs.readFile(`${from}/catalog.json`, "utf8").catch(() => {
@@ -77,26 +38,37 @@ async function readCatalogue(): Promise<Catalogue> {
   return catalogueSchema.parse(JSON.parse(text));
 }
 
-/** Every object a catalogue implies, with the bytes checked against what it claims. */
-async function collect(catalogue: Catalogue) {
-  const objects: { path: string; body: Uint8Array; type: string; cache: string }[] = [];
+/** Every object a catalogue implies, named but not yet read. */
+function* planned(catalogue: Catalogue) {
   for (const cell of catalogue.cells)
-    for (const file of cell.files) {
-      const path = `cells/${cell.id}/${cell.hash}.${file.path}`;
-      const body = new Uint8Array(await fs.readFile(`${from}/${path}`));
-      if (body.length !== file.bytes)
-        throw new Error(`${path}: ${body.length} bytes, catalogue says ${file.bytes}`);
-      const sha256 = createHash("sha256").update(body).digest("hex");
-      if (sha256 !== file.sha256) throw new Error(`${path}: checksum does not match`);
-      objects.push({ path, body, type: "application/octet-stream", cache: IMMUTABLE });
-    }
-  return objects;
+    for (const file of cell.files)
+      yield {
+        path: `cells/${cell.id}/${cell.hash}.${file.path}`,
+        bytes: file.bytes,
+        sha256: file.sha256,
+      };
+}
+
+/**
+ * One file's bytes, checked against what the catalogue claims.
+ *
+ * Read at the moment of sending rather than up front: a build of any size is several
+ * gigabytes, and holding all of it to upload one file at a time is how this ran out of
+ * memory long before it ran out of cells.
+ */
+async function bodyOf(object: { path: string; bytes: number; sha256: string }) {
+  const body = new Uint8Array(await fs.readFile(`${from}/${object.path}`));
+  if (body.length !== object.bytes)
+    throw new Error(`${object.path}: ${body.length} bytes, catalogue says ${object.bytes}`);
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  if (sha256 !== object.sha256) throw new Error(`${object.path}: checksum does not match`);
+  return body;
 }
 
 async function publish() {
   const catalogue = await readCatalogue();
-  const objects = await collect(catalogue);
-  const total = objects.reduce((sum, o) => sum + o.body.length, 0);
+  const objects = [...planned(catalogue)];
+  const total = objects.reduce((sum, o) => sum + o.bytes, 0);
   console.log(
     `${catalogue.cells.length} cells, ${objects.length} files, ` +
       `${(total / 1e6).toFixed(1)} MB, plus catalog.json`,
@@ -104,54 +76,32 @@ async function publish() {
 
   if (dryRun) {
     for (const object of objects)
-      console.log(`  PUT ${object.path}  ${(object.body.length / 1e6).toFixed(2)} MB`);
+      console.log(`  PUT ${object.path}  ${(object.bytes / 1e6).toFixed(2)} MB`);
     console.log("  PUT catalog.json  (last)");
     console.log("\n--dry-run: nothing sent");
     return;
   }
 
-  const { s3, bucket, prefix } = client();
+  const at = client();
   let sent = 0;
   let skipped = 0;
   for (const object of objects) {
-    const at = key(prefix, object.path);
-    // Named after its own bytes, so an object that is already there is already right.
-    const existing = await s3
-      .send(new HeadObjectCommand({ Bucket: bucket, Key: at }))
-      .catch(() => undefined);
-    if (existing?.ContentLength === object.body.length) {
-      skipped++;
-      continue;
+    // Verified even when it turns out to be up already: a local file that no longer matches
+    // the catalogue is worth hearing about whichever side of the wire it is on.
+    const result = await putCellFile(at, object.path, await bodyOf(object));
+    if (result === "skipped") skipped++;
+    else {
+      sent++;
+      console.log(`  sent ${object.path}`);
     }
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: at,
-        Body: object.body,
-        ContentType: object.type,
-        CacheControl: object.cache,
-        ACL: "public-read",
-      }),
-    );
-    sent++;
-    console.log(`  sent ${object.path}`);
   }
 
   // Last, so it never names a file that is not up yet.
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key(prefix, "catalog.json"),
-      Body: JSON.stringify(catalogue),
-      ContentType: "application/json",
-      CacheControl: CATALOGUE,
-      ACL: "public-read",
-    }),
-  );
+  await putCatalogue(at, catalogue);
   console.log(`\nsent ${sent} files, ${skipped} already there, then catalog.json`);
   if (process.env.S3_PUBLIC_URL)
     console.log(
-      `VITE_DATA_URL=${process.env.S3_PUBLIC_URL.replace(/\/+$/, "")}${prefix ? `/${prefix}` : ""}`,
+      `VITE_DATA_URL=${process.env.S3_PUBLIC_URL.replace(/\/+$/, "")}${at.prefix ? `/${at.prefix}` : ""}`,
     );
 }
 
