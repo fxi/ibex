@@ -72,10 +72,12 @@ with every cell installed.
 and again on a graph loaded with `searchArea(anchors, 50)` gave identical status and cost
 everywhere, including deliberate barriers (Aravis, Belledonne, Écrins, Verdon, lac du
 Bourget, Rhône in the Camargue). The padding is enough for the current coverage.
-**Blocks:** nothing today. It becomes reachable with a large lake whose crossings are far —
-Thonon → Lausanne windows to lon 6.324–6.786 while the detour at Villeneuve sits at 6.93.
-That pair cannot be tested yet because the Swiss north shore is disconnected in v7, so
-**treat this with the Swiss extract.**
+**Blocks:** a real pair, as of 2026-09-22. With Switzerland built the case is testable for
+the first time, and it fails: Thonon (6.479, 46.371) → Lausanne (6.633, 46.519) on
+`gravel_50` windows to lon 6.323–6.789, the Villeneuve crossing sits at 6.93 — outside it —
+and `route` returns **`no-path`** on a graph of 215 521 edges that holds both shores. The
+prediction was exact; it is no longer hypothetical, and it is now the oldest known way to
+make the router refuse a route that exists.
 **Shape of the fix:** retry a disconnected search on progressively larger areas under an
 explicit budget, and widen `legCache.ts:35`'s data dependencies to match. `route_golden.ts`
 loads through the same `searchArea`, so recapture the golden master.

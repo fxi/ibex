@@ -128,7 +128,7 @@ Read `docs/data-format.md` before touching `src/offline/`, `scripts/build_cells.
 - Browser storage is namespaced `ibex` (IndexedDB database, OPFS directory, `ibex-*`
   keys), and shares the `fxi.io` origin with other projects.
 - Scripts: take inputs as arguments (default to `DEFAULT_CELLS` from
-  `scripts/local_release.ts`), write outputs under `.cache/`, and get a row in
+  `scripts/local_cells.ts`), write outputs under `.cache/`, and get a row in
   `scripts/README.md`. No one-off experiments committed.
 
 ## Environment pitfalls (this machine)
