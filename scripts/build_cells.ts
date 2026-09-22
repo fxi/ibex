@@ -262,7 +262,9 @@ async function buildOne(cell: Cell, source: CellSource): Promise<Built | undefin
   const { graph } = buildGraph(source, { cell, elevations });
   if (graph.edges.length < MIN_EDGES) return undefined;
 
-  const osm = new Date().toISOString();
+  // What OpenStreetMap said, from the download's own header — not when this ran, so a
+  // cell's age is something a refresh policy can trust (issues.md B6).
+  const osm = new Date((source.osm ?? Date.now() / 1000) * 1000).toISOString();
   const packed = packCell(graph, cell, GENERATION, { osm });
   const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
   const digests = { index: sha(packed.index), graph: sha(packed.graph) };

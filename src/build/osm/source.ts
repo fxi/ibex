@@ -125,6 +125,12 @@ export type CellSource = {
   /** Every node in the extract, including the untagged ones ways are made of. */
   positions: NodeIndex;
   wayById: Map<number, OsmWay>;
+  /**
+   * When this data was current, in seconds since the epoch, from the PBF's own header.
+   * A cell dates itself by this rather than by the clock, so its age means something
+   * (issues.md B6). Absent when the writer left the header out.
+   */
+  osm?: number;
 };
 
 /**
@@ -207,9 +213,13 @@ export async function readSource(
   const lons = new Doubles();
   const lats = new Doubles();
 
+  let osm: number | undefined;
   await readPbf(
     data,
     {
+      header: (header) => {
+        osm = header.replicationTimestamp;
+      },
       node: (node) => {
         ids.push(node.id);
         lons.push(node.lon);
@@ -235,6 +245,7 @@ export async function readSource(
     relations,
     positions: NodeIndex.of(ids.take(), lons.take(), lats.take()),
     wayById: new Map(ways.map((way) => [way.id, way])),
+    osm,
   };
 }
 
@@ -382,6 +393,7 @@ export function subsetSource(source: CellSource, bbox: BBox, bounds?: WayBounds)
     relations,
     positions: NodeIndex.of(ids.slice(0, held), lons.slice(0, held), lats.slice(0, held)),
     wayById,
+    osm: source.osm,
   };
 }
 
@@ -421,5 +433,11 @@ export function mergeSources(parts: readonly CellSource[]): CellSource {
     relations: [...relations.values()],
     positions: NodeIndex.from([...ids.take()], [...lons.take()], [...lats.take()]),
     wayById,
+    // A cell cut from several countries is only as fresh as the stalest download it used.
+    osm: parts.reduce<number | undefined>(
+      (oldest, part) =>
+        part.osm === undefined ? oldest : oldest === undefined ? part.osm : Math.min(oldest, part.osm),
+      undefined,
+    ),
   };
 }

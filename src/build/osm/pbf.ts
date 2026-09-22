@@ -20,7 +20,15 @@ export type OsmMemberType = "node" | "way" | "relation";
 export type OsmMember = { type: OsmMemberType; ref: number; role: string };
 export type OsmRelation = { id: number; members: OsmMember[]; tags: OsmTags };
 
+/**
+ * What the builder reads from a HeaderBlock: the moment the extract's data was current,
+ * in seconds since the epoch. Geofabrik writes it on every download; a file cut by other
+ * tools may not, so it is optional.
+ */
+export type OsmHeader = { replicationTimestamp?: number };
+
 export type OsmVisitor = {
+  header?: (header: OsmHeader) => void;
   node?: (node: OsmNode) => void;
   way?: (way: OsmWay) => void;
   relation?: (relation: OsmRelation) => void;
@@ -262,6 +270,17 @@ async function payload(blob: Uint8Array, inflate: Inflate): Promise<Uint8Array> 
   throw new Error("PBF blob has no payload");
 }
 
+/** `osmosis_replication_timestamp` (field 32); the rest of the HeaderBlock is not read. */
+function readHeaderBlock(data: Uint8Array): OsmHeader {
+  const reader = new Reader(data);
+  const header: OsmHeader = {};
+  for (const [field, wire] of fields(reader)) {
+    if (field === 32 && wire === 0) header.replicationTimestamp = reader.varint();
+    else reader.skip(wire);
+  }
+  return header;
+}
+
 /**
  * Walk a `.osm.pbf`, calling back per element. Blobs are decoded one at a time, so peak
  * memory is one decompressed block (a few MB) plus whatever the visitor keeps.
@@ -289,6 +308,10 @@ export async function readPbf(
     }
     const blob = data.subarray(offset, offset + size);
     offset += size;
+    if (type === "OSMHeader") {
+      if (visit.header) visit.header(readHeaderBlock(await payload(blob, inflate)));
+      continue;
+    }
     if (type !== "OSMData") continue;
     const block = readPrimitiveBlock(await payload(blob, inflate));
     for (const group of block.groups) readGroup(group, block, visit);
