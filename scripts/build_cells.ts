@@ -10,19 +10,24 @@
  *   node --import tsx scripts/build_cells.ts --bbox 5,45.8,7.2,46.6
  *   node --import tsx scripts/build_cells.ts --bbox -11,35,32,72 --dry-run
  *   node --import tsx scripts/build_cells.ts --cells 9-264-181,9-265-181
+ *   node --import tsx scripts/build_cells.ts --regions switzerland,rhone-alpes --publish
  *
  * Work is grouped by download, not by cell: an extract is parsed once and every cell it
  * touches is cut from it, because parsing a country costs far more than building a cell.
  * A cell on a border is cut from each of its countries and the pieces merged.
  *
  * Output is `<out>/<cell id>/{index.ibx,graph.ibx}` plus `catalogue.json`, which is what
- * `npm run dev` serves and what the publisher uploads.
+ * `npm run dev` serves and what the publisher uploads. With `--publish` each cell goes to
+ * the bucket as it is packed and leaves the disk again, because a run covering a country
+ * is several gigabytes and the disk is the scarce resource, not the bucket. The catalogue
+ * is written and uploaded after every download rather than at the end, so an interrupted
+ * run leaves a tree that is complete as far as it got — and `--skip-built` resumes it.
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { buildGraph, sourceBBox } from "../src/build/graph";
 import { inflate } from "../src/build/platform/node";
-import { sampleTerrain } from "../src/build/platform/terrainCache";
+import { pruneCache, sampleTerrain } from "../src/build/platform/terrainCache";
 import {
   mergeSources,
   readSource,
@@ -40,6 +45,7 @@ import { DEFAULT_CELLS } from "./local_cells";
 import { packCell, BLOCK_ZOOM, FIELD_ZOOM } from "../src/offline/ibex/pack";
 import { DATA_VERSION, GENERATION } from "../src/offline/version";
 import { catalogueSchema, type CatalogueCell } from "../src/offline/catalogue";
+import { client, putCatalogue, putCellFile, type Bucket } from "./s3";
 
 const GEOFABRIK_INDEX = "https://download.geofabrik.de/index-v1.json";
 const USER_AGENT = "ibex-builder/0.1 (+https://fxi.io/ibex)";
@@ -61,11 +67,15 @@ const dryRun = flag("dry-run");
 const withTerrain = !flag("no-terrain");
 const limit = Number(option("limit") ?? Infinity);
 const keepExtracts = flag("keep-extracts");
+const publishing = flag("publish");
+const keepLocal = flag("keep-local");
+const skipBuilt = flag("skip-built");
+const terrainBudget = Number(option("terrain-budget") ?? 0) * 1e6;
 
 function usage(message: string): never {
   console.error(`${message}
 
-usage: build_cells.ts (--bbox W,S,E,N | --cells id,id,…) [options]
+usage: build_cells.ts (--bbox W,S,E,N | --regions id,id,… | --cells id,id,…) [options]
   --out <dir>            where cells are written      (default .cache/cells)
   --extracts <dir>       where downloads are cached   (default .cache/extracts)
   --terrain-cache <dir>  DEM tile cache               (default .cache/terrain)
@@ -73,16 +83,54 @@ usage: build_cells.ts (--bbox W,S,E,N | --cells id,id,…) [options]
   --dry-run              print the plan and stop
   --no-terrain           skip the DEM
   --keep-extracts        do not delete a download once its cells are built
-  --limit <n>            build at most n cells`);
+  --limit <n>            build at most n cells
+  --publish              send each cell to the bucket as it is built
+  --keep-local           with --publish, also keep the pack in --out
+  --skip-built           leave alone the cells the catalogue already has
+  --terrain-budget <MB>  cap the DEM cache, dropping the least recently used`);
   process.exit(2);
 }
 
-/** The cells to build, from a box or named outright. */
-function targetCells(): Cell[] {
+/**
+ * The cells a set of Geofabrik regions covers.
+ *
+ * A country is not a rectangle, and the box around one is mostly somebody else's ground:
+ * asking for Switzerland, Auvergne, Rhône-Alpes and PACA as a box is 156 cells, where the
+ * regions themselves are 92. The outlines are already in the index and `extractsFor`
+ * already answers "which downloads claim this cell", so the selection is that answer
+ * filtered to the regions asked for.
+ */
+function cellsInRegions(index: Extract[], names: string[]): Cell[] {
+  const wanted = new Set(names);
+  const chosen = index.filter((extract) => wanted.has(extract.id));
+  const missing = names.filter((name) => !chosen.some((extract) => extract.id === name));
+  if (missing.length)
+    usage(
+      `no such extract: ${missing.join(", ")}\n` +
+        `  (Geofabrik has no 'auvergne-rhone-alpes'; it is 'auvergne' and 'rhone-alpes')`,
+    );
+  const union = chosen.reduce(
+    (box, extract) => [
+      Math.min(box[0], extract.bbox[0]),
+      Math.min(box[1], extract.bbox[1]),
+      Math.max(box[2], extract.bbox[2]),
+      Math.max(box[3], extract.bbox[3]),
+    ],
+    [180, 90, -180, -90],
+  );
+  return cellsInBBox(union as [number, number, number, number], zoom).filter((cell) =>
+    extractsFor(index, sourceBBox(cell)).some((extract) => wanted.has(extract.id)),
+  );
+}
+
+/** The cells to build, from a box, a set of regions, or named outright. */
+function targetCells(index: Extract[]): Cell[] {
   const named = option("cells");
   if (named) return named.split(",").map((id) => parseCellId(id.trim()));
+  const regions = option("regions");
+  if (regions) return cellsInRegions(index, regions.split(",").map((name) => name.trim()));
   const box = option("bbox");
-  if (!box) usage("Give either --bbox or --cells.");
+  if (!box) usage("Give one of --bbox, --regions or --cells.");
   const parts = box.split(",").map(Number);
   if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n)))
     usage(`--bbox wants four numbers, W,S,E,N — got "${box}"`);
@@ -148,18 +196,27 @@ type Pending = {
 };
 
 async function main() {
-  const wanted = targetCells();
   const index = await extractIndex();
+  const wanted = targetCells(index);
+  // Named after its own bytes, so a cell already in the catalogue is already right; this is
+  // what lets a run of several hundred cells be resumed after an interruption.
+  const already = skipBuilt ? new Set((await readCatalogue())?.cells.map((c) => c.id)) : undefined;
+  const bucket = publishing ? client() : undefined;
 
   // Which downloads each cell needs, and which cells each download serves. Work runs
   // download-major: parsing a country takes about as long as building forty cells out of
   // it, so each file is read exactly once and every cell waiting on it is cut as it passes.
   const pending = new Map<string, Pending>();
   const serves = new Map<string, { extract: Extract; cells: string[] }>();
+  let resumed = 0;
   for (const cell of wanted) {
     const extracts = extractsFor(index, sourceBBox(cell));
     if (!extracts.length) continue; // open sea: no download claims it
     const id = cellId(cell);
+    if (already?.has(id)) {
+      resumed++;
+      continue;
+    }
     pending.set(id, { cell, needs: new Set(extracts.map((e) => e.id)), parts: [] });
     for (const extract of extracts) {
       const entry = serves.get(extract.id);
@@ -172,8 +229,10 @@ async function main() {
   // read, so the queue of half-built cells stays short.
   const order = [...serves.values()].sort((a, b) => b.extract.area - a.extract.area);
   console.log(
-    `${wanted.length} cells in range, ${pending.size} with OSM coverage, ` +
-      `${order.length} downloads, generation ${GENERATION}`,
+    `${wanted.length} cells in range, ${pending.size} to build, ` +
+      `${order.length} downloads, generation ${GENERATION}` +
+      (resumed ? `, ${resumed} already built` : "") +
+      (publishing ? ", publishing as they come" : ""),
   );
   if (dryRun) {
     for (const { extract, cells } of order.slice(0, 25))
@@ -218,12 +277,19 @@ async function main() {
         skipped++;
         continue;
       }
-      const result = await buildOne(entry.cell, mergeSources(entry.parts));
+      const result = await buildOne(entry.cell, mergeSources(entry.parts), bucket);
       entry.parts.length = 0;
       if (!result) {
         skipped++;
         continue;
       }
+      // A flat cell is a silently broken one: `sharp` is a hoisted dependency, and without
+      // it every tile fails to decode and the whole build comes out without heights.
+      if (withTerrain && !built.length && result.entry.terrainCoverage === 0)
+        throw new Error(
+          `${id} built with no terrain at all — check that 'sharp' resolves, ` +
+            `or pass --no-terrain if that is what you meant`,
+        );
       built.push(result);
       console.log(
         `  ${id}: ${result.entry.edges} edges, ${(result.entry.bytes / 1e6).toFixed(1)} MB` +
@@ -232,16 +298,32 @@ async function main() {
             : ""),
       );
     }
+
+    // Per download rather than per run: an interrupted wide build then leaves a catalogue —
+    // and a bucket — that is complete and readable up to the last download it finished.
+    if (ready.length) await writeCatalogue(built, bucket);
+    if (terrainBudget > 0) {
+      const dropped = await pruneCache(terrainCache, terrainBudget);
+      if (dropped) console.log(`  terrain cache: dropped ${(dropped / 1e6).toFixed(0)} MB`);
+    }
   }
 
-  await writeCatalogue(built);
+  await writeCatalogue(built, bucket);
   console.log(`\nbuilt ${built.length} cells, skipped ${skipped} with nothing to route on`);
-  console.log(`serve it with: npm run dev   (it reads ${out})`);
+  console.log(
+    publishing && !keepLocal
+      ? `they are in the bucket; ${out} holds only catalog.json`
+      : `serve it with: npm run dev   (it reads ${out})`,
+  );
 }
 
 type Built = { id: string; cell: Cell; entry: CatalogueCell };
 
-async function buildOne(cell: Cell, source: CellSource): Promise<Built | undefined> {
+async function buildOne(
+  cell: Cell,
+  source: CellSource,
+  bucket?: Bucket,
+): Promise<Built | undefined> {
   const id = cellId(cell);
   let elevations = new Map<number, number>();
   let coverage = 0;
@@ -275,10 +357,20 @@ async function buildOne(cell: Cell, source: CellSource): Promise<Built | undefin
     .digest("hex")
     .slice(0, 16);
 
-  const directory = `${out}/cells/${id}`;
-  await fs.mkdir(directory, { recursive: true });
-  await fs.writeFile(`${directory}/${hash}.index.ibx`, packed.index);
-  await fs.writeFile(`${directory}/${hash}.graph.ibx`, packed.graph);
+  // Straight to the bucket where there is one: a run covering a country is several
+  // gigabytes of packs, and the disk it would sit on is the scarcest thing here.
+  if (bucket) {
+    await putCellFile(bucket, `cells/${id}/${hash}.index.ibx`, packed.index);
+    await putCellFile(bucket, `cells/${id}/${hash}.graph.ibx`, packed.graph);
+  }
+  if (bucket && !keepLocal) {
+    await fs.rm(`${out}/cells/${id}`, { recursive: true, force: true }).catch(() => undefined);
+  } else {
+    const directory = `${out}/cells/${id}`;
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(`${directory}/${hash}.index.ibx`, packed.index);
+    await fs.writeFile(`${directory}/${hash}.graph.ibx`, packed.graph);
+  }
 
   return {
     id,
@@ -311,12 +403,9 @@ async function buildOne(cell: Cell, source: CellSource): Promise<Built | undefin
  * previous catalogue is the starting point rather than the directory listing: it is the
  * only record of a cell's identity once the per-cell manifest went away.
  */
-async function writeCatalogue(built: Built[]) {
+async function writeCatalogue(built: Built[], bucket?: Bucket) {
   const path = `${out}/catalog.json`;
-  const existing = await fs
-    .readFile(path, "utf8")
-    .then((text) => catalogueSchema.parse(JSON.parse(text)))
-    .catch(() => undefined);
+  const existing = await readCatalogue();
   const cells = new Map<string, CatalogueCell>(
     (existing?.cells ?? []).map((cell) => [cell.id, cell]),
   );
@@ -333,7 +422,19 @@ async function writeCatalogue(built: Built[]) {
   catalogueSchema.parse(catalogue);
   await fs.mkdir(out, { recursive: true });
   await fs.writeFile(path, JSON.stringify(catalogue, null, 2));
-  console.log(`catalogue: ${catalogue.cells.length} cells at ${path}`);
+  // Last, so it never names a file that is not up yet.
+  if (bucket) await putCatalogue(bucket, catalogue);
+  console.log(
+    `catalogue: ${catalogue.cells.length} cells at ${path}${bucket ? " and in the bucket" : ""}`,
+  );
+}
+
+/** The catalogue this build is adding to, if there is one. */
+async function readCatalogue() {
+  return fs
+    .readFile(`${out}/catalog.json`, "utf8")
+    .then((text) => catalogueSchema.parse(JSON.parse(text)))
+    .catch(() => undefined);
 }
 
 await main();

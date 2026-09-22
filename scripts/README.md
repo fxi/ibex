@@ -8,8 +8,9 @@ Scripts that read a local build take its cells directory as an argument, default
 
 | Group | Script | Purpose |
 |---|---|---|
-| Cell pipeline | `build_cells.ts` | **The pipeline.** `--bbox W,S,E,N` or `--cells`: picks the Geofabrik downloads that cover each cell, parses each one once, cuts every cell it touches, builds and packs them. `--dry-run`, `--out`, `--extracts`, `--zoom`, `--no-terrain`, `--keep-extracts`, `--limit`. Run it as `npm run data:build -- --bbox …` |
-| Publish | `publish.ts` | `npm run data:publish`: verify every byte against the catalogue, upload cells, write `catalog.json` last. `--dry-run`, `--setup-bucket`, `--verify <url>` ([data-format.md](../docs/data-format.md)) |
+| Cell pipeline | `build_cells.ts` | **The pipeline.** `--bbox W,S,E,N`, `--regions <geofabrik id,…>` or `--cells`: picks the Geofabrik downloads that cover each cell, parses each one once, cuts every cell it touches, builds and packs them. `--publish` sends each cell to the bucket as it is built (`--keep-local` to keep it on disk too), `--skip-built` resumes, `--terrain-budget <MB>` caps the DEM cache. Also `--dry-run`, `--out`, `--extracts`, `--zoom`, `--no-terrain`, `--keep-extracts`, `--limit`. Run it as `npm run data:build -- --regions …` |
+| | `s3.ts` | **lib**: the bucket client, key layout and cache headers both writers share |
+| Publish | `publish.ts` | `npm run data:publish`: verify every byte against the catalogue, upload cells one at a time, write `catalog.json` last. `--dry-run`, `--setup-bucket`, `--verify <url>` ([data-format.md](../docs/data-format.md)) |
 | Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local build's merged packs |
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |

@@ -4,9 +4,10 @@
  * Node — no browser, no clicking.
  *
  * Build it with:
- *   uv run scripts/fetch_extracts.py && uv run scripts/clip_region.py
- *   uv run scripts/global_splits.py && uv run scripts/extract_cells.py
- *   uv run scripts/build_cells.py && node --import tsx scripts/package_cells.ts
+ *   npm run data:build -- --cells 9-264-181,9-265-181
+ *
+ * It reads whatever `.cache/cells` holds, so a build left from an older `BUILD_VERSION`
+ * fails here with "Pack belongs to another data release" — rebuild rather than adjust.
  */
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";

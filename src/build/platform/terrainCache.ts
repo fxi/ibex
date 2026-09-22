@@ -96,3 +96,43 @@ export async function sampleTerrain(
   if (missing) console.warn(`${missing} of ${byTile.size} terrain tiles were unavailable`);
   return elevations;
 }
+
+/**
+ * Hold the tile cache under a budget, dropping the least recently used first.
+ *
+ * A wide build fetches a few hundred z13 tiles per cell and never stops: France alone is
+ * some fifteen gigabytes, on a machine where that is the whole of the free disk. Tiles are
+ * shared only between *adjacent* cells, and the builder works one download at a time, so
+ * calling this between downloads costs almost nothing in refetches.
+ *
+ * Returns the bytes removed. A tile that vanishes under a concurrent build is ignored: it
+ * is a cache, and the next reader fetches it again.
+ */
+export async function pruneCache(cacheDir: string, maxBytes: number): Promise<number> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(cacheDir);
+  } catch {
+    return 0;
+  }
+  const tiles: { path: string; size: number; used: number }[] = [];
+  let total = 0;
+  for (const name of entries) {
+    if (!name.endsWith(".webp")) continue; // never a `.partial` another writer still holds
+    const file = path.join(cacheDir, name);
+    const stat = await fs.stat(file).catch(() => undefined);
+    if (!stat) continue;
+    tiles.push({ path: file, size: stat.size, used: stat.atimeMs });
+    total += stat.size;
+  }
+  if (total <= maxBytes) return 0;
+
+  tiles.sort((a, b) => a.used - b.used);
+  let removed = 0;
+  for (const tile of tiles) {
+    if (total - removed <= maxBytes) break;
+    await fs.rm(tile.path, { force: true }).catch(() => undefined);
+    removed += tile.size;
+  }
+  return removed;
+}

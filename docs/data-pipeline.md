@@ -72,6 +72,15 @@ and shared by every cell that needs them. Only nodes a road uses are sampled, wh
 small fraction of what a cell holds. A tile that cannot be fetched leaves its nodes without
 a height rather than guessing one, and the cell records its `terrainCoverage`.
 
+Roughly 360 tiles and 35 MB per cell, so the cache is the largest thing a wide build puts
+on disk — France alone would be some 15 GB. `--terrain-budget <MB>` drops the least
+recently used tiles between downloads; tiles are shared only between adjacent cells, which
+the download-major loop builds together, so the refetch cost is close to nothing.
+
+Decoding needs `sharp`. It is a devDependency for a reason: when it fails to resolve, every
+tile silently fails and the build comes out flat, so the builder now stops if its first
+cell has no terrain at all.
+
 ## Cost
 
 Measured on this machine, 2026-09-22.
@@ -99,7 +108,20 @@ npm run data:publish
 npm run data:publish -- --verify <VITE_DATA_URL>
 ```
 
-Layout, cache headers and the verify checks are in [data-format.md](data-format.md).
+Layout, cache headers and the verify checks are in [data-format.md](data-format.md). Both
+writers share `scripts/s3.ts`, so the key layout and the cache headers cannot drift apart.
+
+A build wider than a handful of cells should publish itself instead:
+
+```sh
+npm run data:build -- --regions switzerland,rhone-alpes --publish --skip-built \
+  --terrain-budget 4000
+```
+
+Each cell goes up as it is packed and then leaves the disk, the catalogue is uploaded after
+every download, and `--skip-built` resumes from what the catalogue already has. `publish.ts`
+remains the way to send a build that is already on disk, and the only way to run
+`--setup-bucket` or `--verify`.
 
 ## Verifying a build
 
