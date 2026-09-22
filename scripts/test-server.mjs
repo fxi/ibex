@@ -56,13 +56,13 @@ http
         res.end();
         return;
       }
-      if (path.basename(file) === "graph.ibx") graphReads++;
-      if (fault === "disconnect" && path.basename(file) === "index.ibx") {
+      if (path.basename(file).endsWith("graph.ibx")) graphReads++;
+      if (fault === "disconnect" && path.basename(file).endsWith("index.ibx")) {
         req.socket.destroy();
         return;
       }
       const bytes = await fs.readFile(file);
-      if (fault === "checksum" && path.basename(file) === "graph.ibx") {
+      if (fault === "checksum" && path.basename(file).endsWith("graph.ibx")) {
         fault = null;
         bytes[0] ^= 1;
       }

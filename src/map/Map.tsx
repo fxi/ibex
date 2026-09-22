@@ -174,9 +174,15 @@ export function MapView({
     m.on("pitch", reportCamera);
     // A click on the grid selects an area; the layer handler runs first and marks the
     // event so the generic map click does not also drop a waypoint.
+    //
+    // A cell nobody has built is drawn but not selectable, and must not swallow the click:
+    // the grid covers the whole world, so otherwise every click anywhere outside the built
+    // area would be eaten by a grey square instead of dropping a waypoint.
     m.on("click", "cells-fill", (e) => {
       if (m.getZoom() < MIN_SELECT_ZOOM) return;
-      const id = e.features?.[0]?.properties?.id;
+      const properties = e.features?.[0]?.properties;
+      if (properties?.state === "unavailable") return;
+      const id = properties?.id;
       if (typeof id !== "string") return;
       (e.originalEvent as Event & { _cellHandled?: boolean })._cellHandled =
         true;
