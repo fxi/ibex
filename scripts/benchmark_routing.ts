@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { compareOn } from "../src/routing/legs";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point } from "../src/routing/types";
 
@@ -87,9 +87,9 @@ for (const scenario of scenarios) {
   report.push(row);
   console.log(JSON.stringify(row));
 }
-await fs.mkdir("data/derived", { recursive: true });
+await fs.mkdir(".cache/derived", { recursive: true });
 await fs.writeFile(
-  "data/derived/routing-refactor.json",
+  ".cache/derived/routing-refactor.json",
   JSON.stringify(
     {
       runtime: process.version,

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
 import type { Point } from "../src/routing/types";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
 import { loadProfile } from "./profile";
 const scenarios: { name: string; anchors: Point[] }[] = [
   {
@@ -60,9 +60,9 @@ for (const scenario of scenarios)
     if (reference.status !== "ok" || corridor.status !== "ok")
       process.exitCode = 1;
   }
-await fs.mkdir("data/derived", { recursive: true });
+await fs.mkdir(".cache/derived", { recursive: true });
 await fs.writeFile(
-  "data/derived/benchmark.json",
+  ".cache/derived/benchmark.json",
   JSON.stringify(
     {
       runtime: process.version,

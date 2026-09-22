@@ -19,7 +19,7 @@ import {
 } from "../src/routing/provider";
 import { selectedRoute } from "../src/routing/selection";
 import type { Point } from "../src/routing/types";
-import { DEFAULT_CELLS } from "./local_release";
+import { DEFAULT_CELLS } from "./local_cells";
 import { loadProfile } from "./profile";
 
 const DIR = process.argv[4] ?? DEFAULT_CELLS;

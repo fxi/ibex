@@ -1,9 +1,9 @@
 /**
- * Serve a local data tree at `<base>data/` from the Vite dev and preview servers.
+ * Serve a local cells tree at `<base>data/` from the Vite dev and preview servers.
  *
- * Staged releases live under the ignored `data/publish/` (see `stage_release.ts`), never in
- * `public/`, so they cannot leak into a production build. Byte ranges are honoured because
- * the router reads graph blocks by range, exactly as it does from S3.
+ * Builds live under the ignored `.cache/`, never in `public/`, so they cannot leak into a
+ * production build. Byte ranges are honoured because the router reads graph blocks by
+ * range, exactly as it does from S3.
  */
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";

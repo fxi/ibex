@@ -1,35 +1,16 @@
 # Known issues
 
-Defects found by review on 2026-09-18 against `102d4c7`, each re-checked against the code
-and, where it was measurable, against the local packs. Nothing here blocks building on the
-product; what each one blocks is named. Remove an entry when it is fixed, rather than
-marking it done.
+Defects found by review, each re-checked against the code and, where it was measurable,
+against a real build. Nothing here blocks building on the product; what each one blocks is
+named. Remove an entry when it is fixed, rather than marking it done.
+
+Last reviewed 2026-09-22, when the region/release model was replaced by the global grid.
+B5 (two split rules), B4 (stale manifest on a failed rebuild), B3 (same-size content
+accepted) and CI-3 (range read unchecked) went with it: per-cell splits are now the only
+rule, there is no manifest, an object is named by its digest, and the verifier compares the
+ranged bytes. CI-2 is gone with the release pointer it guarded.
 
 ## Data and publication
-
-### B5 · The two split rules disagree
-`scripts/global_splits.py` and `scripts/build_region.py` derive the way-split node set by
-different rules, so the release-wide set is not what a cell would have computed for itself.
-Two mismatches, both confirmed on `9-264-181` against `geneva-toulon-v7`:
-
-- `global_splits.py:48` skips any way without a `highway` tag, so `route=ferry` ways
-  contribute no split points. `build_region.py` synthesises `highway=ferry` (`:643`) and
-  treats them as roads, so they do. Way 163578661 splits locally and not globally.
-- `global_splits.py` keeps the via node of every `type=restriction` relation.
-  `build_region.py` adds `via_nodes` only inside the loop that has already filtered on
-  `except=bicycle`, on a `no_`/`only_` prefix, and on all named ways being present in
-  `road_ids` (`:700-738`), so it keeps strictly fewer.
-
-**Measured 2026-09-21:** building the cell both ways differs on 7 ways of 345,631 edges —
-6 nodes and 8 edges only in the global build, 2 edges only in the local one. All seven nodes
-are interior to the cell, and road overshoot past the halo is 0.00 km, so none of it follows
-from the extract's extent. Both releases route identically: `route_golden.ts --check` over
-4 scenarios × 4 profiles reports 16 of 16 unchanged, the seam included.
-**Blocks:** nothing measurable — no route moves. It means the global set cannot be used as
-the definition of correct, so a per-cell builder cannot be validated against it.
-**Shape of the fix:** one rule, in one place. Deriving splits per cell removes the second
-implementation rather than reconciling it; a cell extract cut with `complete_ways` holds
-every road way touching a node inside the cell plus halo, which is what the rule needs.
 
 ### B1 · Cross-cell turn restrictions can disappear
 `scripts/build_region.py:976-979` keeps a restriction only when *every* way it names has an
@@ -37,29 +18,23 @@ edge owned by that cell (ownership is the cell holding an edge's first point, `:
 restriction whose from-way and to-way fall in different cells is dropped by both, and
 merging packs cannot restore it, so a prohibited turn becomes legal. Via-way sequences fail
 the same way.
-**Blocks:** nothing in the app, but it is baked into every release — fix it before the next
+**Blocks:** nothing measurable on two cells; at Europe scale it is a systematic hole along
+every seam, so fix it before a wide build. Was: fix it before the next
 full rebuild, not after.
 **Shape of the fix:** keep halo-derived restrictions that an owned edge needs, with explicit
 rule ownership and replication; the provider already deduplicates.
 
-### B4 · A failed forced rebuild leaves a stale manifest
-`build_region.py:1006-1029` writes graph and basemap before the terrain gate at `:1025`, and
-does not invalidate an existing manifest first. `build_cells.py:116-118` resumes on manifest
-existence alone, so an interrupted `--force` rebuild leaves new bytes beside old provenance
-and the next ordinary build skips the cell.
-**Blocks:** nothing — local builds only. Packaging now refuses the mismatch
-(`package_cells.ts`), so it can no longer reach a release, but the cell still needs a manual
-rebuild.
-**Shape of the fix:** build into a staging directory, validate, then promote; resume on an
-input fingerprint rather than on the manifest being there.
+### B6 · A cell is built from whatever OpenStreetMap said that minute
 
-### B3 (rest) · Same-size different content is still accepted
-Publication now preflights the release and refuses to write over objects whose size differs.
-It cannot yet see a same-size difference: `publish_release.py` has no remote digest to
-compare against.
-**Blocks:** nothing, given that the release id now follows from the graph's digest.
-**Shape of the fix:** store each object's sha256 as metadata on upload and compare it in the
-preflight; resolve objects without it by reading them, never by size.
+`scripts/build_cells.ts` records `osm` as the wall-clock time of the build, not the
+timestamp of the data. The extract's own `osmosis_replication_timestamp` header is right
+there in the PBF and is not read, so two cells built a month apart from the same download
+claim different freshness, and a cell's age cannot be trusted to decide a refresh.
+
+**Blocks:** nothing today — staleness is decided by hash, not by date. It blocks any
+"rebuild cells older than N months" policy, which is the point of a yearly refresh.
+**Shape of the fix:** read the header block's replication timestamp in `readPbf` and carry
+it through to the catalogue entry.
 
 ## Routing
 
@@ -91,22 +66,3 @@ That pair cannot be tested yet because the Swiss north shore is disconnected in 
 **Shape of the fix:** retry a disconnected search on progressively larger areas under an
 explicit budget, and widen `legCache.ts:35`'s data dependencies to match. `route_golden.ts`
 loads through the same `searchArea`, so recapture the golden master.
-
-## CI
-
-### CI-2 · Deployment does not check that the published data still fits the app
-`deploy.yml:24-48` requires only a nonempty data URL and a successful build; browser tests
-run on local fixtures (`build_browser_tests.ts:9-13`). A format bump can deploy before its
-data is promoted.
-**Blocks:** nothing spontaneously. Do CI-3 first and reuse its verifier.
-**Shape of the fix:** a read-only preflight of the pointer, catalogue and one cell manifest
-against the configured URL, before the Pages artefact is uploaded.
-
-### CI-3 · The public verifier accepts any 64 bytes for a range read
-`scripts/verify_public_release.py:105-109` checks only that a Range request returned 206
-with 64 bytes — not their content, not `Content-Range`. A proxy that always returns the
-first bytes, or the wrong ones, passes.
-**Blocks:** nothing — browser routing reads ranges from local files. It is a false positive
-in the weekly check.
-**Shape of the fix:** compare the body with the already-verified full graph, validate
-`Content-Range` and its total, and probe a nonzero offset too.

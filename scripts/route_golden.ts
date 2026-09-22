@@ -11,19 +11,19 @@
  *   node --import tsx scripts/route_golden.ts [packs dir]            # write
  *   node --import tsx scripts/route_golden.ts [packs dir] --check    # compare, exit 1
  *
- * Output: data/derived/route-golden.json (gitignored with the rest of data/).
+ * Output: .cache/derived/route-golden.json (gitignored with the rest of data/).
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { route, total } from "../src/routing/engine";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point, RouteResult } from "../src/routing/types";
 
 const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const check = process.argv.includes("--check");
 const packs = positional[0] ?? DEFAULT_CELLS;
-const OUT = "data/derived/route-golden.json";
+const OUT = ".cache/derived/route-golden.json";
 
 /** Real ground, chosen to exercise different parts of the search. */
 const scenarios: { name: string; anchors: Point[] }[] = [
@@ -83,7 +83,7 @@ for (const scenario of scenarios) {
 }
 
 if (!check) {
-  await fs.mkdir("data/derived", { recursive: true });
+  await fs.mkdir(".cache/derived", { recursive: true });
   await fs.writeFile(OUT, JSON.stringify({ packs, rows }, null, 2) + "\n");
   console.log(`\nWrote ${Object.keys(rows).length} routes to ${OUT}`);
 } else {

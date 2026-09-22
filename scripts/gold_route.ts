@@ -216,7 +216,7 @@ export function pickWaypoints(gold: Gold, pick = "intent"): number[] {
 
 async function importGpx(file: string, name: string, profile = "gravel_50", intent?: string) {
   const { parseGPX } = await import("../src/importers/gpx");
-  const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_release");
+  const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_cells");
   const round = (p: Point): Point => [+p[0].toFixed(7), +p[1].toFixed(7)];
   const line = parseGPX(fs.readFileSync(file, "utf8")).geometry.map(round);
   const graph = await loadReleaseGraph(DEFAULT_CELLS, line);
@@ -249,7 +249,7 @@ async function importGpx(file: string, name: string, profile = "gravel_50", inte
 
 async function audit(name: string, pick?: string, packs?: string) {
   const { loadProfile } = await import("./profile");
-  const { loadReleaseGraph } = await import("./local_release");
+  const { loadReleaseGraph } = await import("./local_cells");
   const gold = loadGold(goldPath(name));
   const graph = packs
     ? await loadReleaseGraph(packs, gold.line)

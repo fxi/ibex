@@ -15,7 +15,7 @@ import type { Installed } from "../src/offline/store";
 import type { BBox } from "../src/geo/grid";
 import type { Graph, Point } from "../src/routing/types";
 import { distance } from "../src/geo/distance";
-import { DEFAULT_CELLS } from "./local_release";
+import { DEFAULT_CELLS } from "./local_cells";
 
 type Region = {
   bbox: BBox;

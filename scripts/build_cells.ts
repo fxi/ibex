@@ -16,7 +16,7 @@
  * A cell on a border is cut from each of its countries and the pieces merged.
  *
  * Output is `<out>/<cell id>/{index.ibx,graph.ibx}` plus `catalogue.json`, which is what
- * `npm run data:stage` serves and what the publisher uploads.
+ * `npm run dev` serves and what the publisher uploads.
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -36,6 +36,7 @@ import {
   type Extract,
 } from "../src/build/osm/extracts";
 import { cellBBox, cellId, cellsInBBox, parseCellId, type Cell } from "../src/geo/grid";
+import { DEFAULT_CELLS } from "./local_cells";
 import { packCell, BLOCK_ZOOM, FIELD_ZOOM } from "../src/offline/ibex/pack";
 import { DATA_VERSION, GENERATION } from "../src/offline/version";
 import { catalogueSchema, type CatalogueCell } from "../src/offline/catalogue";
@@ -52,9 +53,9 @@ const option = (name: string) => {
   return at >= 0 ? args[at + 1] : undefined;
 };
 
-const out = option("out") ?? "data/cells";
-const cacheDir = option("extracts") ?? "data/extracts";
-const terrainCache = option("terrain-cache") ?? "data/terrain";
+const out = option("out") ?? DEFAULT_CELLS;
+const cacheDir = option("extracts") ?? ".cache/extracts";
+const terrainCache = option("terrain-cache") ?? ".cache/terrain";
 const zoom = Number(option("zoom") ?? 9);
 const dryRun = flag("dry-run");
 const withTerrain = !flag("no-terrain");
@@ -65,9 +66,9 @@ function usage(message: string): never {
   console.error(`${message}
 
 usage: build_cells.ts (--bbox W,S,E,N | --cells id,id,…) [options]
-  --out <dir>            where packs are written      (default data/cells)
-  --extracts <dir>       where downloads are cached   (default data/extracts)
-  --terrain-cache <dir>  DEM tile cache               (default data/terrain)
+  --out <dir>            where cells are written      (default .cache/cells)
+  --extracts <dir>       where downloads are cached   (default .cache/extracts)
+  --terrain-cache <dir>  DEM tile cache               (default .cache/terrain)
   --zoom <n>             grid zoom                    (default 9)
   --dry-run              print the plan and stop
   --no-terrain           skip the DEM
@@ -235,7 +236,7 @@ async function main() {
 
   await writeCatalogue(built);
   console.log(`\nbuilt ${built.length} cells, skipped ${skipped} with nothing to route on`);
-  console.log(`serve it with: npm run data:stage -- ${out}`);
+  console.log(`serve it with: npm run dev   (it reads ${out})`);
 }
 
 type Built = { id: string; cell: Cell; entry: CatalogueCell };

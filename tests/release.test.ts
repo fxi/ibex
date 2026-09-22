@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { catalogueSchema, toManifest } from "../src/offline/catalogue";
-import { DEFAULT_CELLS } from "../scripts/local_release";
+import { DEFAULT_CELLS } from "../scripts/local_cells";
 import { GENERATION } from "../src/offline/version";
 import { decodeIndex } from "../src/offline/ibex/index";
 import { decodeBlock } from "../src/offline/ibex/block";

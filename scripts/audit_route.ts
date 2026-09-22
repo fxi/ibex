@@ -4,11 +4,11 @@ import { dirname } from "node:path";
 import { eligible } from "../src/routing/eligibility";
 import { route, scoreEdge, snapAnchors, total } from "../src/routing/engine";
 import type { Point } from "../src/routing/types";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
 import { loadProfile } from "./profile";
 
 const directory = process.argv[2] ?? DEFAULT_CELLS;
-const prefix = process.argv[3] ?? "data/derived/routing-audit/current";
+const prefix = process.argv[3] ?? ".cache/derived/routing-audit/current";
 await fs.mkdir(dirname(prefix), { recursive: true });
 const anchors: Point[] = process.argv[4]
   ? JSON.parse(process.argv[4])

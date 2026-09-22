@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
 import type { Point, RouteRequest } from "../src/routing/types";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
 import { loadProfile } from "./profile";
 const wanderer = await loadProfile("wanderer");
 const anchors: Point[] = [
@@ -102,7 +102,7 @@ for (const experiment of experiments) {
     process.exitCode = 1;
 }
 await fs.writeFile(
-  "data/derived/ablations.json",
+  ".cache/derived/ablations.json",
   JSON.stringify(
     { scenario: "geneva-saleve", profile: "gravel", rows },
     null,

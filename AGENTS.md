@@ -6,25 +6,29 @@ setup; this file holds the rules and pitfalls that aren't obvious from the code.
 ## Project in one paragraph
 
 Ibex is a browser-only cycling route planner (React, MapLibre, Vite, PWA). Routing runs on
-the device, on binary grid cells (`.ibx`) downloaded from a static data tree on S3. Data is
-built locally from OpenStreetMap by a Python/TS pipeline under `scripts/`. The app deploys
-to GitHub Pages at https://fxi.io/ibex/ (repo `fxi/ibex`). Data is served from the Exoscale
-bucket `ibex` at `https://ibex.sos-ch-gva-2.exo.io/data`. The product name is **ibex**. 
+the device, on binary grid cells (`.ibx`) downloaded from a static tree on S3. The grid is
+global Web-Mercator XYZ at zoom 9; cells are built one at a time by `scripts/build_cells.ts`
+straight from Geofabrik downloads, with no server and no Python anywhere. The app deploys to
+GitHub Pages at https://fxi.io/ibex/ (repo `fxi/ibex`). Data is served from the Exoscale
+bucket `ibex`. The product name is **ibex**.
 
 ## Commands
 
 ```sh
 npm run setup                     # first run: npm ci + .env from .env.example
-npm run dev                       # http://localhost:5173/ibex/
+npm run dev                       # http://localhost:5173/ibex/, serving .cache/cells
 npm run lint && npm run typecheck && npm test
-uv run ruff check scripts
-uv run python -m unittest discover -s scripts -p 'test_*.py'
 npm run build:test && npm run test:e2e   # Chromium + mobile WebKit; ~3 min
-npm run data:stage -- <packs dir>        # serve a local release at /ibex/data/
+npm run data:build -- --bbox W,S,E,N     # build cells into .cache/cells
+npm run data:publish -- --dry-run        # what would go to the bucket
 ```
 
 `npm run build:test` overwrites `dist/` with a test build (dummy key, fixture data). Run
 `npm run build` afterwards if a real `dist/` matters.
+
+There is no `data/` directory and no staging step: the builder writes to the gitignored
+`.cache/`, which is also what the dev server reads. The only data in the repo is the small
+fixture under `tests/fixtures`.
 
 ## Known failing tests
 
@@ -67,27 +71,28 @@ waypoints only. `node --import tsx scripts/gold_route.ts audit <name>` shows eve
 the router still parts from one and what each side costs. Raise a case's `min_shared` when
 a change earns it; never lower it without asking.
 
-For the Python builder the equivalent is a single-cell rebuild diffed against the existing
-build: `uv run scripts/build_region.py --input data/pbf/<edition>/cells/<id>.osm.pbf
---output <tmp> --cell <id> --split-nodes data/derived/<edition>/split-nodes.bin`, then
-compare `graph.json` and `basemap.json`. It takes about two minutes and 300 MB for one cell.
+For the builder the equivalent is `scripts/build_parity.ts`, which compares two builds of
+the same cell field by field — every edge id, geometry, tag, grade and restriction — and
+exits 1 on any difference. Run it before and after any builder change meant to preserve
+behaviour. It expects to print `IDENTICAL`.
 
 ## Data format rules
 
-Read `docs/data-format.md` before touching `src/offline/`, `scripts/package_cells.ts`,
-`scripts/publish_release.py` or the fixtures.
+Read `docs/data-format.md` before touching `src/offline/`, `scripts/build_cells.ts`,
+`scripts/publish.ts` or the fixtures.
 
-- A single `DATA_VERSION` (`src/offline/version.ts`) governs the pointer, catalogue,
-  manifests and `.ibx` headers. Don't add separate schema, format or cost-model version
-  fields.
-- Bump it only for changes existing readers can't read. Follow the checklist in the doc,
-  which includes `DATA_VERSION` in `scripts/verify_public_release.py` and regenerating
-  `tests/fixtures/data` and `tests/fixtures/grid-fixture`.
-- Releases under `data/v<N>/releases/<id>/` are immutable. Only `latest.json` changes.
+- `DATA_VERSION` (`src/offline/version.ts`) is the format number: bump it only for changes
+  existing readers cannot read. `BUILD_VERSION` beside it is the *generation*: bump it when
+  cells built by the old builder would disagree with cells built by the new one, which
+  forces a rebuild rather than a re-read.
+- There is no release, no edition and no version in any published path. A cell is named by
+  the hash of its own bytes (`cells/<id>/<hash>.graph.ibx`), so nothing is ever overwritten
+  and everything but `catalog.json` is cached forever.
+- Staleness is per cell: the catalogue offers a different hash than the one installed.
 - There is no backward-compatibility obligation yet: remove legacy paths rather than
   adding migrations, unless asked.
-- Pack data never goes in `public/` or in git. Local releases live under the ignored
-  `data/` (current: `data/build/geneva-toulon-v7/packs`); `dist/` must stay a few MB.
+- Cell data never goes in `public/` or in git. Builds live under the ignored `.cache/`;
+  `dist/` must stay a few MB. The committed fixture under `tests/fixtures` stays small.
 
 ## Secrets and configuration
 
@@ -108,9 +113,8 @@ Read `docs/data-format.md` before touching `src/offline/`, `scripts/package_cell
   other trailers.
 - Group commits by concern, not one giant commit.
 - The remote is named `github`. Pushing to `main` triggers checks and the Pages deploy.
-  Ask before pushing, tagging, or any S3 write (`publish_release.py --publish`,
-  `--promote`, `--prune`, `--create-bucket`). Uploads are public and effectively
-  permanent.
+  Ask before pushing, tagging, or any S3 write (`npm run data:publish` without
+  `--dry-run`, and `--setup-bucket`). Uploads are public and effectively permanent.
 - Tags `v*` must match the `package.json` version (`release.yml` checks it).
 
 ## Code conventions
@@ -123,17 +127,17 @@ Read `docs/data-format.md` before touching `src/offline/`, `scripts/package_cell
   `src/models.ts` (`DEFAULT_PROFILE_ID`), not by filename order.
 - Browser storage is namespaced `ibex` (IndexedDB database, OPFS directory, `ibex-*`
   keys), and shares the `fxi.io` origin with other projects.
-- Scripts: take inputs as arguments (default to `DEFAULT_RELEASE` from
-  `scripts/local_release.ts`), write outputs under `data/`, and get a row in
+- Scripts: take inputs as arguments (default to `DEFAULT_CELLS` from
+  `scripts/local_release.ts`), write outputs under `.cache/`, and get a row in
   `scripts/README.md`. No one-off experiments committed.
-- Python targets 3.11+, run through `uv`; ruff must pass.
 
 ## Environment pitfalls (this machine)
 
 - `grep` is ugrep: it skips binary files silently, so use `grep -a` when a match in
   binary content matters.
-- Python heredocs (`python3 - <<EOF`) have silently done nothing in the agent shell. Use
-  the Edit and Write tools, `uv run python -c`, or a script file.
-- Disk is nearly full (~14 GB free). Delete superseded builds under `data/build/` only
-  when asked, and check free space before packaging or rebuilding.
+- Python heredocs (`python3 - <<EOF`) silently do nothing in the agent shell. Use the Edit
+  and Write tools or a script file.
+- Disk is tight. A Geofabrik download is a few hundred MB and the DEM cache grows without
+  bound; both live under `.cache/`. Check free space before a wide build, and delete cached
+  extracts only when asked.
 - macOS ships bash 3.2: with `set -u`, guard empty arrays (`${a[@]+"${a[@]}"}`).

@@ -1,155 +1,126 @@
 # Published data: layout, versioning, hosting
 
 The app downloads routing data as grid cells from a static tree. The same tree is served
-from S3 in production, from `data/publish/` by `npm run dev`, and from
-`tests/fixtures/data/` in browser tests. Building the cells is covered in
-[release-pipeline.md](release-pipeline.md).
+from S3 in production, from `.cache/cells` by `npm run dev`, and from `tests/fixtures/data/`
+in browser tests. Building the cells is covered in [data-pipeline.md](data-pipeline.md).
 
 ## Layout
 
 ```
-<data root>/                                   VITE_DATA_URL points here
-  v1/                                          one directory per DATA_VERSION
-    latest.json                                mutable pointer to the current release
-    releases/
-      20260914-a3540b2d/                       <OSM edition>-<hash of inputs>, immutable
-        catalogue.json
-        9-262-180/
-          manifest.json
-          index.ibx                            64-byte header + block directory
-          graph.ibx                            deflated z13 blocks, read by byte range
-        9-262-181/ ...
+<data root>/                             VITE_DATA_URL points here
+  catalog.json                           every cell that exists; the only thing that changes
+  cells/
+    9-264-181/
+      a1b2c3d4e5f60718.index.ibx         64-byte header + block directory
+      a1b2c3d4e5f60718.graph.ibx         deflated z13 blocks, read by byte range
+    9-265-181/
+      9f8e7d6c5b4a3210.index.ibx
+      9f8e7d6c5b4a3210.graph.ibx
 ```
 
-The app reads `${VITE_DATA_URL}/v${DATA_VERSION}/latest.json` (`pointerURL` in
-`src/offline/catalogue.ts`). It follows the pointer to the catalogue and resolves each cell
-manifest relative to the catalogue. Nothing else in the tree is mutable, so apart from the
-pointer everything can be cached forever.
+Two objects per cell and one catalogue. There is no pointer, no release directory, no
+edition and no version segment in any path.
 
-## Versioning
+**Files are named after their content.** A cell's `hash` is the digest of the two files it
+holds, and it prefixes both of them. So a published object never changes: a rebuilt cell is
+written beside the old one under a new name, a client mid-download is never served different
+bytes, and every `.ibx` can be cached forever. Old objects become unreferenced once the
+catalogue moves on, and can be deleted whenever.
 
-There is one compatibility number, `DATA_VERSION` in `src/offline/version.ts`. It appears
-in `latest.json`, `catalogue.json`, every `manifest.json`, and the header of every
-`index.ibx` and block.
+## The catalogue
 
-**Bump it** for any change an existing app cannot read correctly:
-
-- a required field added, removed or reinterpreted in the pointer, catalogue or manifest;
-- any change to the `.ibx` binary layout or its scales;
-- a change to what a stored value means to the cost model (for example, a signal's scale).
-
-**Don't bump it** for additive, optional fields that older readers ignore, or for a new
-release built with the same format. A new release is a new directory plus a pointer update.
-
-What a bump does:
-
-- The new data publishes under `v<N+1>/`. Apps already deployed keep reading `v<N>/`
-  until they update, so the old tree stays until those clients have moved on.
-- On start-up, the app removes installed cells whose manifest fails `cellManifestSchema`,
-  which includes any other data version, and tells the user to download again.
-- Checklist: bump `DATA_VERSION` in `src/offline/version.ts` — the only place it is
-  written; the Python scripts read it through `scripts/data_version.py` — regenerate the
-  fixtures (`scripts/create_cell_fixture.ts`, `scripts/gen_grid_fixture.ts`), repackage,
-  publish and promote under the new directory.
-- The old tree is not touched by a later `--prune`, because `--data-version` defaults to
-  the current value. Deleting `v<N>/` once its clients are gone takes an explicit
-  `--data-version <N> --prune <keep> --yes`.
-
-The release id is `<yyyymmdd>-<hash>`, where the hash covers `DATA_VERSION`, the cost model
-version, the preprocessor version, and, per cell, its build version — the digest of the
-bytes it built — alongside its source digest and terrain provenance. Changing any of them
-produces a new id, so an existing release is never overwritten: not by a rebuild whose DEM
-tiles failed, and not by one that differs only in its split-node set or in elevations a
-rounded coverage fraction cannot tell apart. Packaging checks each `graph.json` against the
-digest its manifest declares, so an interrupted rebuild cannot be released under the
-provenance of the build it replaced.
-
-Publication preflights the whole release before writing any of it and refuses an id already
-holding different content, rather than uploading over it.
-
-Packaging refuses a build that is missing any cell of its window, comparing what it finds
-against the `window.json` that `build_cells.py` writes beside the cells. A deliberate subset
-is packaged with `--partial`, which is never a release.
-
-Profiles (`format_version`) and the saved track collection (`version`) are versioned
-separately, because they live in the user's browser rather than in the data tree.
-
-## Documents
-
-`latest.json`
-
-```json
+```jsonc
 {
   "dataVersion": 1,
-  "release": "20260914-a3540b2d",
-  "catalogue": "releases/20260914-a3540b2d/catalogue.json",
-  "published": "2026-09-17T12:00:00+00:00"
+  "generated": "2026-09-22T09:35:51.958Z",
+  "grid": { "scheme": "xyz", "zoom": 9, "blockZoom": 13, "fieldZoom": 15 },
+  "attribution": "© OpenStreetMap contributors · ODbL 1.0 | Terrain: Mapterhorn",
+  "cells": [
+    {
+      "id": "9-264-181", "x": 264, "y": 181,
+      "bbox": [5.625, 46.0732306, 6.328125, 46.5588603],
+      "hash": "a1b2c3d4e5f60718",
+      "builtAt": "2026-09-22T09:34:27.007Z",
+      "osm": "2026-09-22T07:56:00Z",
+      "bytes": 13871104, "blocks": 255, "terrainCoverage": 1,
+      "files": [
+        { "path": "index.ibx", "bytes": 287104, "sha256": "…" },
+        { "path": "graph.ibx", "bytes": 13584000, "sha256": "…" }
+      ],
+      "nodes": 157311, "edges": 345725
+    }
+  ]
 }
 ```
 
-`catalogue.json`: `dataVersion`, `release`, `grid` (`scheme: "xyz"`, `zoom` 9,
-`blockZoom` 13, `fieldZoom` 15), `osmTimestamp`, `generated`, `attribution`, and
-`cells[]` (`id`, `x`, `y`, `bbox`, `manifest`, `version`, `bytes`, `available`, and
-optionally `nodes` and `edges`). Cell ids and bboxes are checked against the grid when
-parsed. Schema: `catalogueSchema`.
+`files[].path` is the name a file keeps **once installed**, not the name it is served under
+— the published object carries the hash in front of it. `cellFileURL` in
+`src/offline/catalogue.ts` is the one place that knows this.
 
-`manifest.json`: `dataVersion`, `id`, `name`, `version`, `release`, `cell`, `bbox`,
-`osmTimestamp`, `terrainCoverage`, `attribution`, `blockZoom`, `blocks`, and `files[]`
-(`path`, `bytes`, `sha256`). Downloads are verified against these sizes and digests.
-Schema: `cellManifestSchema` in `src/offline/store.ts`.
+Cell ids are derived from the grid, never assigned, and re-checked against it at parse time:
+a silent change to the grid shows up as a bbox mismatch rather than as mis-stitched routes.
 
-The `.ibx` binary layout is defined in `src/offline/ibex/spec.ts`, `index.ts` and
-`block.ts`.
+An **empty** `cells` array is valid. The grid covers the world from the first run; the
+catalogue starts with nothing in it.
 
-## Hosting requirements
+## The grid
 
-| Object                         | `Cache-Control`                       |
-| ------------------------------ | ------------------------------------- |
-| `v<N>/latest.json`             | `public, max-age=300, must-revalidate` |
-| everything under `releases/`   | `public, max-age=31536000, immutable` |
+Plain Web-Mercator XYZ, global, `-85.0511…` to `85.0511…` and `-180` to `180`. Cells are
+zoom 9 — about 54 km a side at mid latitudes. The map draws the grid for its own viewport
+above zoom 5, colouring each cell by state; a cell with no catalogue entry is drawn greyed
+out, because nobody has built it yet.
 
-- Public `GET` and `HEAD`.
-- `Range` requests answered with `206`: the router reads `graph.ibx` blocks by range.
-- CORS: `GET, HEAD` from the app origin (the publisher sets `*`), allowing the `Range`,
-  `If-Match` and `If-None-Match` request headers and exposing `ETag`, `Content-Length`
-  and `Content-Range`.
+The cell zoom is only the **download and build** unit. Inside a cell, edges are grouped into
+zoom-13 blocks (about 3.4 km), each addressable by the byte range the index records, and the
+router reads only the blocks its search area touches. That is the granularity routing
+actually runs at.
 
-`scripts/publish_release.py` sets all of this. `scripts/verify_public_release.py` checks it.
+## Versions
+
+Two numbers, both in `src/offline/version.ts`, and neither appears in a path.
+
+| | |
+|---|---|
+| `DATA_VERSION` | The **format**. Bump it when an existing reader cannot read the new bytes: the catalogue schema, the `.ibx` layout, what a stored value means. Cells carrying another value are removed at start-up. |
+| `BUILD_VERSION` | The **generation**, written into every `.ibx` header as a tag. Bump it when a cell built by the old builder would disagree with one built by the new: the cost model, the tag rules, the split rule. A pack from another generation is skipped by the provider, not fatal. |
+
+`BUILD_VERSION` is what replaced the release id. A release pinned every cell to one
+publishing run, so a cell downloaded on Tuesday refused to route beside one downloaded on
+Wednesday — untenable when cells arrive one at a time, forever.
+
+**Staleness is per cell**: the catalogue offers a different `hash` than the one installed.
+Nothing else is consulted.
+
+### Bumping `DATA_VERSION`
+
+1. Change it in `src/offline/version.ts`.
+2. Regenerate the fixtures: `node --import tsx scripts/create_cell_fixture.ts` and
+   `node --import tsx scripts/gen_grid_fixture.ts`.
+3. Rebuild cells (`npm run data:build`) — old ones cannot be re-read.
+4. `npm test && npm run build:test && npm run test:e2e`.
+
+## Cache headers
+
+| Object | `Cache-Control` |
+|---|---|
+| `cells/**/*.ibx` | `public, max-age=31536000, immutable` |
+| `catalog.json` | `public, max-age=300, must-revalidate` |
+
+The catalogue is also fetched with `cache: "no-cache"` by the app, so a cell published a
+minute ago is visible now.
+
+CORS must allow `GET`/`HEAD` from any origin, accept a `Range` request header, and expose
+`ETag`, `Content-Length`, `Content-Range` and `Accept-Ranges`. `npm run data:publish --
+--setup-bucket` sets exactly that.
 
 ## Publishing
 
-Configure the S3 block of `.env` (see `.env.example`), then:
+`scripts/publish.ts` verifies every byte against the catalogue locally before anything is
+sent, uploads the cells, and writes `catalog.json` **last** — so the catalogue never names a
+file that is not there, and an interrupted run leaves unreferenced objects rather than a
+broken tree. An object whose name matches is skipped, because a name is a digest.
 
-```sh
-# Verify a local release (no network)
-uv run scripts/publish_release.py --release data/build/<edition>/packs
-
-# One-time setup: bucket and CORS
-uv run scripts/publish_release.py --create-bucket
-
-# Upload (skips objects already present), then make it current
-uv run scripts/publish_release.py --release data/build/<edition>/packs --publish --promote
-
-# Check what clients will see
-uv run scripts/verify_public_release.py "$VITE_DATA_URL"
-
-# Later: repoint to an uploaded release, or drop old releases (the current one is kept)
-uv run scripts/publish_release.py --promote-id 20260914-a3540b2d
-uv run scripts/publish_release.py --prune 3
-```
-
-Uploads are ordered so that each cell's data files come before its manifest and the
-catalogue comes last, and the pointer moves only after the catalogue exists. A client
-therefore never sees a pointer to something incomplete. `--promote-id`, `--prune` and
-verification also run from GitHub Actions (`.github/workflows/data.yml`). Building the
-cells doesn't: it needs about 8 GB of disk and hours of CPU.
-
-## Local data
-
-```sh
-npm run data:stage -- data/build/<edition>/packs   # links into data/publish/v1/releases/
-```
-
-With `VITE_DATA_URL` empty, `npm run dev` and `npm run preview` serve `data/publish/` at
-`/ibex/data/` (`scripts/data-server.ts`), with byte ranges. Staged data is never copied
-into `dist/`.
+`--verify <url>` reads the published tree back the way the app does: the catalogue parses
+and is not immutable, every file matches its size and digest, `.ibx` objects are cacheable
+forever, CORS answers, and a range read returns `206` with the right `Content-Range` **and
+the right bytes**.
