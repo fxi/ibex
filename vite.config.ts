@@ -46,7 +46,7 @@ export default defineConfig(() => {
     base,
     plugins: [
       react(),
-      localData("data/publish", base),
+      localData(process.env.IBEX_DATA_DIR ?? ".cache/cells", base),
       VitePWA({
         registerType: "prompt",
         includeAssets: ["icon.svg"],

@@ -4,7 +4,7 @@ Run everything from the repo root (`uv run scripts/<name>.py`, `node --import ts
 Outputs go under the gitignored `data/`; nothing here writes to `src/`.
 Modules marked **lib** are imported by other scripts: do not rename or move them in isolation.
 Scripts that read a local release take its packs directory as an argument, defaulting to
-`DEFAULT_RELEASE` in `local_release.ts`.
+`DEFAULT_CELLS` in `local_release.ts`.
 
 | Group | Script | Purpose |
 |---|---|---|

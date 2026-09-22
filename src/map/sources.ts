@@ -10,7 +10,8 @@ import type maplibregl from "maplibre-gl";
 import { selectedRoute } from "../routing/selection";
 import { freshResult, type Track } from "../tracks";
 import type { Comparison, Point, RouteResult } from "../routing/types";
-import { CELL_COLORS, type MapCell } from "../offline/cells";
+import { CELL_COLORS, type CellState } from "../offline/cells";
+import { cellBBox, cellId, cellsInBBox, type CellId } from "../geo/grid";
 import { HEATMAP_URL } from "../config";
 import { rideFeatures } from "./rideStyle";
 import { empty, MIN_SELECT_ZOOM } from "./layers";
@@ -24,7 +25,10 @@ export type MapSnapshot = {
   history: boolean;
   tracks: Track[];
   activeId?: string;
-  cells?: MapCell[];
+  /** What is known about the cells that have been built; everything else is unbuilt. */
+  cellStates?: Map<CellId, CellState>;
+  /** The download grid zoom, from the catalogue. */
+  gridZoom?: number;
 };
 
 /** A bbox as a closed polygon ring, for drawing a cell outline. */
@@ -39,15 +43,22 @@ const ring = (b: [number, number, number, number]): Point[] => [
 export function syncSources(m: maplibregl.Map, s: MapSnapshot) {
     if (!m.getSource("route")) return;
         const route = selectedRoute(s.comparison, s.partial);
+    // The grid covers the world, so it is generated from the viewport rather than from the
+    // catalogue: a cell nobody has built yet is still drawn, in the colour that says so.
+    // Below MIN_SELECT_ZOOM a screenful is thousands of cells and none of them are worth
+    // picking, so nothing is drawn at all.
     const bounds = m.getBounds();
     const selectable = m.getZoom() >= MIN_SELECT_ZOOM;
-    const visible = (s.cells ?? []).filter(
-      (cell) =>
-        cell.bbox[0] <= bounds.getEast() &&
-        cell.bbox[2] >= bounds.getWest() &&
-        cell.bbox[1] <= bounds.getNorth() &&
-        cell.bbox[3] >= bounds.getSouth(),
-    );
+    const states = s.cellStates;
+    const visible = selectable
+      ? cellsInBBox(
+          [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+          s.gridZoom ?? 9,
+        ).map((cell) => {
+          const id = cellId(cell);
+          return { id, bbox: cellBBox(cell), state: states?.get(id) ?? "unavailable" };
+        })
+      : [];
     (m.getSource("cells") as maplibregl.GeoJSONSource)?.setData(
       visible.length
         ? {

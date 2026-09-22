@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import { manifestSchema } from "../src/offline/store";
-import manifest from "./fixtures/data/v1/releases/fixture/9-264-181/manifest.json";
+import { catalogueSchema, toManifest } from "../src/offline/catalogue";
+import catalog from "./fixtures/data/catalog.json";
+
+const parsed = catalogueSchema.parse(catalog);
+const manifest = toManifest(parsed, parsed.cells[0]);
 it("rejects traversal paths, incompatible versions and oversized allocations", () => {
   expect(manifestSchema.safeParse(manifest).success).toBe(true);
   // Cells from any other data version must not parse: this build cannot read them.

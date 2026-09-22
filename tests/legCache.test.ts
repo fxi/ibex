@@ -13,8 +13,8 @@ import type { LegComparison } from "../src/routing/legs";
 import type { Point, RouteResult } from "../src/routing/types";
 import { GRAVEL, ROAD } from "./helpers";
 
-const pack = (id: string, version: string) =>
-  ({ manifest: { id, version } }) as unknown as Installed;
+const pack = (id: string, hash: string) =>
+  ({ manifest: { id, hash } }) as unknown as Installed;
 const cells: { id: string; bbox: BBox }[] = [
   { id: "9-1-1", bbox: [6, 46, 6.5, 46.5] },
   { id: "9-2-1", bbox: [6.5, 46, 7, 46.5] },

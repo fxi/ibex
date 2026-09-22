@@ -84,24 +84,35 @@ export class CellGraphProvider {
 
   constructor(
     private readonly packs: Installed[],
-    readonly release: string,
+    readonly generation: string,
     /** Published coverage, so an uninstalled cell is distinguishable from open water. */
     private readonly published: { id: string; bbox: BBox }[] = [],
     private readonly reader: PackReader = browserPackReader,
   ) {}
 
-  /** Read every installed cell's index once; a foreign or stale pack is refused here. */
+  /**
+   * Read every installed cell's index once.
+   *
+   * A pack built by another generation is skipped rather than fatal: cells are downloaded
+   * one at a time over weeks, and one left over from an older builder must not stop the
+   * rest of the map routing. Its own header carries the tag, so no manifest is consulted.
+   */
   async open(): Promise<void> {
     for (const pack of this.packs) {
       if (!isCellManifest(pack.manifest)) continue;
-      if (pack.manifest.release !== this.release) continue;
       const bytes = new Uint8Array(
         await this.reader.readFile(pack, "index.ibx"),
       );
-      const index = decodeIndex(bytes, {
-        release: this.release,
-        cell: pack.manifest.cell,
-      });
+      let index;
+      try {
+        index = decodeIndex(bytes, {
+          release: this.generation,
+          cell: pack.manifest.cell,
+        });
+      } catch (error) {
+        if (error instanceof IbexError && error.kind === "release") continue;
+        throw error;
+      }
       this.loaded.push({ pack, index });
     }
     this.loaded.sort((a, b) =>
@@ -222,7 +233,7 @@ export class CellGraphProvider {
 
     const envelope = this.envelope();
     if (!envelope)
-      throw new IbexError("cell", "No installed cells for this release");
+      throw new IbexError("cell", "No installed cells here");
     return {
       schemaVersion: 1,
       bbox: envelope,

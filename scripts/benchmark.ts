@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
 import type { Point } from "../src/routing/types";
-import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
 import { loadProfile } from "./profile";
 const scenarios: { name: string; anchors: Point[] }[] = [
   {
@@ -28,7 +28,7 @@ const scenarios: { name: string; anchors: Point[] }[] = [
 ];
 // Scenarios span two cells; merge the release's packs around all of them.
 const graph = await loadReleaseGraph(
-  process.argv[2] ?? DEFAULT_RELEASE,
+  process.argv[2] ?? DEFAULT_CELLS,
   scenarios.flatMap((s) => s.anchors),
 );
 const report = [];

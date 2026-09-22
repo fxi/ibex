@@ -1,34 +1,37 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   catalogueSchema,
-  pointerSchema,
-  pointerURL,
+  catalogueURL,
+  cellFileURL,
   readCatalogue,
   cellById,
   coverageBBox,
-  resolveCellManifest,
   selectedBytes,
   type Catalogue,
 } from "../src/offline/catalogue";
 import { cellBBox, cellId } from "../src/geo/grid";
-import fixture from "./fixtures/grid-fixture/catalogue.json";
+import fixture from "./fixtures/grid-fixture/catalog.json";
 
 const cell = (x: number, y: number, extra: Record<string, unknown> = {}) => ({
   id: cellId({ zoom: 9, x, y }),
   x,
   y,
   bbox: cellBBox({ zoom: 9, x, y }).map((v) => Number(v.toFixed(7))),
-  manifest: `${cellId({ zoom: 9, x, y })}/manifest.json`,
-  version: "abc123",
+  hash: "abc1230000000000",
+  builtAt: "2026-09-10T00:00:00.000Z",
+  osm: "2026-09-09T21:00:00Z",
   bytes: 4096,
-  available: true,
+  blocks: 7,
+  terrainCoverage: 1,
+  files: [
+    { path: "index.ibx", bytes: 96, sha256: "a".repeat(64) },
+    { path: "graph.ibx", bytes: 4000, sha256: "b".repeat(64) },
+  ],
   ...extra,
 });
 const base = () => ({
   dataVersion: 1,
-  release: "20260910-1a2b3c4d",
   grid: { scheme: "xyz", zoom: 9, blockZoom: 13, fieldZoom: 15 },
-  osmTimestamp: "2026-07-15T15:22:01Z",
   generated: "2026-09-10T00:00:00.000Z",
   attribution: "© OpenStreetMap contributors",
   cells: [cell(264, 181), cell(265, 181)],
@@ -86,15 +89,10 @@ describe("catalogue schema", () => {
       }),
     ).toThrow(/Cost field must be finer/);
   });
-  it("rejects a manifest path that escapes the catalogue", () => {
-    for (const manifest of [
-      "../secrets/manifest.json",
-      "a/../../manifest.json",
-      "/absolute/manifest.json",
-      "https://other.example/manifest.json",
-    ]) {
+  it("rejects a hash that is not a hash", () => {
+    for (const hash of ["", "../secrets", "ZZZZ", "g".repeat(16)]) {
       const value = base();
-      value.cells[0].manifest = manifest;
+      value.cells[0].hash = hash;
       expect(() => catalogueSchema.parse(value)).toThrow();
     }
   });
@@ -103,40 +101,45 @@ describe("catalogue schema", () => {
     value.cells[0].bytes = 1e12;
     expect(() => catalogueSchema.parse(value)).toThrow();
   });
-  it("requires at least one cell", () => {
-    expect(() => catalogueSchema.parse({ ...base(), cells: [] })).toThrow();
+  it("accepts a catalogue with nothing built yet", () => {
+    // The grid covers the world from the first run; the catalogue starts empty.
+    expect(catalogueSchema.parse({ ...base(), cells: [] }).cells).toEqual([]);
   });
 });
 
-describe("manifest URL resolution", () => {
+describe("cell file URLs", () => {
   const catalogue = catalogueSchema.parse(base());
-  it("resolves against a local development path", () => {
+  it("is looked up beside the data root", () => {
+    expect(catalogueURL("https://host.example/ibex/data/")).toBe(
+      "https://host.example/ibex/data/catalog.json",
+    );
+  });
+  it("names a file after the cell's hash, so it never changes", () => {
     expect(
-      resolveCellManifest(
-        "http://localhost:5173/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
+      cellFileURL(
+        "http://localhost:5173/ibex/data/catalog.json",
         catalogue.cells[0],
+        "graph.ibx",
       ),
     ).toBe(
-      "http://localhost:5173/ibex/data/v1/releases/20260910-1a2b3c4d/9-264-181/manifest.json",
+      "http://localhost:5173/ibex/data/cells/9-264-181/abc1230000000000.graph.ibx",
     );
   });
-  it("resolves against an S3 prefix without changing the layout", () => {
+  it("resolves against a bucket prefix without changing the layout", () => {
     expect(
-      resolveCellManifest(
-        "https://bucket.example.com/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
+      cellFileURL(
+        "https://bucket.example.com/ibex/catalog.json",
         catalogue.cells[1],
+        "index.ibx",
       ),
     ).toBe(
-      "https://bucket.example.com/ibex/data/v1/releases/20260910-1a2b3c4d/9-265-181/manifest.json",
+      "https://bucket.example.com/ibex/cells/9-265-181/abc1230000000000.index.ibx",
     );
   });
-  it("refuses a path that resolves outside the catalogue directory", () => {
-    for (const manifest of ["../other/manifest.json", "//evil.example/x.json"])
+  it("refuses a cell id that would climb out of the tree", () => {
+    for (const id of ["../other", "//evil.example/x"])
       expect(() =>
-        resolveCellManifest(
-          "https://bucket.example.com/packs/release/catalogue.json",
-          { manifest },
-        ),
+        cellFileURL("https://bucket.example.com/data/catalog.json", { id, hash: "a1b2" }, "graph.ibx"),
       ).toThrow(/outside the catalogue directory/);
   });
 });
@@ -160,13 +163,7 @@ describe("catalogue helpers", () => {
   });
 });
 
-describe("release pointer", () => {
-  const pointer = {
-    dataVersion: 1,
-    release: "20260910-1a2b3c4d",
-    catalogue: "releases/20260910-1a2b3c4d/catalogue.json",
-    published: "2026-09-10T00:00:00.000Z",
-  };
+describe("reading the catalogue", () => {
   const serve = (routes: Record<string, unknown>) =>
     vi.stubGlobal("fetch", async (url: string) =>
       url in routes
@@ -175,39 +172,22 @@ describe("release pointer", () => {
     );
   afterEach(() => vi.unstubAllGlobals());
 
-  it("is looked up under this build's data version", () => {
-    expect(pointerURL("https://host.example/ibex/data/")).toBe(
-      "https://host.example/ibex/data/v1/latest.json",
-    );
-  });
-  it("refuses a catalogue path that escapes the data tree", () => {
-    expect(
-      pointerSchema.safeParse({ ...pointer, catalogue: "../v2/catalogue.json" })
-        .success,
-    ).toBe(false);
-  });
-  it("resolves the catalogue relative to the pointer", async () => {
-    const at = "https://host.example/ibex/data/v1/latest.json";
-    serve({
-      [at]: pointer,
-      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json":
-        base(),
-    });
+  it("fetches it from the data root", async () => {
+    const at = "https://host.example/ibex/data/catalog.json";
+    serve({ [at]: base() });
     const { url, catalogue } = await readCatalogue(at);
-    expect(url).toBe(
-      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json",
-    );
-    expect(catalogue.release).toBe(pointer.release);
+    expect(url).toBe(at);
+    expect(catalogue.cells.map((c) => c.id)).toEqual(["9-264-181", "9-265-181"]);
   });
-  it("rejects a pointer from another data version or a mismatched catalogue", async () => {
-    const at = "https://host.example/ibex/data/v1/latest.json";
-    serve({ [at]: { ...pointer, dataVersion: 2 } });
+  it("rejects a catalogue from another data version", async () => {
+    const at = "https://host.example/ibex/data/catalog.json";
+    serve({ [at]: { ...base(), dataVersion: 2 } });
     await expect(readCatalogue(at)).rejects.toThrow(/another version/);
-    serve({
-      [at]: { ...pointer, release: "20260911-ffffffff" },
-      "https://host.example/ibex/data/v1/releases/20260910-1a2b3c4d/catalogue.json":
-        base(),
-    });
-    await expect(readCatalogue(at)).rejects.toThrow(/disagree/);
+  });
+  it("reports a catalogue that is not there", async () => {
+    serve({});
+    await expect(
+      readCatalogue("https://host.example/ibex/data/catalog.json"),
+    ).rejects.toThrow(/unavailable/);
   });
 });

@@ -7,11 +7,11 @@ import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { compareOn } from "../src/routing/legs";
-import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point } from "../src/routing/types";
 
-const packs = process.argv[2] ?? DEFAULT_RELEASE;
+const packs = process.argv[2] ?? DEFAULT_CELLS;
 const baseline: typeof compareOn | undefined = process.argv[3]
   ? (await import(pathToFileURL(resolve(process.argv[3])).href)).compareOn
   : undefined;

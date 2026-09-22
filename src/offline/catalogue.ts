@@ -1,12 +1,21 @@
 /**
- * The published catalogue of downloadable routing cells. Cell ids are derived from the grid
- * definition, never assigned, so the document is self-verifying: a silent change to the grid
- * shows up as a bbox mismatch at parse time rather than as mis-stitched routes later.
+ * The published catalogue of built routing cells.
+ *
+ * One mutable document at the root of the data tree, listing every cell that exists. Cell
+ * ids are derived from the grid definition, never assigned, so the document is
+ * self-verifying: a silent change to the grid shows up as a bbox mismatch at parse time
+ * rather than as mis-stitched routes later.
+ *
+ * There is no release, no edition and no version in any path. A cell's identity is the
+ * `hash` of the bytes it was built from, which is also what names its files, so a rebuilt
+ * cell is written beside the old one instead of over it and every published object can be
+ * cached forever. A cell whose hash differs from the one installed is stale; that is the
+ * whole staleness rule.
  */
 import { z } from "zod";
 import { DATA_VERSION } from "./version";
 import { cellBBox, cellId, type BBox, type CellId } from "../geo/grid";
-import { preference, savePreference } from "./store";
+import { preference, savePreference, type Manifest } from "./store";
 
 /** Consistent with the existing `ibex-tracks` key; never reuses an existing one. */
 const CACHE_KEY = "ibex-catalogue";
@@ -15,23 +24,31 @@ const BBOX_TOLERANCE = 1e-6;
 
 const bboxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 
+/**
+ * `path` is the name the file keeps once installed, not the name it is served under: the
+ * published object carries the cell's hash in front of it so that it never changes.
+ */
+const fileSchema = z.object({
+  path: z.enum(["index.ibx", "graph.ibx"]),
+  bytes: z.number().int().positive().max(300_000_000),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
 const cellSchema = z.object({
-  // Matches the pack manifest id pattern, so a cell id can key the `packs` store directly.
+  // Matches the pack id pattern, so a cell id can key the `packs` store directly.
   id: z.string().regex(/^\d{1,2}-\d{1,8}-\d{1,8}$/),
   x: z.number().int().nonnegative(),
   y: z.number().int().nonnegative(),
   bbox: bboxSchema,
-  // Relative to the catalogue URL so the same tree serves locally and from S3.
-  manifest: z
-    .string()
-    .regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/)
-    .refine(
-      (p) => !p.split("/").includes(".."),
-      "Manifest path escapes the catalogue",
-    ),
-  version: z.string().regex(/^[a-zA-Z0-9-]+$/),
+  /** The identity of these bytes: names the published files, and decides staleness. */
+  hash: z.string().regex(/^[a-f0-9]{8,64}$/),
+  /** When the cell was built, and how old the OpenStreetMap data behind it was. */
+  builtAt: z.string(),
+  osm: z.string(),
   bytes: z.number().int().positive().max(300_000_000),
-  available: z.boolean(),
+  blocks: z.number().int().nonnegative(),
+  terrainCoverage: z.number().min(0).max(1),
+  files: z.array(fileSchema).length(2),
   nodes: z.number().int().nonnegative().optional(),
   edges: z.number().int().nonnegative().optional(),
 });
@@ -39,17 +56,15 @@ const cellSchema = z.object({
 export const catalogueSchema = z
   .object({
     dataVersion: z.literal(DATA_VERSION),
-    release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
+    generated: z.string(),
     grid: z.object({
       scheme: z.literal("xyz"),
       zoom: z.number().int().min(0).max(14),
       blockZoom: z.number().int().min(0).max(20),
       fieldZoom: z.number().int().min(0).max(20),
     }),
-    osmTimestamp: z.string(),
-    generated: z.string(),
     attribution: z.string(),
-    cells: z.array(cellSchema).min(1).max(4096),
+    cells: z.array(cellSchema).max(200_000),
   })
   .superRefine((value, ctx) => {
     const { zoom, blockZoom, fieldZoom } = value.grid;
@@ -93,40 +108,37 @@ export const catalogueSchema = z
 
 export type Catalogue = z.infer<typeof catalogueSchema>;
 export type CatalogueCell = Catalogue["cells"][number];
-/** A catalogue together with the URL its cell manifests resolve against. */
+/** A catalogue together with the URL its cell files resolve against. */
 export type Resolved = { url: string; catalogue: Catalogue };
-type Cached = Resolved & { pointer: string; fetchedAt: string };
+type Cached = Resolved & { fetchedAt: string };
 
-/**
- * `v<DATA_VERSION>/latest.json`: the only mutable object in a data tree. It names the
- * current release, whose files never change, so everything else can be cached forever.
- */
-export const pointerSchema = z.object({
-  dataVersion: z.literal(DATA_VERSION),
-  release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
-  catalogue: z
-    .string()
-    .regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/)
-    .refine((p) => !p.split("/").includes(".."), "Catalogue path escapes"),
-  published: z.string(),
-});
-export type Pointer = z.infer<typeof pointerSchema>;
-
-/** The pointer URL this build reads under a data root such as `https://host/ibex/data`. */
-export function pointerURL(dataRoot: string): string {
-  return `${dataRoot.replace(/\/+$/, "")}/v${DATA_VERSION}/latest.json`;
+/** The catalogue URL under a data root such as `https://host/ibex/data`. */
+export function catalogueURL(dataRoot: string): string {
+  return `${dataRoot.replace(/\/+$/, "")}/catalog.json`;
 }
 
-/** Resolve a cell's manifest, refusing anything that leaves the catalogue's directory. */
-export function resolveCellManifest(
-  catalogueURL: string,
-  cell: Pick<CatalogueCell, "manifest">,
+/**
+ * Where a cell's file is published.
+ *
+ * `cells/<id>/<hash>.<name>` — the hash in front is what lets the object be immutable, and
+ * what keeps a rebuild from overwriting bytes a client may still be downloading.
+ */
+export function cellFileURL(
+  catalogue: string,
+  cell: Pick<CatalogueCell, "id" | "hash">,
+  path: string,
 ): string {
-  const base = new URL(catalogueURL);
-  const resolved = new URL(cell.manifest, base);
+  // Checked here as well as in the schema: this builds a URL, and an id carrying a slash
+  // or a dot segment would reach somewhere else entirely.
+  if (!/^\d{1,2}-\d{1,8}-\d{1,8}$/.test(cell.id) || !/^[a-f0-9]{8,64}$/.test(cell.hash))
+    throw new Error("Cell file is outside the catalogue directory");
+  if (path !== "index.ibx" && path !== "graph.ibx")
+    throw new Error("Cell file is outside the catalogue directory");
+  const base = new URL(catalogue);
+  const resolved = new URL(`cells/${cell.id}/${cell.hash}.${path}`, base);
   const directory = base.href.slice(0, base.href.lastIndexOf("/") + 1);
-  if (resolved.origin !== base.origin || !resolved.href.startsWith(directory))
-    throw new Error("Cell manifest is outside the catalogue directory");
+  if (resolved.origin !== base.origin || !resolved.href.startsWith(`${directory}cells/`))
+    throw new Error("Cell file is outside the catalogue directory");
   return resolved.href;
 }
 
@@ -146,48 +158,27 @@ export function coverageBBox(catalogue: Catalogue): BBox {
   );
 }
 
-export function selectedBytes(
-  catalogue: Catalogue,
-  ids: Iterable<CellId>,
-): number {
+export function selectedBytes(catalogue: Catalogue, ids: Iterable<CellId>): number {
   const cells = cellById(catalogue);
   let total = 0;
   for (const id of ids) total += cells.get(id)?.bytes ?? 0;
   return total;
 }
 
-async function fetchJSON(url: string, what: string): Promise<unknown> {
-  // The pointer is short-lived by design; never let an HTTP cache pin an old release.
-  const response = await fetch(url, { cache: "no-cache" });
-  if (!response.ok) throw new Error(`${what} unavailable (${response.status})`);
-  return response.json();
-}
-
 /**
- * Follow the pointer to the current release, then fetch and cache its catalogue. The data
- * version is checked before parsing so a mismatch gets an actionable message.
+ * Fetch and cache the catalogue.
+ *
+ * It is the one mutable object in the tree, so it is never served from an HTTP cache: a
+ * cell published a minute ago has to be visible now.
  */
-export async function readCatalogue(pointer: string): Promise<Resolved> {
-  const value = pointerSchema.safeParse(
-    await fetchJSON(pointer, "Data release pointer"),
-  );
-  if (!value.success)
-    throw new Error("The published data is for another version of Ibex.");
-  const url = new URL(value.data.catalogue, pointer).href;
-  const raw = (await fetchJSON(url, "Pack catalogue")) as {
-    dataVersion?: unknown;
-  };
+export async function readCatalogue(url: string): Promise<Resolved> {
+  const response = await fetch(url, { cache: "no-cache" });
+  if (!response.ok) throw new Error(`Cell catalogue unavailable (${response.status})`);
+  const raw = (await response.json()) as { dataVersion?: unknown };
   if (raw?.dataVersion !== DATA_VERSION)
     throw new Error("The published data is for another version of Ibex.");
   const catalogue = catalogueSchema.parse(raw);
-  if (catalogue.release !== value.data.release)
-    throw new Error("Data release pointer and catalogue disagree.");
-  const cached: Cached = {
-    pointer,
-    url,
-    fetchedAt: new Date().toISOString(),
-    catalogue,
-  };
+  const cached: Cached = { url, fetchedAt: new Date().toISOString(), catalogue };
   await savePreference(CACHE_KEY, cached).catch(() => {});
   return { url, catalogue };
 }
@@ -197,11 +188,38 @@ export async function readCatalogue(pointer: string): Promise<Resolved> {
  * the user routing on or removing what they already installed, so callers treat this as
  * advisory: installed state always comes from `listPacks`, never from here.
  */
-export async function cachedCatalogue(
-  pointer: string,
-): Promise<Resolved | undefined> {
+export async function cachedCatalogue(url: string): Promise<Resolved | undefined> {
   const cached = await preference<Cached>(CACHE_KEY).catch(() => undefined);
-  if (!cached || cached.pointer !== pointer) return undefined;
+  if (!cached || cached.url !== url) return undefined;
   const parsed = catalogueSchema.safeParse(cached.catalogue);
   return parsed.success ? { url: cached.url, catalogue: parsed.data } : undefined;
+}
+
+/**
+ * What is kept beside a cell's files once it is installed: its catalogue entry, flattened,
+ * plus the few things the catalogue says once for every cell. Nothing is fetched — the
+ * catalogue already carries it all, which is why cells no longer publish a manifest.
+ */
+export function toManifest(catalogue: Catalogue, cell: CatalogueCell): Manifest {
+  return {
+    dataVersion: catalogue.dataVersion,
+    id: cell.id,
+    hash: cell.hash,
+    builtAt: cell.builtAt,
+    cell: { zoom: catalogue.grid.zoom, x: cell.x, y: cell.y },
+    bbox: cell.bbox,
+    osm: cell.osm,
+    terrainCoverage: cell.terrainCoverage,
+    attribution: catalogue.attribution,
+    blockZoom: catalogue.grid.blockZoom,
+    blocks: cell.blocks,
+    files: cell.files,
+  };
+}
+
+/** Where each of a cell's files is served from, keyed by the name it keeps once installed. */
+export function cellSources(url: string, cell: CatalogueCell): Record<string, string> {
+  return Object.fromEntries(
+    cell.files.map((file) => [file.path, cellFileURL(url, cell, file.path)]),
+  );
 }

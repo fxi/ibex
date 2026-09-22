@@ -13,9 +13,7 @@ const cells = [
 mkdirSync(directory, { recursive: true });
 const catalogue = {
   dataVersion: DATA_VERSION,
-  release: "fixture",
   grid: { scheme: "xyz", zoom, blockZoom: 13, fieldZoom: 15 },
-  osmTimestamp: "synthetic",
   generated: "1970-01-01T00:00:00.000Z",
   attribution: "Synthetic test data — not a real cycling network",
   cells: cells.map((cell) => ({
@@ -23,17 +21,23 @@ const catalogue = {
     x: cell.x,
     y: cell.y,
     bbox: cellBBox(cell).map((v) => Number(v.toFixed(7))),
-    manifest: `${cellId(cell)}/manifest.json`,
-    version: "fixture0000",
+    hash: `f1x7ade0000000${cell.x.toString(16)}`.replace(/[^a-f0-9]/g, "0"),
+    builtAt: "1970-01-01T00:00:00.000Z",
+    osm: "1970-01-01T00:00:00.000Z",
     bytes: 4096,
-    available: true,
+    blocks: 1,
+    terrainCoverage: 1,
+    files: [
+      { path: "index.ibx" as const, bytes: 96, sha256: "0".repeat(64) },
+      { path: "graph.ibx" as const, bytes: 4000, sha256: "1".repeat(64) },
+    ],
   })),
 };
 writeFileSync(
-  `${directory}/catalogue.json`,
+  `${directory}/catalog.json`,
   JSON.stringify(catalogue, null, 2) + "\n",
 );
 console.log(
-  `wrote ${directory}/catalogue.json with ${catalogue.cells.length} cells:`,
+  `wrote ${directory}/catalog.json with ${catalogue.cells.length} cells:`,
   catalogue.cells.map((c) => c.id).join(", "),
 );

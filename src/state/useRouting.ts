@@ -11,6 +11,7 @@ import type { LegComparison } from "../routing/legs";
 import type { Comparison, RouteResult } from "../routing/types";
 import type { Installed } from "../offline/store";
 import type { Catalogue } from "../offline/catalogue";
+import { GENERATION } from "../offline/version";
 import RoutingWorker from "../workers/route.worker.ts?worker&inline";
 
 export type RoutingState = ReturnType<typeof useRouting>;
@@ -85,7 +86,7 @@ export function useRouting({
     };
     const keys = legKeys(
       request,
-      catalogue.release,
+      GENERATION,
       cellPacks,
       catalogue.cells,
     );
@@ -118,7 +119,7 @@ export function useRouting({
       const result = selectedRoute(value);
       setComparison({ trackId, revision, value });
       if (result?.status === "ok") {
-        const version = `${catalogue.release}:${cellPacks.length}`;
+        const version = `${GENERATION}:${cellPacks.length}`;
         updateTrack(trackId, (t) => acceptResult(t, revision, result, version));
         const reused = keys.length - missing.length;
         setStatus(
@@ -206,7 +207,7 @@ export function useRouting({
     };
     worker.postMessage({
       id,
-      release: catalogue.release,
+      release: GENERATION,
       packs: cellPacks,
       published: catalogue.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
       request,

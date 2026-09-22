@@ -1,8 +1,20 @@
 /// <reference lib="webworker" />
-import { installPack, listPacks, removePack, type Installed } from "../offline/store";
+import {
+  installPack,
+  listPacks,
+  removePack,
+  type Installed,
+  type Manifest,
+} from "../offline/store";
 
 type Job =
-  | { id: number; type: "install"; url: string }
+  | {
+      id: number;
+      type: "install";
+      manifest: Manifest;
+      /** Where each file is served from; the names it is stored under are in the manifest. */
+      sources: Record<string, string>;
+    }
   | { id: number; type: "list" }
   | { id: number; type: "remove"; pack: Installed }
   | { id: number; type: "cancel" };
@@ -47,8 +59,9 @@ async function run(message: Exclude<Job, { type: "cancel" }>) {
   try {
     if (message.type === "install") {
       const installed = await installPack(
-        message.url,
-        (fraction) => self.postMessage({ id, type: "progress", fraction }),
+        message.manifest,
+        message.sources,
+        (fraction: number) => self.postMessage({ id, type: "progress", fraction }),
         controller.signal,
       );
       self.postMessage({ id, type: "installed", pack: installed });

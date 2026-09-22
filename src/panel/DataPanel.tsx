@@ -210,7 +210,7 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
                       <button
                         className="cell-toggle"
                         aria-label={"Select area " + label}
-                        disabled={!cell.available || busy}
+                        disabled={busy}
                         onClick={() => toggleCell(cell.id)}
                       >
                         <span className="cell-name">{label}</span>

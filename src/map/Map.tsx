@@ -15,7 +15,8 @@ import type { Comparison, Point, RouteResult } from "../routing/types";
 import { mapResourceURL, mapStyle, type Basemap } from "./style";
 import { freshResult, type Track } from "../tracks";
 
-import type { MapCell } from "../offline/cells";
+import type { CellState } from "../offline/cells";
+import type { CellId } from "../geo/grid";
 import { CENTER_COLOR } from "./rideStyle";
 import { addAppLayers, empty, MIN_SELECT_ZOOM } from "./layers";
 import { createContextMenu } from "./contextMenu";
@@ -54,7 +55,8 @@ export function MapView({
   onCell,
   tracks,
   activeId,
-  cells,
+  cellStates,
+  gridZoom,
   command,
   cursor,
   bottomInset,
@@ -63,7 +65,8 @@ export function MapView({
   basemap: Basemap;
   tracks: Track[];
   activeId?: string;
-  cells?: MapCell[];
+  cellStates?: Map<CellId, CellState>;
+  gridZoom?: number;
   command?: MapCommand;
   /** Pixels of the map occluded by the planner panel, so fits stay visible. */
   bottomInset: number;
@@ -123,7 +126,8 @@ export function MapView({
     history,
     tracks,
     activeId,
-    cells,
+    cellStates,
+    gridZoom,
   });
   snapshot.current = {
     editable,
@@ -134,7 +138,8 @@ export function MapView({
     history,
     tracks,
     activeId,
-    cells,
+    cellStates,
+    gridZoom,
   };
   useEffect(() => {
     const key = import.meta.env.VITE_MAPTILER_API_KEY;
@@ -620,7 +625,8 @@ export function MapView({
     history,
     tracks,
     activeId,
-    cells,
+    cellStates,
+    gridZoom,
   ]);
   useEffect(() => {
     const m = map.current;

@@ -7,6 +7,7 @@
  * `whole` reproduces the former worker: one graph under the bbox of every waypoint and one
  * search across all legs. Run it with a browser-sized heap to see the crash.
  */
+import { GENERATION } from "../src/offline/version";
 import { readFileSync } from "node:fs";
 import { catalogueSchema } from "../src/offline/catalogue";
 import type { Installed } from "../src/offline/store";
@@ -18,10 +19,10 @@ import {
 } from "../src/routing/provider";
 import { selectedRoute } from "../src/routing/selection";
 import type { Point } from "../src/routing/types";
-import { DEFAULT_RELEASE } from "./local_release";
+import { DEFAULT_CELLS } from "./local_release";
 import { loadProfile } from "./profile";
 
-const DIR = process.argv[4] ?? DEFAULT_RELEASE;
+const DIR = process.argv[4] ?? DEFAULT_CELLS;
 const mode = process.argv[2] ?? "legs";
 const profile = await loadProfile(process.argv[3] ?? "gravel_50");
 const catalogue = catalogueSchema.parse(
@@ -68,7 +69,7 @@ const sampler = setInterval(
 );
 const provider = new CellGraphProvider(
   packs,
-  catalogue.release,
+  GENERATION,
   catalogue.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
   reader,
 );

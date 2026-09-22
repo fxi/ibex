@@ -25,9 +25,9 @@ import {
 /** Bump when leg routing changes in a way the key cannot see. */
 const LEG_FORMAT = 3;
 
-/** Installed data a leg can read: the release and the version of every cell under its area. */
+/** Installed data a leg can read: the generation and the hash of every cell under its area. */
 export function legData(
-  release: string,
+  generation: string,
   packs: Installed[],
   cells: { id: string; bbox: BBox }[],
   area: BBox,
@@ -38,9 +38,9 @@ export function legData(
       const bbox = bboxes.get(p.manifest.id);
       return !bbox || bboxIntersects(bbox, area);
     })
-    .map((p) => `${p.manifest.id}@${String(p.manifest.version)}`)
+    .map((p) => `${p.manifest.id}@${p.manifest.hash}`)
     .sort();
-  return `${release}|${under.join(",")}`;
+  return `${generation}|${under.join(",")}`;
 }
 
 export function legKey(
@@ -69,7 +69,7 @@ export function legKey(
 /** Keys for every leg of a request, from the installed data each leg would read. */
 export function legKeys(
   request: RouteRequest,
-  release: string,
+  generation: string,
   packs: Installed[],
   cells: { id: string; bbox: BBox }[],
 ): string[] {
@@ -80,7 +80,7 @@ export function legKeys(
       compiled,
       from,
       to,
-      legData(release, packs, cells, searchArea([from, to])),
+      legData(generation, packs, cells, searchArea([from, to])),
     );
   });
 }

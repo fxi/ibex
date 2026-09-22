@@ -23,7 +23,7 @@ import {
 } from "./routing/localEdit";
 import { LIMITS } from "./offline/validate";
 import type { Profile } from "./routing/profiles";
-import { DATA_POINTER_URL } from "./config";
+import { DATA_CATALOGUE_URL } from "./config";
 import { freshResult } from "./tracks";
 import { useTracks } from "./state/useTracks";
 import { useCatalogue } from "./state/useCatalogue";
@@ -84,7 +84,7 @@ function App() {
     },
   });
   const data = useCatalogue({
-    pointerURL: DATA_POINTER_URL,
+    pointerURL: DATA_CATALOGUE_URL,
     onError: setError,
     onStatus: setStatus,
     onDataChange: () => cancel.current(),
@@ -237,7 +237,8 @@ function App() {
         basemap={basemap}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}
-        cells={tab === "data" ? data.cells : undefined}
+        cellStates={tab === "data" ? data.cellStates : undefined}
+        gridZoom={data.gridZoom}
         onCell={(id) => data.toggleCell(id)}
         bottomInset={panel.open ? panel.height + 90 : 90}
         command={command}

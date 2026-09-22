@@ -1,0 +1,44 @@
+{
+  "dataVersion": 1,
+  "generated": "1970-01-01T00:00:00.000Z",
+  "grid": {
+    "scheme": "xyz",
+    "zoom": 9,
+    "blockZoom": 13,
+    "fieldZoom": 15
+  },
+  "attribution": "Synthetic test data — not a real cycling network",
+  "cells": [
+    {
+      "id": "9-264-181",
+      "x": 264,
+      "y": 181,
+      "bbox": [
+        5.625,
+        46.0732306,
+        6.328125,
+        46.5588603
+      ],
+      "hash": "0ef2a85c89f1600b",
+      "builtAt": "1970-01-01T00:00:00.000Z",
+      "osm": "1970-01-01T00:00:00.000Z",
+      "bytes": 1004,
+      "blocks": 3,
+      "terrainCoverage": 1,
+      "files": [
+        {
+          "path": "index.ibx",
+          "bytes": 647,
+          "sha256": "3861bc4a452e5fe8519d6a8495aa14928443bc4bb52478b25a8ed1bcef69c1ab"
+        },
+        {
+          "path": "graph.ibx",
+          "bytes": 357,
+          "sha256": "b191dde8cd39eeb0bb14866effa42b0656db881775219cb69fbfa33799d5f3c1"
+        }
+      ],
+      "nodes": 4,
+      "edges": 6
+    }
+  ]
+}

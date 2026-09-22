@@ -3,31 +3,37 @@ import { storageEstimate, sha256Hex } from "./capabilities";
 import { openDB } from "idb";
 import { z } from "zod";
 const fileSchema = z.object({
-  path: z.string().regex(/^[a-zA-Z0-9_.-]+$/),
+  path: z.enum(["index.ibx", "graph.ibx"]),
   bytes: z.number().int().positive().max(300_000_000),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
 });
-/** One downloadable grid cell: `manifest.json` beside its `index.ibx` and `graph.ibx`. */
+/**
+ * What is known about one installed cell.
+ *
+ * It is the catalogue entry, kept beside the files once they are on the device, so an
+ * installed cell can be checked and routed on with the catalogue unreachable. There is no
+ * published manifest any more: the catalogue says all of this, and a second copy of it per
+ * cell was one more object to fetch and one more thing to disagree.
+ */
 export const cellManifestSchema = z.object({
   dataVersion: z.literal(DATA_VERSION),
   // Hyphenated cell id, which is also the `packs` object-store key.
   id: z.string().regex(/^\d{1,2}-\d{1,8}-\d{1,8}$/),
-  name: z.string().max(100),
-  version: z.string().regex(/^[a-zA-Z0-9-]+$/),
-  release: z.string().regex(/^[a-z0-9._-]{1,64}$/),
+  /** The identity of these bytes. A different hash in the catalogue means stale. */
+  hash: z.string().regex(/^[a-f0-9]{8,64}$/),
+  builtAt: z.string(),
   cell: z.object({
     zoom: z.number().int().min(0).max(14),
     x: z.number().int().nonnegative(),
     y: z.number().int().nonnegative(),
   }),
   bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
-  osmTimestamp: z.string(),
+  osm: z.string(),
   terrainCoverage: z.number().min(0).max(1),
   attribution: z.string(),
   blockZoom: z.number().int().min(0).max(20),
   blocks: z.number().int().nonnegative(),
-  files: z.array(fileSchema).min(2).max(1000),
-  build: z.record(z.string(), z.unknown()).optional(),
+  files: z.array(fileSchema).length(2),
 });
 export const manifestSchema = cellManifestSchema;
 export type Manifest = z.infer<typeof manifestSchema>;
@@ -51,14 +57,6 @@ const db = () =>
   });
 export async function listPacks(): Promise<Installed[]> {
   return (await db()).getAll("packs");
-}
-export async function readManifest(url: string): Promise<Manifest> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Pack catalog unavailable (${r.status})`);
-  const value = await r.json();
-  if (value?.dataVersion !== DATA_VERSION)
-    throw new Error("This area's data is for another version of Ibex.");
-  return manifestSchema.parse(value);
 }
 const root = async () =>
   (await navigator.storage.getDirectory()).getDirectoryHandle("ibex", {
@@ -134,18 +132,22 @@ export async function removePack(pack: Installed) {
   if (current?.directory === pack.directory)
     await database.delete("packs", pack.manifest.id);
 }
+/**
+ * Install one cell.
+ *
+ * `sources` says where each file is served from, which is not where it is stored: a
+ * published object is named after the cell's hash so it can be cached forever, while on
+ * the device it keeps the plain name the reader asks for.
+ */
 export async function installPack(
-  url: string,
+  manifest: Manifest,
+  sources: Record<string, string>,
   progress: (fraction: number) => void,
   signal: AbortSignal,
 ): Promise<Installed> {
-  const manifest = await readManifest(url);
-  const paths = manifest.files.map((f) => f.path);
-  if (
-    new Set(paths).size !== paths.length ||
-    !["index.ibx", "graph.ibx"].every((name) => paths.includes(name))
-  )
-    throw new Error("Invalid pack file list");
+  const paths = new Set(manifest.files.map((f) => f.path));
+  if (paths.size !== 2 || !paths.has("index.ibx") || !paths.has("graph.ibx"))
+    throw new Error("A cell needs exactly an index.ibx and a graph.ibx");
   const total = manifest.files.reduce((s, f) => s + f.bytes, 0);
   if (total > 400_000_000)
     throw new Error("Pack exceeds this prototype’s 400 MB storage limit");
@@ -155,11 +157,11 @@ export async function installPack(
   await navigator.storage?.persist?.().catch(() => false);
   const database = await db(),
     previous: Installed | undefined = await database.get("packs", manifest.id);
-  if (previous?.manifest.version === manifest.version) return previous;
+  if (previous?.manifest.hash === manifest.hash) return previous;
   const pack: Installed = {
     manifest,
     installedAt: new Date().toISOString(),
-    directory: `${manifest.id}-${manifest.version}`,
+    directory: `${manifest.id}-${manifest.hash}`,
     backend:
       typeof navigator.storage?.getDirectory === "function" ? "opfs" : "idb",
   };
@@ -198,7 +200,9 @@ export async function installPack(
           /* The browser may have evicted a staged file. */
         }
       }
-      const response = await fetch(new URL(f.path, url), { signal });
+      const from = sources[f.path];
+      if (!from) throw new Error(`No source for ${f.path}`);
+      const response = await fetch(from, { signal });
       if (!response.ok || !response.body)
         throw new Error(`Cannot download ${f.path}`);
       const reader = response.body.getReader(),
@@ -210,7 +214,7 @@ export async function installPack(
         received += part.value.byteLength;
         if (received > f.bytes) {
           await reader.cancel();
-          throw new Error("Pack size differs from manifest");
+          throw new Error("Cell is a different size than the catalogue says");
         }
         chunks.push(part.value);
         progress((done + received) / total);

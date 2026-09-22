@@ -9,10 +9,12 @@ import { storageEstimate } from "../offline/capabilities";
 import {
   cachedCatalogue,
   readCatalogue,
-  resolveCellManifest,
+  cellSources,
+  toManifest,
   type Catalogue,
 } from "../offline/catalogue";
 import {
+  cellStates as deriveCellStates,
   installedCells,
   mapCells,
   nextIntent,
@@ -77,14 +79,16 @@ export function useCatalogue({
       setProgress(undefined);
       return;
     }
-    const cell = catalogueRef.current?.cells.find((c) => c.id === next);
-    if (!cell) return nextInstall();
+    const current = catalogueRef.current;
+    const cell = current?.cells.find((c) => c.id === next);
+    if (!current || !cell) return nextInstall();
     setDownloadingCell(next);
     setProgress(0);
     dataWorker.current?.postMessage({
       id: 1,
       type: "install",
-      url: resolveCellManifest(catalogueURL.current, cell),
+      manifest: toManifest(current, cell),
+      sources: cellSources(catalogueURL.current, cell),
     });
   }
 
@@ -229,17 +233,26 @@ export function useCatalogue({
       failedCells,
     ],
   );
+  // The map draws the grid for its own viewport, most of which nobody has built, so it
+  // needs a lookup rather than a list.
+  const cellStates = useMemo(
+    () =>
+      deriveCellStates(catalogue, installed, {
+        intents,
+        queued: queuedCells,
+        downloading: downloadingCell,
+        failed: failedCells,
+      }),
+    [catalogue, installed, intents, queuedCells, downloadingCell, failedCells],
+  );
   const savedCells = useMemo(
     () => installedCells(installed, catalogue),
     [installed, catalogue],
   );
-  const routableCells = useMemo(
-    () =>
-      catalogue
-        ? installed.filter((p) => p.manifest.release === catalogue.release)
-        : [],
-    [installed, catalogue],
-  );
+  // Everything installed can route: a pack from another generation is refused by its own
+  // header, and one from another data version is removed at start-up. There is no release
+  // for a cell to belong to any more.
+  const routableCells = installed;
 
   function download(ids: string[]) {
     if (!ids.length) return;
@@ -316,6 +329,8 @@ export function useCatalogue({
     notice,
     installed,
     cells,
+    cellStates,
+    gridZoom: catalogue?.grid.zoom,
     savedCells,
     routableCells,
     intents,

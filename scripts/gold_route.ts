@@ -216,10 +216,10 @@ export function pickWaypoints(gold: Gold, pick = "intent"): number[] {
 
 async function importGpx(file: string, name: string, profile = "gravel_50", intent?: string) {
   const { parseGPX } = await import("../src/importers/gpx");
-  const { DEFAULT_RELEASE, loadReleaseGraph } = await import("./local_release");
+  const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_release");
   const round = (p: Point): Point => [+p[0].toFixed(7), +p[1].toFixed(7)];
   const line = parseGPX(fs.readFileSync(file, "utf8")).geometry.map(round);
-  const graph = await loadReleaseGraph(DEFAULT_RELEASE, line);
+  const graph = await loadReleaseGraph(DEFAULT_CELLS, line);
   const vertices = new Set(graph.edges.flatMap((e) => e.geometry.map(key)));
   const off = line.filter((p, i) => i > 0 && i < line.length - 1 && !vertices.has(key(p)));
   // Ibex splits an edge at each waypoint, so a drawn line leaves the graph's vertices

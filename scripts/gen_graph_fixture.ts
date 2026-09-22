@@ -15,7 +15,7 @@ import type { Installed } from "../src/offline/store";
 import type { BBox } from "../src/geo/grid";
 import type { Graph, Point } from "../src/routing/types";
 import { distance } from "../src/geo/distance";
-import { DEFAULT_RELEASE } from "./local_release";
+import { DEFAULT_CELLS } from "./local_release";
 
 type Region = {
   bbox: BBox;
@@ -75,7 +75,7 @@ if (!region)
   throw new Error(
     `Unknown region "${name}": ${Object.keys(REGIONS).join(", ")}, or gold/<name>`,
   );
-const DIR = process.argv[3] ?? DEFAULT_RELEASE;
+const DIR = process.argv[3] ?? DEFAULT_CELLS;
 const OUT = `tests/fixtures/${name}-graph.json.gz`;
 const BBOX = region.bbox;
 

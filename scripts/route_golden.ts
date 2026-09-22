@@ -16,13 +16,13 @@
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { route, total } from "../src/routing/engine";
-import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point, RouteResult } from "../src/routing/types";
 
 const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const check = process.argv.includes("--check");
-const packs = positional[0] ?? DEFAULT_RELEASE;
+const packs = positional[0] ?? DEFAULT_CELLS;
 const OUT = "data/derived/route-golden.json";
 
 /** Real ground, chosen to exercise different parts of the search. */

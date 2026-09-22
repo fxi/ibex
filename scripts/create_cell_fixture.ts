@@ -1,10 +1,10 @@
 /**
- * Regenerate the small, explicitly synthetic cell release used by network-independent CI.
+ * Regenerate the small, explicitly synthetic cell used by network-independent CI.
  *
- * It is laid out exactly like a published data tree (see docs/data-format.md): a
- * `latest.json` pointer and one release directory, so browser tests exercise the same
- * pointer, catalogue and cell resolution as the deployed app. It encodes a known synthetic
- * road so routes run over fixed geometry.
+ * It is laid out exactly like a published data tree (see docs/data-format.md): one
+ * `catalog.json` and one cell whose files are named after its hash, so browser tests
+ * exercise the same catalogue and cell resolution as the deployed app. It encodes a known
+ * synthetic road so routes run over fixed geometry.
  */
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -13,7 +13,7 @@ import { encodeBlock, stringTable } from "../src/offline/ibex/block";
 import { encodeIndex } from "../src/offline/ibex/index";
 import { crc32 } from "../src/offline/ibex/varint";
 import { releaseTag, type BlockRef } from "../src/offline/ibex/spec";
-import { DATA_VERSION } from "../src/offline/version";
+import { DATA_VERSION, GENERATION } from "../src/offline/version";
 import { cellBBox, cellId, parseCellId, tileOf } from "../src/geo/grid";
 import { distance } from "../src/routing/engine";
 import {
@@ -23,9 +23,8 @@ import {
 } from "../src/routing/types";
 
 const ROOT = "tests/fixtures/data";
-const RELEASE = "fixture";
-const directory = `${ROOT}/v${DATA_VERSION}/releases/${RELEASE}`;
-const tag = releaseTag(RELEASE);
+const directory = ROOT;
+const tag = releaseTag(GENERATION);
 /** Four points inside cell 9-264-181. */
 const points: Point[] = [
   [6.146, 46.189],
@@ -132,7 +131,7 @@ for (const c of chunks) {
   at += c.length;
 }
 const index = encodeIndex({
-  release: RELEASE,
+  release: GENERATION,
   cell,
   blockZoom: 13,
   fieldZoom: 15,
@@ -145,24 +144,25 @@ const index = encodeIndex({
 });
 
 await fs.rm(ROOT, { recursive: true, force: true });
-await fs.mkdir(`${directory}/${id}`, { recursive: true });
-const files: { path: string; bytes: number; sha256: string }[] = [];
-for (const [path, bytes] of [
-  ["index.ibx", index],
-  ["graph.ibx", graph],
-] as const) {
-  await fs.writeFile(`${directory}/${id}/${path}`, bytes);
-  files.push({
+await fs.mkdir(`${directory}/cells/${id}`, { recursive: true });
+const files = (["index.ibx", "graph.ibx"] as const).map((path) => {
+  const bytes = path === "index.ibx" ? index : graph;
+  return {
     path,
     bytes: bytes.byteLength,
     sha256: createHash("sha256").update(bytes).digest("hex"),
-  });
-}
-
-const version = createHash("sha256")
-  .update(RELEASE + files.map((f) => f.sha256).join(""))
+  };
+});
+// The cell is named after its own bytes, exactly as the builder names a real one.
+const hash = createHash("sha256")
+  .update(files.map((f) => f.sha256).join(""))
   .digest("hex")
-  .slice(0, 8);
+  .slice(0, 16);
+for (const [path, bytes] of [
+  ["index.ibx", index],
+  ["graph.ibx", graph],
+] as const)
+  await fs.writeFile(`${directory}/cells/${id}/${hash}.${path}`, bytes);
 const bbox = cellBBox(cell).map((v) => Number(v.toFixed(7))) as [
   number,
   number,
@@ -170,37 +170,12 @@ const bbox = cellBBox(cell).map((v) => Number(v.toFixed(7))) as [
   number,
 ];
 await fs.writeFile(
-  `${directory}/${id}/manifest.json`,
+  `${directory}/catalog.json`,
   JSON.stringify(
     {
       dataVersion: DATA_VERSION,
-      id,
-      name: `${cell.zoom}/${cell.x}/${cell.y}`,
-      version,
-      release: RELEASE,
-      cell,
-      blockZoom: 13,
-      blocks: blocks.length,
-      bbox,
-      osmTimestamp: "synthetic",
-      terrainCoverage: 1,
-      attribution: "Synthetic test data — not a real cycling network",
-      files,
-    },
-    null,
-    2,
-  ) + "\n",
-);
-
-await fs.writeFile(
-  `${directory}/catalogue.json`,
-  JSON.stringify(
-    {
-      dataVersion: DATA_VERSION,
-      release: RELEASE,
-      grid: { scheme: "xyz", zoom: 9, blockZoom: 13, fieldZoom: 15 },
-      osmTimestamp: "synthetic",
       generated: "1970-01-01T00:00:00.000Z",
+      grid: { scheme: "xyz", zoom: 9, blockZoom: 13, fieldZoom: 15 },
       attribution: "Synthetic test data — not a real cycling network",
       cells: [
         {
@@ -208,10 +183,13 @@ await fs.writeFile(
           x: cell.x,
           y: cell.y,
           bbox,
-          manifest: `${id}/manifest.json`,
-          version,
+          hash,
+          builtAt: "1970-01-01T00:00:00.000Z",
+          osm: "1970-01-01T00:00:00.000Z",
           bytes: files.reduce((sum, f) => sum + f.bytes, 0),
-          available: true,
+          blocks: blocks.length,
+          terrainCoverage: 1,
+          files,
           nodes: nodes.length,
           edges: edges.length,
         },
@@ -226,16 +204,3 @@ console.log(
   `wrote ${directory}: cell ${id}, ${blocks.length} block(s), ${files.reduce((s, f) => s + f.bytes, 0)} bytes`,
 );
 
-await fs.writeFile(
-  `${ROOT}/v${DATA_VERSION}/latest.json`,
-  JSON.stringify(
-    {
-      dataVersion: DATA_VERSION,
-      release: RELEASE,
-      catalogue: `releases/${RELEASE}/catalogue.json`,
-      published: "1970-01-01T00:00:00.000Z",
-    },
-    null,
-    2,
-  ) + "\n",
-);

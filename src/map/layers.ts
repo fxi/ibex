@@ -15,7 +15,7 @@ import {
 } from "./rideStyle";
 
 /** Below this zoom the grid is context only: one stray click must not queue an area. */
-export const MIN_SELECT_ZOOM = 6;
+export const MIN_SELECT_ZOOM = 5;
 /** What a source holds until data arrives, and what it is reset to. */
 export const empty = { type: "FeatureCollection" as const, features: [] };
 

@@ -143,14 +143,13 @@ function buildCell(
     manifest: {
       dataVersion: 1,
       id,
-      name: id,
-      version: "v1",
-      release,
+      hash: "0".repeat(16),
+      builtAt: "1970-01-01T00:00:00.000Z",
       cell,
       blockZoom: 13,
       blocks: blocks.length,
       bbox: cellBBox(cell),
-      osmTimestamp: "synthetic",
+      osm: "synthetic",
       terrainCoverage: 1,
       attribution: "synthetic",
       files: [
@@ -297,9 +296,10 @@ describe("multi-pack graph provider", () => {
     expect(provider.stats.rangeReads).toBe(reads);
   });
 
-  it("ignores a pack from another release", async () => {
+  it("ignores a pack built by another generation", async () => {
+    // Its own header carries the tag, so it is refused without consulting a manifest.
     const foreign = buildCell("9-265-181", [edge(2), edge(2, true)], {
-      release: "g4-19700101-p5-00000000",
+      release: "b0",
     });
     const provider = await open([west, foreign]);
     expect(provider.installedCells).toEqual(["9-264-181"]);

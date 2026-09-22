@@ -22,7 +22,7 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { buildGraph, sourceBBox } from "../src/build/graph";
 import { inflate } from "../src/build/platform/node";
-import { sampleTerrain, TERRAIN_ZOOM } from "../src/build/platform/terrainCache";
+import { sampleTerrain } from "../src/build/platform/terrainCache";
 import {
   mergeSources,
   readSource,
@@ -38,7 +38,7 @@ import {
 import { cellBBox, cellId, cellsInBBox, parseCellId, type Cell } from "../src/geo/grid";
 import { packCell, BLOCK_ZOOM, FIELD_ZOOM } from "../src/offline/ibex/pack";
 import { DATA_VERSION, GENERATION } from "../src/offline/version";
-import { COST_MODEL_VERSION } from "../src/routing/types";
+import { catalogueSchema, type CatalogueCell } from "../src/offline/catalogue";
 
 const GEOFABRIK_INDEX = "https://download.geofabrik.de/index-v1.json";
 const USER_AGENT = "ibex-builder/0.1 (+https://fxi.io/ibex)";
@@ -225,8 +225,10 @@ async function main() {
       }
       built.push(result);
       console.log(
-        `  ${id}: ${result.meta.edges} edges, ${(result.bytes / 1e6).toFixed(1)} MB` +
-          (withTerrain ? `, terrain ${(result.meta.terrainCoverage * 100).toFixed(0)}%` : ""),
+        `  ${id}: ${result.entry.edges} edges, ${(result.entry.bytes / 1e6).toFixed(1)} MB` +
+          (withTerrain
+            ? `, terrain ${(result.entry.terrainCoverage * 100).toFixed(0)}%`
+            : ""),
       );
     }
   }
@@ -236,16 +238,9 @@ async function main() {
   console.log(`serve it with: npm run data:stage -- ${out}`);
 }
 
-type Built = { id: string; cell: Cell; bytes: number; hash: string; meta: Meta };
+type Built = { id: string; cell: Cell; entry: CatalogueCell };
 
-type Meta = {
-  edges: number;
-  nodes: number;
-  terrainCoverage: number;
-  osmTimestamp: string;
-};
-
-async function buildOne(cell: Cell, source: CellSource) {
+async function buildOne(cell: Cell, source: CellSource): Promise<Built | undefined> {
   const id = cellId(cell);
   let elevations = new Map<number, number>();
   let coverage = 0;
@@ -266,124 +261,76 @@ async function buildOne(cell: Cell, source: CellSource) {
   const { graph } = buildGraph(source, { cell, elevations });
   if (graph.edges.length < MIN_EDGES) return undefined;
 
-  const meta: Meta = {
-    edges: graph.edges.length,
-    nodes: graph.nodes.length,
-    terrainCoverage: Number(coverage.toFixed(3)),
-    osmTimestamp: new Date().toISOString(),
-  };
-  const packed = packCell(graph, cell, GENERATION, {
-    terrainCoverage: meta.terrainCoverage,
-    osmTimestamp: meta.osmTimestamp,
-  });
-  const directory = `${out}/${id}`;
-  await fs.mkdir(directory, { recursive: true });
-  await fs.writeFile(`${directory}/index.ibx`, packed.index);
-  await fs.writeFile(`${directory}/graph.ibx`, packed.graph);
-
+  const osm = new Date().toISOString();
+  const packed = packCell(graph, cell, GENERATION, { osm });
   const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-  const files = [
-    { path: "index.ibx", bytes: packed.index.length, sha256: sha(packed.index) },
-    { path: "graph.ibx", bytes: packed.graph.length, sha256: sha(packed.graph) },
-  ];
-  const bytes = files.reduce((sum, f) => sum + f.bytes, 0);
+  const digests = { index: sha(packed.index), graph: sha(packed.graph) };
+  // The cell's identity, and the name its files are published under: derived from the
+  // bytes, so a rebuild that changes nothing publishes nothing new.
   const hash = createHash("sha256")
-    .update(files.map((f) => f.sha256).join(""))
+    .update(`${digests.index}${digests.graph}`)
     .digest("hex")
     .slice(0, 16);
-  await fs.writeFile(
-    `${directory}/manifest.json`,
-    JSON.stringify(
-      {
-        dataVersion: DATA_VERSION,
-        id,
-        name: id,
-        version: hash,
-        release: GENERATION,
-        cell: { zoom: cell.zoom, x: cell.x, y: cell.y },
-        bbox: cellBBox(cell),
-        osmTimestamp: meta.osmTimestamp,
-        terrainCoverage: meta.terrainCoverage,
-        blockZoom: BLOCK_ZOOM,
-        blocks: packed.blocks,
-        attribution:
-          "© OpenStreetMap contributors · ODbL 1.0 | Terrain: Mapterhorn (see source attribution)",
-        files,
-      },
-      null,
-      2,
-    ),
-  );
-  return { id, cell, bytes, hash, meta };
+
+  const directory = `${out}/cells/${id}`;
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(`${directory}/${hash}.index.ibx`, packed.index);
+  await fs.writeFile(`${directory}/${hash}.graph.ibx`, packed.graph);
+
+  return {
+    id,
+    cell,
+    entry: {
+      id,
+      x: cell.x,
+      y: cell.y,
+      bbox: cellBBox(cell),
+      hash,
+      builtAt: new Date().toISOString(),
+      osm,
+      bytes: packed.index.length + packed.graph.length,
+      blocks: packed.blocks,
+      terrainCoverage: Number(coverage.toFixed(3)),
+      files: [
+        { path: "index.ibx" as const, bytes: packed.index.length, sha256: digests.index },
+        { path: "graph.ibx" as const, bytes: packed.graph.length, sha256: digests.graph },
+      ],
+      nodes: graph.nodes.length,
+      edges: graph.edges.length,
+    },
+  };
 }
 
+/**
+ * Rewrite the catalogue with what this run built, keeping everything it did not touch.
+ *
+ * Cells arrive one at a time and a run covering the Alps must not erase Scotland, so the
+ * previous catalogue is the starting point rather than the directory listing: it is the
+ * only record of a cell's identity once the per-cell manifest went away.
+ */
 async function writeCatalogue(built: Built[]) {
-  // Whatever was already here stays: cells arrive one at a time and a later run must not
-  // erase an earlier one's work. The catalogue is rebuilt from what is on disk.
-  const entries = await fs.readdir(out, { withFileTypes: true }).catch(() => []);
-  const onDisk = entries
-    .filter((e) => e.isDirectory() && /^\d{1,2}-\d{1,8}-\d{1,8}$/.test(e.name))
-    .map((e) => e.name)
-    .sort();
-  const fresh = new Map(built.map((b) => [b.id, b]));
-  const cells = [];
-  let oldest = "";
-  for (const id of onDisk) {
-    const made = fresh.get(id);
-    let record = made;
-    if (!record) {
-      const manifest = await fs
-        .readFile(`${out}/${id}/manifest.json`, "utf8")
-        .then((t) => JSON.parse(t))
-        .catch(() => undefined);
-      if (!manifest || manifest.release !== GENERATION) continue;
-      record = {
-        id,
-        cell: parseCellId(id),
-        bytes: (manifest.files as { bytes: number }[]).reduce((s, f) => s + f.bytes, 0),
-        hash: manifest.version,
-        meta: {
-          edges: 0,
-          nodes: 0,
-          terrainCoverage: manifest.terrainCoverage ?? 0,
-          osmTimestamp: manifest.osmTimestamp,
-        },
-      };
-    }
-    if (!oldest || record.meta.osmTimestamp < oldest) oldest = record.meta.osmTimestamp;
-    cells.push({
-      id,
-      x: record.cell.x,
-      y: record.cell.y,
-      bbox: cellBBox(record.cell),
-      manifest: `${id}/manifest.json`,
-      version: record.hash,
-      bytes: record.bytes,
-      available: true,
-      nodes: record.meta.nodes || undefined,
-      edges: record.meta.edges || undefined,
-    });
-  }
-  await fs.writeFile(
-    `${out}/catalogue.json`,
-    JSON.stringify(
-      {
-        dataVersion: DATA_VERSION,
-        release: GENERATION,
-        grid: { scheme: "xyz", zoom, blockZoom: BLOCK_ZOOM, fieldZoom: FIELD_ZOOM },
-        osmTimestamp: oldest || "unknown",
-        generated: new Date().toISOString(),
-        costModelVersion: COST_MODEL_VERSION,
-        terrainSource: withTerrain ? `Mapterhorn Terrarium z${TERRAIN_ZOOM}` : null,
-        attribution:
-          "© OpenStreetMap contributors · ODbL 1.0 | Terrain: Mapterhorn (see source attribution)",
-        cells,
-      },
-      null,
-      2,
-    ),
+  const path = `${out}/catalog.json`;
+  const existing = await fs
+    .readFile(path, "utf8")
+    .then((text) => catalogueSchema.parse(JSON.parse(text)))
+    .catch(() => undefined);
+  const cells = new Map<string, CatalogueCell>(
+    (existing?.cells ?? []).map((cell) => [cell.id, cell]),
   );
-  console.log(`catalogue: ${cells.length} cells at ${out}/catalogue.json`);
+  for (const item of built) cells.set(item.id, item.entry);
+
+  const catalogue = {
+    dataVersion: DATA_VERSION,
+    generated: new Date().toISOString(),
+    grid: { scheme: "xyz" as const, zoom, blockZoom: BLOCK_ZOOM, fieldZoom: FIELD_ZOOM },
+    attribution:
+      "© OpenStreetMap contributors · ODbL 1.0 | Terrain: Mapterhorn (see source attribution)",
+    cells: [...cells.values()].sort((a, b) => a.id.localeCompare(b.id)),
+  };
+  catalogueSchema.parse(catalogue);
+  await fs.mkdir(out, { recursive: true });
+  await fs.writeFile(path, JSON.stringify(catalogue, null, 2));
+  console.log(`catalogue: ${catalogue.cells.length} cells at ${path}`);
 }
 
 await main();

@@ -18,8 +18,7 @@
     "test:e2e": "playwright test",
     "benchmark": "tsx scripts/benchmark.ts",
     "build:test": "node --import tsx scripts/build_browser_tests.ts",
-    "data:build": "node --import tsx --max-old-space-size=12000 scripts/build_cells.ts",
-    "data:stage": "node --import tsx scripts/stage_release.ts"
+    "data:build": "node --import tsx --max-old-space-size=12000 scripts/build_cells.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

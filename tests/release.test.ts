@@ -11,7 +11,9 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
-import { catalogueSchema } from "../src/offline/catalogue";
+import { catalogueSchema, toManifest } from "../src/offline/catalogue";
+import { DEFAULT_CELLS } from "../scripts/local_release";
+import { GENERATION } from "../src/offline/version";
 import { decodeIndex } from "../src/offline/ibex/index";
 import { decodeBlock } from "../src/offline/ibex/block";
 import { crc32 } from "../src/offline/ibex/varint";
@@ -29,14 +31,14 @@ import type { Installed } from "../src/offline/store";
 import type { Point } from "../src/routing/types";
 import { DATA_VERSION } from "../src/offline/version";
 
-const DIR = process.env.IBEX_RELEASE ?? "data/build/geneva-toulon-v7/packs";
-const present = existsSync(`${DIR}/catalogue.json`);
+const DIR = process.env.IBEX_CELLS ?? DEFAULT_CELLS;
+const present = existsSync(`${DIR}/catalog.json`);
 const CELL_LIMIT = 50_000_000;
 
 const read = (path: string) => new Uint8Array(readFileSync(path));
 const catalogue = present
   ? catalogueSchema.parse(
-      JSON.parse(readFileSync(`${DIR}/catalogue.json`, "utf8")),
+      JSON.parse(readFileSync(`${DIR}/catalog.json`, "utf8")),
     )
   : undefined;
 
@@ -44,25 +46,24 @@ function installedFor(ids: string[]): {
   packs: Installed[];
   reader: PackReader;
 } {
-  const packs = ids.map(
-    (id) =>
-      ({
-        manifest: JSON.parse(
-          readFileSync(`${DIR}/${id}/manifest.json`, "utf8"),
-        ),
-        installedAt: "1970-01-01T00:00:00.000Z",
-        directory: id,
-        backend: "idb",
-      }) as Installed,
-  );
+  const packs = ids.map((id) => {
+    const entry = catalogue!.cells.find((c) => c.id === id)!;
+    return {
+      manifest: toManifest(catalogue!, entry),
+      installedAt: "1970-01-01T00:00:00.000Z",
+      directory: id,
+      backend: "idb",
+    } as Installed;
+  });
+  // Published under the cell hash, read back under the plain name, as on a device.
+  const at = (pack: Installed, path: string) =>
+    `${DIR}/cells/${pack.manifest.id}/${pack.manifest.hash}.${path}`;
   const reader: PackReader = {
     async readFile(pack, path) {
-      return read(`${DIR}/${pack.manifest.id}/${path}`).buffer.slice(
-        0,
-      ) as ArrayBuffer;
+      return read(at(pack, path)).buffer.slice(0) as ArrayBuffer;
     },
     async readRange(pack, path, offset, length) {
-      const bytes = read(`${DIR}/${pack.manifest.id}/${path}`);
+      const bytes = read(at(pack, path));
       return bytes.slice(offset, offset + length).buffer as ArrayBuffer;
     },
   };
@@ -74,7 +75,7 @@ describe.skipIf(!present)("generated release", () => {
     expect(catalogue!.cells.length).toBeGreaterThan(0);
     expect(catalogue!.grid).toMatchObject({ scheme: "xyz", blockZoom: 13 });
     // `<osm edition>-<hash of inputs>`; pin the shape, not a value that moves with the data.
-    expect(catalogue!.release).toMatch(/^\d{8}-[0-9a-f]{8}$/);
+    expect(GENERATION).toMatch(/^\d{8}-[0-9a-f]{8}$/);
     for (const cell of catalogue!.cells) {
       const derived = cellBBox(parseCellId(cell.id));
       derived.forEach((v, i) => expect(cell.bbox[i]).toBeCloseTo(v, 6));
@@ -86,19 +87,19 @@ describe.skipIf(!present)("generated release", () => {
       expect(cell.bytes).toBeLessThan(CELL_LIMIT);
   });
 
-  it("agrees between the catalogue and each cell manifest", () => {
+  it("names every cell file after the cell, and counts its bytes", () => {
+    // There is no per-cell manifest any more: the catalogue is the only record, so it has
+    // to agree with the files on disk by itself.
     for (const cell of catalogue!.cells) {
-      const manifest = JSON.parse(
-        readFileSync(`${DIR}/${cell.id}/manifest.json`, "utf8"),
-      );
-      expect(manifest.release).toBe(catalogue!.release);
-      expect(manifest.version).toBe(cell.version);
+      const manifest = toManifest(catalogue!, cell);
       expect(manifest.id).toBe(cell.id);
       expect(manifest.dataVersion).toBe(DATA_VERSION);
-      const total = manifest.files.reduce(
-        (sum: number, f: { bytes: number }) => sum + f.bytes,
-        0,
-      );
+      let total = 0;
+      for (const file of cell.files) {
+        const bytes = read(`${DIR}/cells/${cell.id}/${cell.hash}.${file.path}`);
+        expect(bytes.byteLength).toBe(file.bytes);
+        total += file.bytes;
+      }
       expect(total).toBe(cell.bytes);
     }
   });
@@ -106,7 +107,7 @@ describe.skipIf(!present)("generated release", () => {
   it("decodes every cell index against the release", () => {
     for (const cell of catalogue!.cells) {
       const index = decodeIndex(read(`${DIR}/${cell.id}/index.ibx`), {
-        release: catalogue!.release,
+        release: GENERATION,
         cell: parseCellId(cell.id),
       });
       expect(index.blocks.length).toBeGreaterThan(0);
@@ -126,7 +127,7 @@ describe.skipIf(!present)("generated release", () => {
   it("verifies and decodes every block of one cell", () => {
     const id = catalogue!.cells[0].id;
     const index = decodeIndex(read(`${DIR}/${id}/index.ibx`), {
-      release: catalogue!.release,
+      release: GENERATION,
     });
     const graph = readFileSync(`${DIR}/${id}/graph.ibx`);
     let nodes = 0;
@@ -154,7 +155,7 @@ describe.skipIf(!present)("generated release", () => {
   it("decodes data every validator accepts", () => {
     const id = catalogue!.cells[0].id;
     const index = decodeIndex(read(`${DIR}/${id}/index.ibx`), {
-      release: catalogue!.release,
+      release: GENERATION,
     });
     const graph = readFileSync(`${DIR}/${id}/graph.ibx`);
     for (const ref of index.blocks.slice(0, 12)) {
@@ -186,7 +187,7 @@ describe.skipIf(!present)("generated release", () => {
         const { packs, reader } = installedFor(ids);
         const provider = new CellGraphProvider(
           packs,
-          catalogue!.release,
+          GENERATION,
           catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
           reader,
         );
@@ -241,7 +242,7 @@ describe.skipIf(!present)("generated release", () => {
         const { packs, reader } = installedFor(ids);
         const provider = new CellGraphProvider(
           packs,
-          catalogue!.release,
+          GENERATION,
           catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
           reader,
         );
@@ -286,7 +287,7 @@ describe.skipIf(!present)("generated release", () => {
         const { packs, reader } = installedFor(ids);
         const provider = new CellGraphProvider(
           packs,
-          catalogue!.release,
+          GENERATION,
           catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
           reader,
         );
@@ -327,7 +328,7 @@ describe.skipIf(!present)("generated release", () => {
         const { packs, reader } = installedFor([ids[0]]);
         const provider = new CellGraphProvider(
           packs,
-          catalogue!.release,
+          GENERATION,
           catalogue!.cells.map((c) => ({ id: c.id, bbox: c.bbox })),
           reader,
         );

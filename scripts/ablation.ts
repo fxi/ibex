@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { route } from "../src/routing/engine";
 import type { Point, RouteRequest } from "../src/routing/types";
-import { DEFAULT_RELEASE, loadReleaseGraph } from "./local_release";
+import { DEFAULT_CELLS, loadReleaseGraph } from "./local_release";
 import { loadProfile } from "./profile";
 const wanderer = await loadProfile("wanderer");
 const anchors: Point[] = [
@@ -9,7 +9,7 @@ const anchors: Point[] = [
   [6.171, 46.119],
 ];
 const graph = await loadReleaseGraph(
-  process.argv[2] ?? DEFAULT_RELEASE,
+  process.argv[2] ?? DEFAULT_CELLS,
   anchors,
 );
 const request: RouteRequest = {

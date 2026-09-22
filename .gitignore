@@ -1,7 +1,8 @@
 .env
 .env.*
 !.env.example
-/data/
+
+/.cache/
 /tmp/
 .DS_Store
 .claude/
