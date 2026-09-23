@@ -10,6 +10,10 @@ import {
   Search,
   Trash2,
   SquarePen,
+  CalendarDays,
+  ArrowDownAZ,
+  Check,
+  Share,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
 
@@ -18,6 +22,23 @@ import type { PanelContext } from "./context";
 import { ConvertDialog } from "./ConvertDialog";
 import { ImportButton } from "./ImportButton";
 import { Modal } from "./Modal";
+
+/** How the list is ordered. The collection keeps creation order, which "date" shows as is. */
+type Sort = "date" | "name" | "visible";
+const SORTS: [Sort, string, typeof CalendarDays][] = [
+  ["date", "Date", CalendarDays],
+  ["name", "Name", ArrowDownAZ],
+  ["visible", "Visible", Eye],
+];
+const SORT_KEY = "ibex-track-sort";
+function storedSort(): Sort {
+  try {
+    const s = localStorage.getItem(SORT_KEY);
+    return SORTS.some(([id]) => id === s) ? (s as Sort) : "date";
+  } catch {
+    return "date";
+  }
+}
 
 /**
  * The tracks there are, and which one is active.
@@ -41,12 +62,23 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
   const [confirming, setConfirming] = useState<string>();
   const [converting, setConverting] = useState<string>();
   const [query, setQuery] = useState("");
+  const [sort, setSortState] = useState<Sort>(storedSort);
+  const [clearing, setClearing] = useState(false);
+  const setSort = (s: Sort) => {
+    setSortState(s);
+    try {
+      localStorage.setItem(SORT_KEY, s);
+    } catch {
+      // A private window may refuse storage; the order still applies for this session.
+    }
+  };
+  const exportable = collection?.tracks.filter(freshResult) ?? [];
   const deleting = collection?.tracks.find((t) => t.id === confirming);
   const toConvert = collection?.tracks.find((t) => t.id === converting);
   const others = (id: string) =>
     collection?.tracks.filter((o) => o.id !== id) ?? [];
   const needle = query.trim().toLowerCase();
-  const shown =
+  let shown =
     collection?.tracks.filter(
       (t) =>
         !needle ||
@@ -54,6 +86,11 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           (s) => s.toLowerCase().includes(needle),
         ),
     ) ?? [];
+  if (sort === "name")
+    shown = [...shown].sort((a, b) => a.name.localeCompare(b.name));
+  // Stable, so visible tracks keep their creation order among themselves.
+  if (sort === "visible")
+    shown = [...shown].sort((a, b) => Number(b.visible) - Number(a.visible));
 
   return (
     <>
@@ -70,9 +107,8 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <ImportButton ctx={ctx} className="tracks-import">
-          <Import size={16} />
-          Import
+        <ImportButton ctx={ctx} className="icon-button" label="Import GPX">
+          <Import size={18} />
         </ImportButton>
         <button
           className="icon-button"
@@ -82,6 +118,46 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
         >
           <Plus />
         </button>
+        <Menu.Root>
+          <Menu.Trigger className="icon-button" aria-label="Track list actions">
+            <MoreHorizontal size={18} />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Content className="menu glass" sideOffset={6} align="end">
+              <Menu.Label className="menu-label">Sort by</Menu.Label>
+              <Menu.RadioGroup
+                value={sort}
+                onValueChange={(v) => setSort(v as Sort)}
+              >
+                {SORTS.map(([id, label, Icon]) => (
+                  <Menu.RadioItem key={id} value={id}>
+                    <Icon size={15} />
+                    {label}
+                    <Menu.ItemIndicator className="menu-check">
+                      <Check size={15} />
+                    </Menu.ItemIndicator>
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+              <Menu.Separator className="menu-separator" />
+              <Menu.Item
+                disabled={!exportable.length}
+                onSelect={() => exportable.forEach(exportTrack)}
+              >
+                <Share size={15} />
+                {`Export all${exportable.length ? ` (${exportable.length})` : ""}`}
+              </Menu.Item>
+              <Menu.Item
+                className="danger"
+                disabled={!collection?.tracks.length}
+                onSelect={() => setClearing(true)}
+              >
+                <Trash2 size={15} />
+                Delete all
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
       {collection && !collection.tracks.length && (
         <button className="empty-state" onClick={() => add()}>
@@ -273,6 +349,27 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
               }}
             >
               <Trash2 size={16} /> Delete
+            </button>
+          </div>
+        </Modal>
+      )}
+      {clearing && (
+        <Modal
+          alert
+          title={`Delete all ${collection?.tracks.length ?? 0} tracks?`}
+          onClose={() => setClearing(false)}
+        >
+          <p>Every track and its route are removed from this device.</p>
+          <div className="modal-actions">
+            <button onClick={() => setClearing(false)}>Cancel</button>
+            <button
+              className="danger"
+              onClick={() => {
+                setClearing(false);
+                for (const t of collection?.tracks ?? []) tracks.remove(t.id);
+              }}
+            >
+              <Trash2 size={16} /> Delete all
             </button>
           </div>
         </Modal>

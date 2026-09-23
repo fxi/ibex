@@ -90,3 +90,31 @@ test("a track is hidden from its card, and the others all at once from its menu"
   await page.getByRole("menuitem", { name: "Show all others" }).click();
   await expect(hidden()).toHaveCount(0);
 });
+
+test("the list menu sorts the tracks and deletes them all after asking", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  for (let i = 0; i < 2; i++)
+    await page.getByRole("button", { name: "New track", exact: true }).click();
+  // Only the active card, the last one added, shows its name field.
+  await page.getByLabel("Track name").fill("Aosta");
+  const names = page.locator(".track-copy strong");
+  await expect(names).toHaveText(["Track 1", "Aosta"]);
+
+  const menu = page.getByRole("button", { name: "Track list actions" });
+  await menu.click();
+  await page.getByRole("menuitemradio", { name: "Name" }).click();
+  await expect(names).toHaveText(["Aosta", "Track 1"]);
+
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Delete all" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator(".track-card")).toHaveCount(2);
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Delete all" }).click();
+  await dialog.getByRole("button", { name: "Delete all" }).click();
+  await expect(page.locator(".track-card")).toHaveCount(0);
+});

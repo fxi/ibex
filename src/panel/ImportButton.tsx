@@ -14,10 +14,13 @@ export function ImportButton({
   ctx,
   className,
   children,
+  label,
   onImported,
 }: {
   ctx: PanelContext;
   className?: string;
+  /** Names an icon-only button. */
+  label?: string;
   children: React.ReactNode;
   onImported?: (count: number) => void;
 }) {
@@ -60,6 +63,8 @@ export function ImportButton({
     <>
       <button
         className={className}
+        aria-label={label}
+        title={label}
         disabled={!tracks.collection}
         onClick={() => input.current?.click()}
       >

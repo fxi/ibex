@@ -495,7 +495,8 @@ main,
   padding: 4px;
   border-radius: var(--radius);
 }
-.menu [role="menuitem"] {
+.menu [role="menuitem"],
+.menu [role="menuitemradio"] {
   font-size: 13px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -511,6 +512,20 @@ main,
 .menu [data-disabled] {
   opacity: 0.35;
   pointer-events: none;
+}
+.menu-label {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.menu-check {
+  margin-left: auto;
+  display: grid;
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 .danger {
   color: var(--danger);
@@ -856,12 +871,6 @@ progress {
 }
 .track-search input {
   padding-left: 32px;
-}
-.tracks-import {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
 }
 .track-list {
   display: flex;
