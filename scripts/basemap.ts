@@ -104,10 +104,16 @@ async function buildArchive(build: string, bbox: BBox): Promise<string> {
 
 /** Fetch a URL, or nothing for a 404: not every font covers every glyph range. */
 async function download(url: string): Promise<Uint8Array | undefined> {
-  const response = await fetch(url);
-  if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
+  // GitHub Pages answers the odd 503 across 768 requests; one of them once stopped a
+  // publish after the 6 GB archive was already up.
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(url);
+    if (response.status === 404) return undefined;
+    if (response.ok) return new Uint8Array(await response.arrayBuffer());
+    if (response.status < 500 || attempt === 5)
+      throw new Error(`${url}: HTTP ${response.status}`);
+    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+  }
 }
 
 async function publishAssets(at: Bucket) {
