@@ -405,6 +405,20 @@ main,
   translate: 0 -11px;
   -webkit-tap-highlight-color: transparent;
 }
+/* An invisible ring around the pin catches near misses, which would otherwise drop a new
+   waypoint or pick the track underneath. A pseudo-element rather than padding, so the pin
+   keeps its anchor; MapLibre already positions the wrap, so it is the containing block. */
+.anchor-marker-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+}
+@media (pointer: coarse) {
+  .anchor-marker-wrap::before {
+    inset: -16px;
+  }
+}
 .anchor-marker {
   display: block;
   /* Sized for a fingertip, not a cursor. */
