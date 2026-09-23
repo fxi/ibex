@@ -13,6 +13,7 @@ Scripts that read a local build take its cells directory as an argument, default
 | Publish | `publish.ts` | `npm run data:publish`: verify every byte against the catalogue, upload cells one at a time, write `catalog.json` last. `--dry-run`, `--setup-bucket`, `--verify <url>` ([data-format.md](../docs/data-format.md)) |
 | Audit & benchmark | `benchmark.ts`, `ablation.ts` | Corridor vs reference search on a local build's merged packs |
 | | `benchmark_routing.ts` | Local pack loading and cold/warm queries for all four ride policies; packs directory and optional baseline module are argv inputs |
+| | `memory_leg.ts` | Heap of a leg's decoded graph and peak RSS while routing it, Geneva outward from 30 to 100 km, one process per leg; the phone's limit is what it watches |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `build_parity.ts` | Diff two cell builds: ids and extents exactly, derived values to a tolerance (use around builder changes) |
 | | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
