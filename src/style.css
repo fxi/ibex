@@ -4,6 +4,8 @@
  */
 :root {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* One height for every toolbar control, the same as the map buttons. */
+  --control-height: 40px;
   font-size: 13px;
   color: var(--text);
   background: var(--bg);
@@ -856,6 +858,10 @@ progress {
   gap: 8px;
   margin-bottom: 12px;
 }
+.tracks-toolbar .icon-button {
+  width: var(--control-height);
+  height: var(--control-height);
+}
 .track-search {
   position: relative;
   flex: 1;
@@ -871,6 +877,7 @@ progress {
 }
 .track-search input {
   padding-left: 32px;
+  height: var(--control-height);
 }
 .track-list {
   display: flex;
@@ -1029,8 +1036,8 @@ progress {
   gap: 8px;
 }
 .edit-toolbar .icon-button {
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
 }
 .edit-toolbar-end {
   display: flex;
@@ -1041,7 +1048,7 @@ progress {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: var(--control-height);
 }
 /* One line of progress or outcome, kept even when empty so the figures never jump. */
 .edit-status {
@@ -1288,6 +1295,12 @@ progress {
 .row.bulk {
   margin-top: 12px;
   flex-wrap: wrap;
+}
+/* The Data tab's actions line up with the other toolbars. */
+.data-body > button,
+.row.bulk button {
+  height: var(--control-height);
+  padding-block: 0;
 }
 
 /* ---------- Configure ---------- */
