@@ -3,7 +3,6 @@ name: Deploy app
 # Routing data is not part of the app: it is published separately (see data.yml).
 #
 # Configure once (scripts/gh-setup.sh does it from .env):
-#   secret   VITE_MAPTILER_API_KEY
 #   variable VITE_DATA_URL       required; the deploy is skipped until it is set, so forks
 #                                without data do not fail
 #   variable VITE_HEATMAP_URL    optional
@@ -34,7 +33,6 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_MAPTILER_API_KEY: ${{ secrets.VITE_MAPTILER_API_KEY }}
           VITE_DATA_URL: ${{ vars.VITE_DATA_URL }}
           VITE_HEATMAP_URL: ${{ vars.VITE_HEATMAP_URL }}
       - name: Refuse a bundle that carries data

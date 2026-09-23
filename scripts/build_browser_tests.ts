@@ -1,4 +1,4 @@
-/** Build an isolated test checkout with a dummy local key; never read real credentials. */
+/** Build an isolated test checkout from pinned settings; never read real credentials. */
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { build } from "vite";
@@ -10,7 +10,6 @@ const pinned = {
   BASE_PATH: "/ibex/",
   VITE_DATA_URL: "",
   VITE_HEATMAP_URL: "",
-  VITE_MAPTILER_API_KEY: "ibex-browser-test-key",
 };
 Object.assign(process.env, pinned);
 try {

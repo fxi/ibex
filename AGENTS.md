@@ -22,7 +22,12 @@ npm run build:test && npm run test:e2e   # Chromium + mobile WebKit; ~3 min
 npm run data:build -- --bbox W,S,E,N     # build cells into .cache/cells
 npm run data:build -- --regions switzerland --publish --skip-built --terrain-budget 4000
 npm run data:publish -- --dry-run        # what would go to the bucket
+npm run data:basemap -- --publish        # Protomaps basemap + fonts + sprite → map.json
+npm run data:cycle-routes -- --publish   # cycle/MTB route relations → map.json
 ```
+
+Rerun both map scripts after the cell coverage grows: they cover the published cells'
+extent, and outside it the map has only world detail to z6 and no cycle routes.
 
 A run of more than a handful of cells takes `--publish`: each one goes to the bucket as it
 is packed and leaves the disk, and `--skip-built` resumes. `--regions` takes Geofabrik
@@ -122,9 +127,10 @@ Read `docs/data-format.md` before touching `src/offline/`, `scripts/build_cells.
 
 - Never print, echo, log or commit values from `.env`. Refer to keys by name, and redact
   when inspecting (e.g. `sed -E 's/=.+/=<set>/' .env`).
-- Only this workspace's `.env` provides `VITE_MAPTILER_API_KEY` locally; an ambient
-  variable is deliberately ignored (`tests/map-style.test.ts`). CI passes it through the
-  environment with `CI` set. Keep that distinction in `vite.config.ts`.
+- No browser key, on purpose: a key in the bundle is public whatever its origin rules
+  say, and the MapTiler one was used up (2026-09-23). The map reads the bucket (`map.json`,
+  written by `scripts/basemap.ts` and `scripts/cycle_routes.ts`) and keyless services
+  only; `tests/map-style.test.ts` fails on a `key=` in any style.
 - GitHub secrets and variables are synced by `scripts/gh-setup.sh`, which sends only the
   names it lists. Don't use `gh secret set -f .env`.
 - Before pushing anything new and large or sensitive-looking: `gitleaks git --redact`, and

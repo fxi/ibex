@@ -10,7 +10,3 @@ export function localEnv(file: URL): Record<string, string> {
     throw error;
   }
 }
-
-export function mapTilerKey(file: URL): string {
-  return localEnv(file).VITE_MAPTILER_API_KEY?.trim() ?? "";
-}

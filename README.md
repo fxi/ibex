@@ -21,7 +21,7 @@ npm run setup     # npm ci, creates .env from .env.example, reports what is miss
 npm run dev       # http://localhost:5173/ibex/
 ```
 
-`.env.example` points `VITE_DATA_URL` at the public data, so a fresh clone can download areas and route right away. Set `VITE_MAPTILER_API_KEY` (free at [MapTiler](https://cloud.maptiler.com)) for the basemap and place search; without it the map shows a status message and routing still works. Only this workspace's `.env` is read for the key: an ambient environment variable is never embedded.
+`.env.example` points `VITE_DATA_URL` at the public data, so a fresh clone can download areas, route and draw the map right away. There is no map key: the basemap and cycle routes are PMTiles archives in the same bucket as the cells, relief comes from [Mapterhorn](https://mapterhorn.com), imagery from EOX Sentinel-2 cloudless, IGN and swisstopo, and place search from [Photon](https://photon.komoot.io).
 
 In **Data**, save an area; in **Tracks**, add a track and place two waypoints on the **Edit** tab; then use **Tools → Compute current track**.
 
@@ -101,12 +101,11 @@ disk and the OpenStreetMap downloads, and sent straight to the bucket.
 
 | Name                                                  | Kind     | Used by              |
 | ----------------------------------------------------- | -------- | -------------------- |
-| `VITE_MAPTILER_API_KEY`                               | secret   | deploy               |
 | `S3_ENDPOINT`, `S3_KEY`, `S3_SECRET`, `S3_BUCKET`     | secrets  | data                 |
 | `VITE_DATA_URL`                                       | variable | deploy, data         |
 | `VITE_HEATMAP_URL`, `S3_PREFIX`, `S3_PUBLIC_URL`, `APP_ORIGIN` | variables | deploy, data |
 
-The MapTiler key ends up in the public bundle: restrict it to your origins in the MapTiler dashboard. Give CI an S3 key limited to the data bucket.
+Give CI an S3 key limited to the data bucket.
 
 ## Checks
 
@@ -115,7 +114,7 @@ npm run lint && npm run typecheck && npm test
 npm run build:test && npx playwright install chromium webkit && npm run test:e2e
 ```
 
-`npm run build:test` builds an isolated checkout with a dummy key and the synthetic single-cell release in `tests/fixtures/data`, which is explicitly test data, not a real network. Browser tests intercept MapTiler, then cover Chromium and mobile WebKit: LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. Regenerate the fixture with `node --import tsx scripts/create_cell_fixture.ts` after a format change. `tests/release.test.ts` also runs on a real local build when one exists (`IBEX_CELLS=<cells dir>`).
+`npm run build:test` builds an isolated checkout with the synthetic single-cell release and a tiny basemap in `tests/fixtures/data`, which is explicitly test data, not a real network. Browser tests intercept relief, imagery and fonts, then cover Chromium and mobile WebKit: LAN HTTP, interrupted downloads, checksum rejection, offline restart, routing and GPX export. Regenerate the fixture with `node --import tsx scripts/create_cell_fixture.ts` after a format change. `tests/release.test.ts` also runs on a real local build when one exists (`IBEX_CELLS=<cells dir>`).
 
 ## Routing
 
@@ -138,4 +137,4 @@ The app never uploads waypoints, routes or profiles. The optional "your rides" o
 
 ## License and attribution
 
-The code is under the [MIT License](LICENCE). Routing data derived from OpenStreetMap is © OpenStreetMap contributors, available under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain: [Mapterhorn](https://mapterhorn.com/attribution/). Basemap: © MapTiler © OpenStreetMap contributors.
+The code is under the [MIT License](LICENCE). Routing data derived from OpenStreetMap is © OpenStreetMap contributors, available under [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Terrain: [Mapterhorn](https://mapterhorn.com/attribution/). Basemap: [Protomaps](https://protomaps.com) © OpenStreetMap contributors. Imagery: Sentinel-2 cloudless by EOX IT Services GmbH (CC BY-NC-SA 4.0), © IGN, © swisstopo.

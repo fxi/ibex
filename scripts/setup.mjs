@@ -24,10 +24,6 @@ const env = Object.fromEntries(
     .map((m) => [m[1], m[2].replace(/^["']|["']$/g, "")]),
 );
 const notes = [];
-if (!env.VITE_MAPTILER_API_KEY)
-  notes.push(
-    "VITE_MAPTILER_API_KEY is empty: the basemap and place search need a free key from https://cloud.maptiler.com",
-  );
 if (!env.VITE_DATA_URL)
   notes.push(
     "VITE_DATA_URL is empty: the app reads locally staged data (npm run data:stage); see docs/data-format.md",
