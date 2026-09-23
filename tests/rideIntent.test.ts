@@ -134,9 +134,11 @@ describe("gravel bikepacking", () => {
   // "Loaded touring on gravel: climbs on easy ground, descends on smooth, and stays off
   // anything rough with the bags on." Unlike shipped Gravel, this one does carry the
   // downhill override, so the promise is testable against the file itself.
-  it("climbs on easy gravel", () => {
-    expect(cost(easyGravel(0.04), BIKEPACKING)).toBeLessThan(
-      cost(tarmac(0.04), BIKEPACKING),
+  // Retuned 2026-09-23: unpaved went from prefer to neutral, so a loaded climb no longer
+  // seeks gravel for its own sake and smooth tarmac is the easier ground.
+  it("climbs on easy ground without seeking gravel", () => {
+    expect(cost(tarmac(0.04), BIKEPACKING)).toBeLessThan(
+      cost(easyGravel(0.04), BIKEPACKING),
     );
   });
 
