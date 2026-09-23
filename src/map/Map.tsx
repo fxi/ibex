@@ -18,7 +18,6 @@ import {
   labelLanguage,
   mapStyle,
   TERRAIN_MAXZOOM,
-  TERRAIN_TILES,
   type Basemap,
 } from "./style";
 import { loadMapResources, type MapResources } from "./resources";
@@ -51,25 +50,34 @@ export type MapCommand = {
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 // Contours are drawn from the relief tiles in a worker, so there is no contour tileset to
-// host or pay for.
-const dem = new mlcontour.DemSource({
-  url: TERRAIN_TILES,
-  encoding: "terrarium",
-  maxzoom: TERRAIN_MAXZOOM,
-  worker: true,
-});
-dem.setupMaplibre(maplibregl);
-const CONTOUR_TILES = dem.contourProtocolUrl({
-  thresholds: CONTOUR_THRESHOLDS,
-  contourLayer: "contours",
-  elevationKey: "ele",
-  levelKey: "level",
-  overzoom: 1,
-});
-/** Everything a style needs but the basemap files, which arrive from the bucket later. */
+// host or pay for. One source per relief URL, which map.json names.
+const contourTiles = new Map<string, string>();
+function contoursFor(terrain: string): string {
+  let tiles = contourTiles.get(terrain);
+  if (!tiles) {
+    const dem = new mlcontour.DemSource({
+      url: terrain,
+      encoding: "terrarium",
+      maxzoom: TERRAIN_MAXZOOM,
+      worker: true,
+      id: `dem-${contourTiles.size}`,
+    });
+    dem.setupMaplibre(maplibregl);
+    tiles = dem.contourProtocolUrl({
+      thresholds: CONTOUR_THRESHOLDS,
+      contourLayer: "contours",
+      elevationKey: "ele",
+      levelKey: "level",
+      overzoom: 1,
+    });
+    contourTiles.set(terrain, tiles);
+  }
+  return tiles;
+}
+/** Everything a style needs, from the bucket's map index once it has arrived. */
 const styleInputs = (resources: MapResources | undefined) => ({
   resources,
-  contours: CONTOUR_TILES,
+  contours: resources?.terrain ? contoursFor(resources.terrain) : undefined,
   lang: labelLanguage(navigator.language),
 });
 export function MapView({
@@ -180,8 +188,8 @@ export function MapView({
     gridZoom,
   };
   useEffect(() => {
-    // Relief and imagery need nothing from the bucket, so the map starts with them and
-    // gains the basemap once its index arrives.
+    // Imagery needs nothing from the bucket, so the map starts at once and gains the
+    // basemap and relief when their index arrives.
     const m = new maplibregl.Map({
       container: container.current!,
       style: mapStyle(styleInputs(undefined), appliedBasemap.current),

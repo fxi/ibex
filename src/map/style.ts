@@ -12,11 +12,6 @@ import {
 } from "@protomaps/basemaps";
 import type { MapResources } from "./resources";
 
-/**
- * The same Terrarium tiles the builder samples for grades (src/build/platform/terrainCache.ts),
- * so the relief on screen and the climbs in a route come from one surface.
- */
-export const TERRAIN_TILES = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp";
 /** Mapterhorn is z12 almost everywhere; beyond it hillshade and contours overzoom. */
 export const TERRAIN_MAXZOOM = 12;
 
@@ -324,28 +319,29 @@ const CONTOUR_LABELS: LayerSpecification = {
 };
 
 export type StyleInputs = {
-  /** The bucket's basemap files; without them only relief is drawn. */
+  /** The bucket's basemap files and relief; without them only the background is drawn. */
   resources?: MapResources;
-  /** Contour tile URL from maplibre-contour; without it no contours are drawn. */
+  /** Contour tile URL from maplibre-contour for the same relief; without it none are drawn. */
   contours?: string;
   /** A Protomaps label language, see `labelLanguage`. */
   lang?: string;
 };
 
 function sources(inputs: StyleInputs): StyleSpecification["sources"] {
-  const out: Record<string, SourceSpecification> = {
-    terrain: {
+  const out: Record<string, SourceSpecification> = {};
+  const r = inputs.resources;
+  if (r?.terrain) {
+    out.terrain = {
       type: "raster-dem",
-      tiles: [TERRAIN_TILES],
+      tiles: [r.terrain],
       encoding: "terrarium",
       tileSize: 512,
       maxzoom: TERRAIN_MAXZOOM,
       attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>',
-    },
-  };
-  if (inputs.contours)
-    out.contours = { type: "vector", tiles: [inputs.contours], maxzoom: 15 };
-  const r = inputs.resources;
+    };
+    if (inputs.contours)
+      out.contours = { type: "vector", tiles: [inputs.contours], maxzoom: 15 };
+  }
   if (r) {
     out.protomaps = {
       type: "vector",
@@ -369,7 +365,10 @@ function sources(inputs: StyleInputs): StyleSpecification["sources"] {
 export function outdoorStyle(inputs: StyleInputs): StyleSpecification {
   const r = inputs.resources;
   const src = sources(inputs);
-  const relief = [HILLSHADE, ...(src.contours ? CONTOUR_LAYERS : [])];
+  const relief = [
+    ...(src.terrain ? [HILLSHADE] : []),
+    ...(src.contours ? CONTOUR_LAYERS : []),
+  ];
   const background: LayerSpecification = {
     id: "background",
     type: "background",

@@ -25,8 +25,9 @@ in browser tests. Building the cells is covered in [data-pipeline.md](data-pipel
 
 Two objects per cell and one catalogue for routing; the map's own files beside them, indexed
 by `map.json` and written by `scripts/basemap.ts` and `scripts/cycle_routes.ts`. Nothing
-the map draws needs a key: relief comes from Mapterhorn, imagery from EOX, IGN and swisstopo,
-all keyless. There is no pointer, no release directory, no
+the map draws needs a key: relief comes from Mapterhorn (or whatever `map.json` names as
+`terrain`; `null` turns it off, as the test fixture does), imagery from EOX, IGN and
+swisstopo, all keyless. There is no pointer, no release directory, no
 edition and no version segment in any path.
 
 **Files are named after their content.** A cell's `hash` is the digest of the two files it

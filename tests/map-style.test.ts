@@ -61,17 +61,33 @@ it("draws everything from the bucket or keyless services", () => {
   expect(outdoor.glyphs).toBe(resources.glyphs);
 });
 
-it("starts with relief alone until the basemap index arrives", () => {
-  const bare = outdoorStyle({ contours: inputs.contours });
-  expect(bare.glyphs).toBeUndefined();
-  expect(bare.layers.every((l) => l.type !== "symbol")).toBe(true);
-  expect(bare.layers.map((l) => l.id)).toEqual([
-    "background",
-    "Hillshade",
-    "Contour",
-    "Contour index",
-  ]);
-  expect(Object.keys(outdoorStyle({}).sources)).toEqual(["terrain"]);
+it("starts with the background alone until the map index arrives", () => {
+  for (const bare of [outdoorStyle({ contours: inputs.contours }), outdoorStyle({})]) {
+    expect(bare.glyphs).toBeUndefined();
+    expect(bare.layers.map((l) => l.id)).toEqual(["background"]);
+    expect(bare.sources).toEqual({});
+  }
+});
+
+it("draws relief from the index: Mapterhorn by default, another source, or none", () => {
+  expect(resources.terrain).toBe("https://tiles.mapterhorn.com/{z}/{x}/{y}.webp");
+  const index = {
+    basemap: "b.pmtiles",
+    glyphs: "f/{fontstack}/{range}.pbf",
+    sprite: "s",
+  };
+  const own = parseMapIndex({ ...index, terrain: "dem/{z}/{x}/{y}.webp" }, ROOT);
+  expect(own.terrain).toBe("https://bucket.example/ibex/dem/{z}/{x}/{y}.webp");
+  expect(outdoorStyle({ ...inputs, resources: own }).sources.terrain).toMatchObject({
+    tiles: [own.terrain],
+  });
+  const none = outdoorStyle({
+    ...inputs,
+    resources: parseMapIndex({ ...index, terrain: null }, ROOT),
+  });
+  expect(Object.keys(none.sources)).toEqual(["protomaps"]);
+  expect(none.layers.some((l) => /^(Hillshade|Contour)/.test(l.id))).toBe(false);
+  expect(() => parseMapIndex({ ...index, terrain: "no-template" }, ROOT)).toThrow();
 });
 
 it("lays relief under the roads and cycle routes over them, under the labels", () => {
