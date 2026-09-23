@@ -1,84 +1,139 @@
-import { expect, it, afterEach } from "vitest";
+import { expect, it } from "vitest";
 import {
-  customMapStyle,
-  mapResourceURL,
+  labelLanguage,
   mapStyle,
   osmEditURL,
+  outdoorStyle,
   streetViewURL,
+  type StyleInputs,
 } from "../src/map/style";
-import { mapTilerKey } from "../scripts/local-env";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { mapIndexURL, parseMapIndex } from "../src/map/resources";
 
-const directories: string[] = [];
-afterEach(() => {
-  for (const dir of directories.splice(0)) rmSync(dir, { recursive: true });
-});
-it("always returns the bundled style and safely authenticates its resources", () => {
-  for (const key of [undefined, "", "   ", " test+key&value "]) {
-    const style = customMapStyle(key);
-    expect(style.layers.length).toBeGreaterThan(100);
-    expect(style.sources).toHaveProperty("maptiler_planet");
-    expect(JSON.stringify(style)).not.toContain("key=undefined");
-    expect(JSON.stringify(style)).not.toContain("INSERT_YOUR_OWN_API_KEY");
-  }
-  const style = customMapStyle(" test+key&value ");
-  const resource = mapResourceURL(style.sprite as string, " test+key&value ");
-  expect(new URL(resource).searchParams.get("key")).toBe("test+key&value");
-  expect(mapResourceURL("https://example.com/tile?x=1", "key")).toBe(
-    "https://example.com/tile?x=1",
+const ROOT = "https://bucket.example/ibex/";
+const resources = parseMapIndex(
+  {
+    basemap: "basemap/abc.pmtiles",
+    cycleRoutes: "cycle-routes/def.pmtiles",
+    glyphs: "assets/fonts/{fontstack}/{range}.pbf",
+    sprite: "assets/sprites/v4/light",
+  },
+  ROOT,
+);
+const inputs: StyleInputs = {
+  resources,
+  contours: "dem-contour://{z}/{x}/{y}?thresholds=11*100*500",
+  lang: "fr",
+};
+type Painted = { paint: Record<string, unknown> };
+const paint = (s: ReturnType<typeof mapStyle>, id: string) =>
+  (s.layers.find((l) => l.id === id) as Painted).paint;
+
+it("resolves the basemap index against the data root without escaping templates", () => {
+  expect(mapIndexURL(ROOT)).toBe("https://bucket.example/ibex/map.json");
+  expect(resources.basemap).toBe("https://bucket.example/ibex/basemap/abc.pmtiles");
+  expect(resources.glyphs).toBe(
+    "https://bucket.example/ibex/assets/fonts/{fontstack}/{range}.pbf",
   );
-  expect(customMapStyle("").glyphs).not.toContain("test");
+  expect(
+    parseMapIndex({ ...resources, basemap: "https://other.example/b.pmtiles" }, ROOT)
+      .basemap,
+  ).toBe("https://other.example/b.pmtiles");
+  expect(() => parseMapIndex({ basemap: "b", glyphs: "no-template", sprite: "s" }, ROOT)).toThrow();
 });
-it("builds satellite and hybrid basemaps from the bundled style", () => {
-  expect(mapStyle("k", "outdoor")).toEqual(customMapStyle("k"));
-  const satellite = mapStyle("k", "satellite");
-  expect(satellite.layers.map((l) => l.id)).toEqual(["Satellite"]);
-  expect(satellite.sources.satellite).toMatchObject({ type: "raster" });
-  const hybrid = mapStyle("k", "hybrid");
+
+it("draws everything from the bucket or keyless services", () => {
+  for (const basemap of ["outdoor", "satellite", "hybrid"] as const) {
+    const text = JSON.stringify(mapStyle(inputs, basemap));
+    expect(text).not.toMatch(/maptiler|key=/i);
+    const style = mapStyle(inputs, basemap);
+    // Every layer must reference a source the style still declares.
+    for (const l of style.layers)
+      if ("source" in l) expect(style.sources).toHaveProperty(l.source);
+  }
+  const outdoor = outdoorStyle(inputs);
+  expect(outdoor.sources.protomaps).toMatchObject({
+    url: "pmtiles://https://bucket.example/ibex/basemap/abc.pmtiles",
+  });
+  expect(outdoor.sources.terrain).toMatchObject({
+    type: "raster-dem",
+    encoding: "terrarium",
+  });
+  expect(outdoor.glyphs).toBe(resources.glyphs);
+});
+
+it("starts with relief alone until the basemap index arrives", () => {
+  const bare = outdoorStyle({ contours: inputs.contours });
+  expect(bare.glyphs).toBeUndefined();
+  expect(bare.layers.every((l) => l.type !== "symbol")).toBe(true);
+  expect(bare.layers.map((l) => l.id)).toEqual([
+    "background",
+    "Hillshade",
+    "Contour",
+    "Contour index",
+  ]);
+  expect(Object.keys(outdoorStyle({}).sources)).toEqual(["terrain"]);
+});
+
+it("lays relief under the roads and cycle routes over them, under the labels", () => {
+  const ids = outdoorStyle(inputs).layers.map((l) => l.id);
+  const at = (id: string) => {
+    expect(ids).toContain(id);
+    return ids.indexOf(id);
+  };
+  expect(at("Hillshade")).toBeLessThan(at("roads_minor"));
+  expect(at("roads_highway")).toBeLessThan(at("Tracks"));
+  expect(at("Tracks")).toBeLessThan(at("Bicycle longdistance"));
+  expect(at("Bicycle longdistance")).toBeLessThan(at("places_locality"));
+  expect(at("places_locality")).toBeLessThan(at("Bicycle route labels"));
+  const noRoutes = outdoorStyle({ ...inputs, resources: { ...resources, cycleRoutes: undefined } });
+  expect(noRoutes.layers.some((l) => l.id.startsWith("Bicycle"))).toBe(false);
+});
+
+it("builds satellite and hybrid basemaps from keyless imagery", () => {
+  const satellite = mapStyle(inputs, "satellite");
+  expect(satellite.layers.map((l) => l.id)).toEqual([
+    "Satellite",
+    "Satellite France",
+    "Satellite Switzerland",
+  ]);
+  for (const id of ["imagery-satellite-france", "imagery-satellite-switzerland"])
+    expect(satellite.sources[id]).toHaveProperty("bounds");
+  const hybrid = mapStyle(inputs, "hybrid");
   expect(hybrid.layers[0].id).toBe("Satellite");
   const ids = hybrid.layers.map((l) => l.id);
-  expect(ids).toContain("Road network");
-  expect(ids).toContain("Place labels");
+  expect(ids).toContain("roads_minor");
+  expect(ids).toContain("places_locality");
+  expect(ids).toContain("Bicycle longdistance");
   expect(ids).not.toContain("Hillshade");
   expect(ids).not.toContain("Contour");
+  expect(ids.some((id) => id.includes("casing") && id.startsWith("roads_"))).toBe(false);
   expect(hybrid.layers.every((l) => l.type !== "fill")).toBe(true);
   // Trail casings go dark on imagery; the outdoor style keeps them white.
-  const casing = (s: typeof hybrid) =>
-    s.layers.find((l) => l.id === "Bicycle outline") as {
-      paint: Record<string, unknown>;
-    };
-  expect(casing(hybrid).paint["line-color"]).toMatch(/^hsla\(0, 0%, 8%/);
-  expect(casing(mapStyle("k", "outdoor")).paint["line-color"]).toContain(
-    "100%",
+  const outdoor = mapStyle(inputs, "outdoor");
+  expect(paint(hybrid, "Bicycle outline")["line-color"]).toMatch(/^hsla\(0, 0%, 8%/);
+  expect(paint(outdoor, "Bicycle outline")["line-color"]).toContain("100%");
+  // Roads go grey on imagery; labels flip to light text on a dark halo.
+  expect(paint(hybrid, "roads_minor")["line-color"]).not.toEqual(
+    paint(outdoor, "roads_minor")["line-color"],
   );
-  // Large roads recede in both styles; hybrid labels flip to light text on a dark halo.
-  const paint = (s: typeof hybrid, id: string) =>
-    (s.layers.find((l) => l.id === id) as { paint: Record<string, unknown> })
-      .paint;
-  const outdoor = mapStyle("k", "outdoor");
-  expect(JSON.stringify(paint(outdoor, "Road network")["line-color"])).toContain(
-    "motorway",
-  );
-  expect(paint(hybrid, "Road network")["line-color"]).not.toEqual(
-    paint(outdoor, "Road network")["line-color"],
-  );
-  const town = paint(hybrid, "Town labels");
+  const town = paint(hybrid, "places_locality");
   expect(town["text-halo-color"]).toMatch(/^hsla\(0, 0%, 8%/);
-  expect(town["text-color"]).toBe("hsl(240, 6%, 96%)");
-  expect(paint(outdoor, "Town labels")["text-color"]).toBe("hsl(240, 6%, 13%)");
-  // Every layer must reference a source the style still declares.
-  for (const l of hybrid.layers)
-    if ("source" in l) expect(hybrid.sources).toHaveProperty(l.source);
-  expect(JSON.stringify(hybrid)).not.toContain("INSERT_YOUR_OWN_API_KEY");
+  expect(JSON.stringify(town["text-color"])).toMatch(/hsl\(0, 0%, 96%\)/);
 });
+
+it("labels in the reader's language where Protomaps has it", () => {
+  expect(labelLanguage("fr-CH")).toBe("fr");
+  expect(labelLanguage("zh-Hant")).toBe("zh-Hant");
+  expect(labelLanguage("rm")).toBe("en");
+  expect(labelLanguage(undefined)).toBe("en");
+});
+
 it("opens Street View at a map point", () => {
   const url = new URL(streetViewURL([6.2051234567, 46.19]));
   expect(url.searchParams.get("map_action")).toBe("pano");
   expect(url.searchParams.get("viewpoint")).toBe("46.190000,6.205123");
 });
+
 it("opens the OSM editor at a map point, never below an editable zoom", () => {
   expect(osmEditURL([6.1065051234, 46.064938], 12.4)).toBe(
     "https://www.openstreetmap.org/edit#map=17/46.064938/6.106505",
@@ -86,28 +141,4 @@ it("opens the OSM editor at a map point, never below an editable zoom", () => {
   expect(osmEditURL([6.1, 46.1], 18.6)).toBe(
     "https://www.openstreetmap.org/edit#map=19/46.100000/6.100000",
   );
-});
-it("reads only the specified local dotenv file without expansion or ambient fallback", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ibex-env-"));
-  directories.push(dir);
-  const file = pathToFileURL(join(dir, ".env"));
-  const previous = process.env.VITE_MAPTILER_API_KEY;
-  process.env.VITE_MAPTILER_API_KEY = "global-secret-reference";
-  try {
-    expect(mapTilerKey(file)).toBe("");
-    writeFileSync(file, "OTHER=value\n");
-    expect(mapTilerKey(file)).toBe("");
-    writeFileSync(file, "VITE_MAPTILER_API_KEY=   \n");
-    expect(mapTilerKey(file)).toBe("");
-    writeFileSync(
-      file,
-      'export VITE_MAPTILER_API_KEY = " local+key&value " # comment\n',
-    );
-    expect(mapTilerKey(file)).toBe("local+key&value");
-    writeFileSync(file, 'VITE_MAPTILER_API_KEY="${GLOBAL_KEY}"\n');
-    expect(mapTilerKey(file)).toBe("${GLOBAL_KEY}");
-  } finally {
-    if (previous === undefined) delete process.env.VITE_MAPTILER_API_KEY;
-    else process.env.VITE_MAPTILER_API_KEY = previous;
-  }
 });

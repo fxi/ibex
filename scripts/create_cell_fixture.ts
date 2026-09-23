@@ -9,6 +9,7 @@
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
+import { spawnSync } from "node:child_process";
 import { encodeBlock, stringTable } from "../src/offline/ibex/block";
 import { encodeIndex } from "../src/offline/ibex/index";
 import { crc32 } from "../src/offline/ibex/varint";
@@ -204,3 +205,43 @@ console.log(
   `wrote ${directory}: cell ${id}, ${blocks.length} block(s), ${files.reduce((s, f) => s + f.bytes, 0)} bytes`,
 );
 
+
+/**
+ * A basemap and cycle-route archive over the same road, so the map has real sources to
+ * load without the network. Glyphs and the sprite point at a host the browser tests
+ * intercept. Needs `tippecanoe`; the archives are a few kilobytes and committed.
+ */
+const line = (properties: Record<string, string>) =>
+  JSON.stringify({
+    type: "Feature",
+    properties,
+    geometry: { type: "LineString", coordinates: points },
+  }) + "\n";
+await fs.mkdir(`${directory}/map`, { recursive: true });
+for (const [name, layer, properties] of [
+  ["basemap", "roads", { kind: "minor_road", kind_detail: "residential" }],
+  ["cycle-routes", "cycle_routes", { route: "bicycle", network: "rcn", ref: "1" }],
+] as const) {
+  const source = `${directory}/map/${name}.geojsonl`;
+  await fs.writeFile(source, line(properties));
+  const tippecanoe = spawnSync(
+    "tippecanoe",
+    ["-o", `${directory}/map/${name}.pmtiles`, "--force", "--quiet", "-l", layer, "-Z0", "-z14", source],
+    { stdio: "inherit" },
+  );
+  await fs.rm(source);
+  if (tippecanoe.status !== 0) throw new Error(`tippecanoe exited ${tippecanoe.status}`);
+}
+await fs.writeFile(
+  `${directory}/map.json`,
+  JSON.stringify(
+    {
+      basemap: "map/basemap.pmtiles",
+      cycleRoutes: "map/cycle-routes.pmtiles",
+      glyphs: "https://assets.test/fonts/{fontstack}/{range}.pbf",
+      sprite: "https://assets.test/sprites/light",
+    },
+    null,
+    2,
+  ) + "\n",
+);

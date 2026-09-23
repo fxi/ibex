@@ -1,6 +1,6 @@
 import { expect, test, saveMapData, planArve, SAVED_TEXT } from "./fixtures";
 // Without a map, planArve reloads; a service worker would then serve the cached bundle
-// and bypass the route that strips the MapTiler key.
+// and bypass the routes that fail the map resources.
 test.use({ serviceWorkers: "block" });
 test("map and planner render without application errors", async ({ page }) => {
   const errors: string[] = [];
@@ -19,48 +19,11 @@ test("map and planner render without application errors", async ({ page }) => {
   await expect(page.getByTestId("map-error")).toHaveCount(0);
 });
 
-test("missing local key makes no MapTiler requests and keeps routing usable", async ({
-  page,
-}) => {
-  // Simulate the empty build-time value, without changing the user's .env.
-  await page.route("**/assets/*.js", async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({
-      response,
-      body: (await response.text()).replaceAll(
-        "ibex-browser-test-key",
-        "",
-      ),
-    });
-  });
-  const requests: string[] = [];
-  page.on("request", (r) => {
-    if (r.url().startsWith("https://api.maptiler.com/")) requests.push(r.url());
-  });
-  await page.goto("./");
-  await expect(page.getByTestId("map-error")).toContainText(
-    "no map access key",
-  );
-  await saveMapData(page);
-  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
-  await planArve(page);
-  await page
-    .getByRole("button", { name: "Compute active track", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Export your route" }),
-  ).toBeVisible();
-  expect(requests).toEqual([]);
-});
-
 test("resource failures report map status without switching style or blocking routes", async ({
   page,
 }) => {
-  const styles: string[] = [];
-  page.on("request", (r) => {
-    if (r.url().includes("/style.json")) styles.push(r.url());
-  });
-  await page.route("https://api.maptiler.com/**", (route) => route.abort());
+  await page.route("**/data/map.json", (route) => route.abort());
+  await page.route("https://tiles.mapterhorn.com/**", (route) => route.abort());
   await page.goto("./");
   await expect(page.getByTestId("map-error")).toContainText(
     "Map resources unavailable",
@@ -74,6 +37,5 @@ test("resource failures report map status without switching style or blocking ro
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible();
-  expect(styles).toEqual([]);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });

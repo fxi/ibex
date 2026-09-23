@@ -15,18 +15,13 @@ import { osmEditURL, streetViewURL } from "./style";
 import { freshResult, type Track } from "../tracks";
 import type { Point } from "../routing/types";
 
-/** Basemap road classes a panorama can stand on: not rail, lifts or ferry lines. */
-const STREET_CLASSES = new Set([
-  "motorway",
-  "trunk",
-  "primary",
-  "secondary",
-  "tertiary",
-  "minor",
-  "service",
-  "track",
+/** Basemap road kinds a panorama can stand on: not rail, lifts or ferry lines. */
+const STREET_KINDS = new Set([
+  "highway",
+  "major_road",
+  "minor_road",
   "path",
-  "busway",
+  "other",
 ]);
 
 /** How far, in pixels, a right-click reaches to snap onto a way. */
@@ -75,9 +70,8 @@ export function createContextMenu(options: {
       ])
       .filter(
         (f) =>
-          f.sourceLayer === "trail" ||
-          (f.sourceLayer === "transportation" &&
-            STREET_CLASSES.has(f.properties.class)),
+          f.sourceLayer === "cycle_routes" ||
+          (f.sourceLayer === "roads" && STREET_KINDS.has(f.properties.kind)),
       )
       .flatMap((f): Point[][] =>
         f.geometry.type === "LineString"

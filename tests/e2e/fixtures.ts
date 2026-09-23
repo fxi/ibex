@@ -1,4 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
+import sharp from "sharp";
 export { expect };
 
 /** The single cell in `tests/fixtures/data`, as the Data tab labels it. */
@@ -22,7 +23,7 @@ export async function saveMapData(page: Page) {
       const box = (await page.locator(".map").boundingBox())!;
       await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.3);
     } else {
-      // No basemap (no MapTiler key): the list is the accessible equivalent.
+      // No map: the list is the accessible equivalent.
       await page.locator(".all-areas > summary").click();
       await page
         .getByRole("button", { name: `Select area ${FIXTURE_CELL}` })
@@ -129,43 +130,45 @@ export const tracksSaved = (page: Page) =>
     "false",
   );
 
-// Empty vector tiles and a transparent sprite retain the production style schema.
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+  "base64",
+);
+/** Terrarium sea level everywhere: a flat relief tile, so hillshade and contours load. */
+const FLAT_TERRAIN = sharp({
+  create: { width: 512, height: 512, channels: 3, background: { r: 128, g: 0, b: 0 } },
+})
+  .png()
+  .toBuffer();
+
+/** Relief and imagery hosts the style reads directly; the basemap itself is fixture data. */
+export const MAP_HOSTS = [
+  "https://tiles.mapterhorn.com/**",
+  "https://tiles.maps.eox.at/**",
+  "https://data.geopf.fr/**",
+  "https://wmts.geo.admin.ch/**",
+  "https://assets.test/**",
+];
+
+// The fixture's map.json names the basemap archives in tests/fixtures/data/map and sends
+// glyphs and the sprite to assets.test; everything the map reads from elsewhere is
+// answered here, so no test depends on the network.
 export const test = base.extend<{ mapResources: void }>({
   mapResources: [
     async ({ context }, use) => {
-      await context.route("https://api.maptiler.com/**", async (route) => {
-        const url = new URL(route.request().url());
-        expect(url.pathname).not.toMatch(/\/style\.json$/);
-        expect(url.searchParams.get("key")).toBe(
-          "ibex-browser-test-key",
-        );
-        if (url.pathname.endsWith("tiles.json")) {
-          await route.fulfill({
-            json: {
-              tilejson: "3.0.0",
-              tiles: ["https://api.maptiler.com/test/{z}/{x}/{y}.pbf"],
-              minzoom: url.pathname.includes("terrain-rgb") ? 24 : 0,
-              maxzoom: 24,
-              bounds: [-180, -85, 180, 85],
-            },
-          });
-        } else if (url.pathname.endsWith(".json")) {
-          await route.fulfill({ json: {} });
-        } else if (url.pathname.endsWith(".png")) {
-          await route.fulfill({
-            contentType: "image/png",
-            body: Buffer.from(
-              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
-              "base64",
-            ),
-          });
-        } else {
-          await route.fulfill({
-            contentType: "application/x-protobuf",
-            body: Buffer.alloc(0),
-          });
-        }
-      });
+      for (const host of MAP_HOSTS)
+        await context.route(host, async (route) => {
+          const url = new URL(route.request().url());
+          if (url.hostname === "tiles.mapterhorn.com")
+            await route.fulfill({ contentType: "image/png", body: await FLAT_TERRAIN });
+          else if (url.pathname.endsWith(".json")) await route.fulfill({ json: {} });
+          else if (url.pathname.endsWith(".pbf"))
+            await route.fulfill({
+              contentType: "application/x-protobuf",
+              body: Buffer.alloc(0),
+            });
+          else await route.fulfill({ contentType: "image/png", body: PIXEL });
+        });
       await use();
     },
     { auto: true },

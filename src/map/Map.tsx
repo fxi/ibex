@@ -11,8 +11,18 @@ import {
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Protocol } from "pmtiles";
+import mlcontour from "maplibre-contour";
 import type { Comparison, Point, RouteResult } from "../routing/types";
-import { mapResourceURL, mapStyle, type Basemap } from "./style";
+import {
+  CONTOUR_THRESHOLDS,
+  labelLanguage,
+  mapStyle,
+  TERRAIN_MAXZOOM,
+  TERRAIN_TILES,
+  type Basemap,
+} from "./style";
+import { loadMapResources, type MapResources } from "./resources";
+import { DATA_ROOT } from "../config";
 import { freshResult, type Track } from "../tracks";
 
 import type { CellState } from "../offline/cells";
@@ -40,6 +50,28 @@ export type MapCommand = {
 };
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
+// Contours are drawn from the relief tiles in a worker, so there is no contour tileset to
+// host or pay for.
+const dem = new mlcontour.DemSource({
+  url: TERRAIN_TILES,
+  encoding: "terrarium",
+  maxzoom: TERRAIN_MAXZOOM,
+  worker: true,
+});
+dem.setupMaplibre(maplibregl);
+const CONTOUR_TILES = dem.contourProtocolUrl({
+  thresholds: CONTOUR_THRESHOLDS,
+  contourLayer: "contours",
+  elevationKey: "ele",
+  levelKey: "level",
+  overzoom: 1,
+});
+/** Everything a style needs but the basemap files, which arrive from the bucket later. */
+const styleInputs = (resources: MapResources | undefined) => ({
+  resources,
+  contours: CONTOUR_TILES,
+  lang: labelLanguage(navigator.language),
+});
 export function MapView({
   anchors,
   comparison,
@@ -107,6 +139,7 @@ export function MapView({
   });
   const [mapError, setMapError] = useState("");
   const appliedBasemap = useRef(basemap);
+  const resources = useRef<MapResources | undefined>(undefined);
   // Read at fit time only: as an effect dependency, every panel resize replayed the last
   // camera command and moved the map without the user asking.
   const bottomInsetRef = useRef(bottomInset);
@@ -147,17 +180,11 @@ export function MapView({
     gridZoom,
   };
   useEffect(() => {
-    const key = import.meta.env.VITE_MAPTILER_API_KEY;
-    if (!key?.trim()) {
-      setMapError("Map unavailable: no map access key is configured.");
-      return;
-    }
+    // Relief and imagery need nothing from the bucket, so the map starts with them and
+    // gains the basemap once its index arrives.
     const m = new maplibregl.Map({
       container: container.current!,
-      style: mapStyle(key, appliedBasemap.current),
-      transformRequest: (resource) => ({
-        url: mapResourceURL(resource, import.meta.env.VITE_MAPTILER_API_KEY),
-      }),
+      style: mapStyle(styleInputs(undefined), appliedBasemap.current),
       center: [6.205, 46.19],
       zoom: 10.7,
       minZoom: 0,
@@ -592,9 +619,25 @@ export function MapView({
       console.warn("Map rendering error:", event.error?.message);
       if (!disposed)
         setMapError(
-          "Map resources unavailable. Check your connection and map access key. Routing and export remain available.",
+          "Map resources unavailable. Check your connection. Routing and export remain available.",
         );
     });
+    loadMapResources(DATA_ROOT).then(
+      (loaded) => {
+        if (disposed) return;
+        resources.current = loaded;
+        m.setStyle(mapStyle(styleInputs(loaded), appliedBasemap.current), {
+          diff: false,
+        });
+      },
+      (error) => {
+        console.warn("Map resources:", error);
+        if (!disposed)
+          setMapError(
+            "Map resources unavailable. Check your connection. Routing and export remain available.",
+          );
+      },
+    );
     const changeConnection = () => {
       if (!navigator.onLine)
         setMapError(
@@ -638,7 +681,7 @@ export function MapView({
     const m = map.current;
     if (!m || appliedBasemap.current === basemap) return;
     appliedBasemap.current = basemap;
-    m.setStyle(mapStyle(import.meta.env.VITE_MAPTILER_API_KEY, basemap), {
+    m.setStyle(mapStyle(styleInputs(resources.current), basemap), {
       diff: false,
     });
   }, [basemap]);

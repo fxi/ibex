@@ -31,8 +31,8 @@ export function addAppLayers(m: maplibregl.Map) {
     ])
       m.addSource(id, { type: "geojson", data: empty });
     // Grid cells come from one source with data-driven paint, so a state change is a
-    // setData call rather than a layer rebuild. No symbol layer: labelling needs
-    // MapTiler glyphs, which stay online-only, so sizes live in the panel instead.
+    // setData call rather than a layer rebuild. No symbol layer: labelling needs the
+    // basemap's glyphs, which stay online-only, so sizes live in the panel instead.
     m.addLayer({
       id: "cells-fill",
       type: "fill",

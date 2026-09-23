@@ -8,11 +8,9 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig(() => {
   const env = localEnv(new URL(".env", import.meta.url));
-  // The process environment overrides `.env`, except for the key: locally only this
-  // workspace's `.env` provides it, so an ambient value never leaks into a bundle. CI has
-  // no `.env`, so there the workflow's environment is the configuration.
-  const setting = (name: string, ambient = true) =>
-    ((ambient || process.env.CI) && process.env[name]) || env[name] || "";
+  // The process environment overrides `.env`; CI has no `.env`, so there the workflow's
+  // environment is the configuration.
+  const setting = (name: string) => process.env[name] || env[name] || "";
   const base = `/${setting("BASE_PATH").replace(/^\/+|\/+$/g, "") || "ibex"}/`;
   const pkg = JSON.parse(
     readFileSync(new URL("package.json", import.meta.url), "utf8"),
@@ -33,9 +31,6 @@ export default defineConfig(() => {
     envDir: false as const,
     define: {
       __APP_VERSION__: JSON.stringify(version),
-      "import.meta.env.VITE_MAPTILER_API_KEY": JSON.stringify(
-        setting("VITE_MAPTILER_API_KEY", false).trim(),
-      ),
       "import.meta.env.VITE_DATA_URL": JSON.stringify(
         setting("VITE_DATA_URL").trim(),
       ),
@@ -84,6 +79,30 @@ export default defineConfig(() => {
           maximumFileSizeToCacheInBytes: 4000000,
           navigateFallback: "index.html",
           navigateFallbackDenylist: [/\/data\//],
+          // Relief and imagery tiles are fetched per view and never change under a URL, so
+          // a revisited valley draws from the device. Capped: a phone's storage is shared.
+          // Basemap archives are range requests and are left to the HTTP cache.
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/tiles\.mapterhorn\.com\//,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "ibex-terrain",
+                expiration: { maxEntries: 2000, maxAgeSeconds: 30 * 24 * 3600 },
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+            {
+              urlPattern:
+                /^https:\/\/(tiles\.maps\.eox\.at|data\.geopf\.fr|wmts\.geo\.admin\.ch)\//,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "ibex-imagery",
+                expiration: { maxEntries: 3000, maxAgeSeconds: 30 * 24 * 3600 },
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+          ],
         },
       }),
     ],
