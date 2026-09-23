@@ -291,6 +291,9 @@ test("right-click on the route opens the menu over the drag handle", async ({
   await expect(
     page.getByRole("button", { name: "Open in Street View", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Hotels near here", exact: true }),
+  ).toBeVisible();
 });
 
 test("a route not computed yet can still take a point from the menu", async ({

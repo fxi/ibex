@@ -612,3 +612,11 @@ export function osmEditURL([lng, lat]: [number, number], zoom: number): string {
 export function streetViewURL([lng, lat]: [number, number]): string {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
+
+/**
+ * Booking.com's search around a map point, dates left to the page. Availability and prices
+ * are theirs to show: no keyless API offers them, and a key cannot live in the bundle.
+ */
+export function hotelsURL([lng, lat]: [number, number]): string {
+  return `https://www.booking.com/searchresults.html?latitude=${lat.toFixed(6)}&longitude=${lng.toFixed(6)}&dest_type=latlong`;
+}

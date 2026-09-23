@@ -5,6 +5,7 @@ import {
   osmEditURL,
   outdoorStyle,
   streetViewURL,
+  hotelsURL,
   type StyleInputs,
 } from "../src/map/style";
 import { mapIndexURL, parseMapIndex } from "../src/map/resources";
@@ -157,4 +158,11 @@ it("opens the OSM editor at a map point, never below an editable zoom", () => {
   expect(osmEditURL([6.1, 46.1], 18.6)).toBe(
     "https://www.openstreetmap.org/edit#map=19/46.100000/6.100000",
   );
+});
+
+it("searches hotels around the map point itself", () => {
+  const url = new URL(hotelsURL([6.2051234567, 46.19]));
+  expect(url.hostname).toBe("www.booking.com");
+  expect(url.searchParams.get("latitude")).toBe("46.190000");
+  expect(url.searchParams.get("longitude")).toBe("6.205123");
 });

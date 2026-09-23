@@ -11,7 +11,7 @@
  */
 import maplibregl from "maplibre-gl";
 import { snapToLines } from "./routeEditing";
-import { osmEditURL, streetViewURL } from "./style";
+import { hotelsURL, osmEditURL, streetViewURL } from "./style";
 import { freshResult, type Track } from "../tracks";
 import type { Point } from "../routing/types";
 
@@ -122,6 +122,14 @@ export function createContextMenu(options: {
     );
     action("Open in Street View", () =>
       window.open(streetViewURL(street), "_blank", "noopener,noreferrer"),
+    );
+    // Where the rider pointed, not the nearest road: a hotel need not sit on one.
+    action("Hotels near here", () =>
+      window.open(
+        hotelsURL([location.lng, location.lat]),
+        "_blank",
+        "noopener,noreferrer",
+      ),
     );
     popup = new maplibregl.Popup({
       closeButton: false,
