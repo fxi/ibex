@@ -42,10 +42,25 @@ export function createContextMenu(options: {
   locate: (point: maplibregl.Point) => { index: number } | undefined;
   /** Include a point in the route as a new waypoint. */
   onInclude: (index: number, point: Point) => void;
+  /** Add a note of the rider's own at a point. */
+  onAddNote: (point: Point) => void;
+  /** Limit a place search to a circle around a point. */
+  onFindAround: (point: Point) => void;
   /** Called before opening, so the hover handle does not sit over the menu. */
   beforeOpen: () => void;
+  /** Pixels at the bottom of the viewport the planner panel covers, read at open time. */
+  bottomInset: () => number;
 }): ContextMenu {
-  const { map: m, tracks, locate, onInclude, beforeOpen } = options;
+  const {
+    map: m,
+    tracks,
+    locate,
+    onInclude,
+    onAddNote,
+    onFindAround,
+    beforeOpen,
+    bottomInset,
+  } = options;
   let popup: maplibregl.Popup | undefined;
   const close = () => {
     popup?.remove();
@@ -113,6 +128,11 @@ export function createContextMenu(options: {
       action("Include in route", () =>
         onInclude(hit.index, [location.lng, location.lat]),
       );
+    // Where the rider pointed: a note or a search area need not sit on a road.
+    action("Add note here", () => onAddNote([location.lng, location.lat]));
+    action("Find places around here", () =>
+      onFindAround([location.lng, location.lat]),
+    );
     action("Edit in OSM", () =>
       window.open(
         osmEditURL(street, m.getZoom()),
@@ -137,13 +157,31 @@ export function createContextMenu(options: {
       Object.assign(document.createElement("hr"), { className: "menu-rule" }),
     );
     action("Close", () => {});
-    popup = new maplibregl.Popup({
-      closeButton: false,
-      className: "map-context-popup",
-    })
-      .setLngLat(location)
-      .setDOMContent(menu)
-      .addTo(m);
+    const show = (anchor?: "bottom") =>
+      new maplibregl.Popup({
+        closeButton: false,
+        className: "map-context-popup",
+        anchor,
+      })
+        .setLngLat(location)
+        .setDOMContent(menu)
+        .addTo(m);
+    popup = show();
+    // The popup only keeps inside the map, and on a phone the panel covers the lower half
+    // of it: a menu opened low would hide its last items under the panel. It opens above
+    // the point instead when that fits, and scrolls when neither side has room. The map
+    // itself never moves: the rider is pointing at it.
+    const limit = innerHeight - bottomInset() - 8;
+    const box = menu.getBoundingClientRect();
+    if (box.bottom <= limit) return;
+    const pointY = m.getContainer().getBoundingClientRect().top + point.y;
+    if (box.height <= pointY - 8) {
+      popup.remove();
+      popup = show("bottom");
+    } else {
+      menu.style.maxHeight = `${Math.max(120, limit - box.top)}px`;
+      menu.style.overflowY = "auto";
+    }
   };
 
   return { open, close };

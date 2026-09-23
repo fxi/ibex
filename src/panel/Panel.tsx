@@ -109,7 +109,7 @@ export function Panel({
             <DataPanel ctx={ctx} />
           </Tabs.Content>
           <Tabs.Content value="notes">
-            <NotesPanel />
+            <NotesPanel ctx={ctx} />
           </Tabs.Content>
           <Tabs.Content value="symbology">
             <SymbologyPanel ctx={ctx} />

@@ -39,6 +39,7 @@ import { Panel } from "./panel/Panel";
 import { reloadOnNewWorker } from "./serviceWorker";
 import type { PanelContext } from "./panel/context";
 import { useConvert } from "./state/useConvert";
+import { useNotes } from "./state/useNotes";
 
 const BASEMAP_KEY = "ibex.basemap";
 function storedBasemap(): Basemap {
@@ -133,6 +134,7 @@ function App() {
   }, []);
 
   const search = useSearch({ online, setError });
+  const notes = useNotes({ tracks, online, setError, setTab });
   const panel = usePanelHeight();
 
   useEffect(() => {
@@ -207,6 +209,7 @@ function App() {
     data,
     routing,
     convert,
+    notes,
     online,
     canCompute,
     status,
@@ -249,6 +252,10 @@ function App() {
         dimmed={dimmed}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}
+        notes={active?.visible ? notes.notes : []}
+        searchArea={notes.area}
+        onAddNote={notes.addNote}
+        onFindAround={notes.findAround}
         grid={tab === "data"}
         cellStates={data.cellStates}
         gridZoom={data.gridZoom}

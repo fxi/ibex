@@ -4,6 +4,7 @@ import type { TracksState } from "../state/useTracks";
 import type { CatalogueState } from "../state/useCatalogue";
 import type { RoutingState } from "../state/useRouting";
 import type { ConvertState } from "../state/useConvert";
+import type { NotesState } from "../state/useNotes";
 
 /**
  * Everything the four tabs draw from. Passing one bag keeps the panels' signatures short
@@ -14,6 +15,7 @@ export type PanelContext = {
   data: CatalogueState;
   routing: RoutingState;
   convert: ConvertState;
+  notes: NotesState;
   online: boolean;
   /** Enough data and at least two waypoints, with no run already in flight. */
   canCompute: boolean;

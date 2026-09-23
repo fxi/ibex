@@ -1817,6 +1817,98 @@ button.link {
   padding: 0;
 }
 
+/* ---------- Notes tab ---------- */
+.notes-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.notes-toolbar > button {
+  margin-left: auto;
+}
+.segmented {
+  display: flex;
+}
+.segmented button {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 0;
+}
+.segmented button:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.segmented button:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 0;
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.notes-area {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.notes-area label {
+  display: grid;
+  gap: 4px;
+}
+.notes-list h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.notes-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.place {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0;
+  font-size: 12px;
+  color: var(--text);
+}
+.place > svg {
+  flex-shrink: 0;
+}
+.place-km {
+  width: 56px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.place span,
+.place input {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place input {
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.place span small {
+  color: var(--muted);
+}
+.place button {
+  padding: 2px 8px;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+.place .locate-button {
+  padding: 0;
+}
+
 /* ---------- Responsive ---------- */
 @media (min-width: 1000px) {
   .panel {

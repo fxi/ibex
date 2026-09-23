@@ -15,6 +15,8 @@ import { cellBBox, cellId, cellsInBBox, type CellId } from "../geo/grid";
 import { HEATMAP_URL } from "../config";
 import { rideFeatures } from "./rideStyle";
 import { empty, MIN_SELECT_ZOOM } from "./layers";
+import { NOTE_COLORS, type Note } from "../notes/types";
+import type { SearchArea } from "../state/useNotes";
 
 export type MapSnapshot = {
   editable: boolean;
@@ -33,7 +35,19 @@ export type MapSnapshot = {
   gridZoom?: number;
   /** Every track drawn at its stale opacity, so the ground under it shows. */
   dimmed: boolean;
+  notes: Note[];
+  searchArea?: SearchArea;
 };
+
+/** A circle as a polygon ring, on a locally square grid: good to a few metres at 10 km. */
+function circle({ center, radiusM }: SearchArea): Point[] {
+  const dy = radiusM / 111_320,
+    dx = dy / Math.cos((center[1] * Math.PI) / 180);
+  return Array.from({ length: 65 }, (_, i) => {
+    const a = (i / 64) * 2 * Math.PI;
+    return [center[0] + dx * Math.cos(a), center[1] + dy * Math.sin(a)];
+  });
+}
 
 /** A bbox as a closed polygon ring, for drawing a cell outline. */
 const ring = (b: [number, number, number, number]): Point[] => [
@@ -45,116 +59,132 @@ const ring = (b: [number, number, number, number]): Point[] => [
 ];
 
 export function syncSources(m: maplibregl.Map, s: MapSnapshot) {
-    if (!m.getSource("route")) return;
-        const route = selectedRoute(s.comparison, s.partial);
-    // The grid covers the world, so it is generated from the viewport rather than from the
-    // catalogue: a cell nobody has built yet is still drawn, in the colour that says so.
-    // Below MIN_SELECT_ZOOM a screenful is thousands of cells and none of them are worth
-    // picking, so nothing is drawn at all. Off the Data tab the grid is not drawn either:
-    // it is a tool for downloading areas, not a permanent overlay on the route.
-    const bounds = m.getBounds();
-    const selectable = s.grid && m.getZoom() >= MIN_SELECT_ZOOM;
-    const states = s.cellStates;
-    const visible = selectable
-      ? cellsInBBox(
-          [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-          s.gridZoom ?? 9,
-        ).map((cell) => {
-          const id = cellId(cell);
-          return { id, bbox: cellBBox(cell), state: states?.get(id) ?? "unavailable" };
-        })
-      : [];
-    (m.getSource("cells") as maplibregl.GeoJSONSource)?.setData(
-      visible.length
-        ? {
-            type: "FeatureCollection",
-            features: visible.map((cell) => ({
-              type: "Feature" as const,
-              properties: {
-                id: cell.id,
-                state: cell.state,
-                color: CELL_COLORS[cell.state],
-                active:
-                  cell.state !== "available" && cell.state !== "unavailable",
-                selectable,
-              },
-              geometry: {
-                type: "Polygon" as const,
-                coordinates: [ring(cell.bbox)],
-              },
-            })),
-          }
-        : empty,
-    );
-    (m.getSource("field") as maplibregl.GeoJSONSource)?.setData(
-      s.debug && s.comparison?.fieldView ? s.comparison.fieldView : empty,
-    );
-    const line = (geometry: Point[]) => ({
+  if (!m.getSource("route")) return;
+  const route = selectedRoute(s.comparison, s.partial);
+  // The grid covers the world, so it is generated from the viewport rather than from the
+  // catalogue: a cell nobody has built yet is still drawn, in the colour that says so.
+  // Below MIN_SELECT_ZOOM a screenful is thousands of cells and none of them are worth
+  // picking, so nothing is drawn at all. Off the Data tab the grid is not drawn either:
+  // it is a tool for downloading areas, not a permanent overlay on the route.
+  const bounds = m.getBounds();
+  const selectable = s.grid && m.getZoom() >= MIN_SELECT_ZOOM;
+  const states = s.cellStates;
+  const visible = selectable
+    ? cellsInBBox(
+        [
+          bounds.getWest(),
+          bounds.getSouth(),
+          bounds.getEast(),
+          bounds.getNorth(),
+        ],
+        s.gridZoom ?? 9,
+      ).map((cell) => {
+        const id = cellId(cell);
+        return {
+          id,
+          bbox: cellBBox(cell),
+          state: states?.get(id) ?? "unavailable",
+        };
+      })
+    : [];
+  (m.getSource("cells") as maplibregl.GeoJSONSource)?.setData(
+    visible.length
+      ? {
+          type: "FeatureCollection",
+          features: visible.map((cell) => ({
+            type: "Feature" as const,
+            properties: {
+              id: cell.id,
+              state: cell.state,
+              color: CELL_COLORS[cell.state],
+              active:
+                cell.state !== "available" && cell.state !== "unavailable",
+              selectable,
+            },
+            geometry: {
+              type: "Polygon" as const,
+              coordinates: [ring(cell.bbox)],
+            },
+          })),
+        }
+      : empty,
+  );
+  (m.getSource("field") as maplibregl.GeoJSONSource)?.setData(
+    s.debug && s.comparison?.fieldView ? s.comparison.fieldView : empty,
+  );
+  const line = (geometry: Point[]) => ({
+    type: "Feature" as const,
+    properties: {},
+    geometry: { type: "LineString" as const, coordinates: geometry },
+  });
+  (m.getSource("route") as maplibregl.GeoJSONSource)?.setData({
+    type: "FeatureCollection",
+    features: s.tracks
+      .filter((t) => t.visible && t.result?.status === "ok")
+      .flatMap((t) => {
+        const meta = {
+          trackId: t.id,
+          trackColor: t.color,
+          active: t.id === s.activeId,
+          // Dimming borrows the stale look rather than adding a third opacity per layer.
+          stale: s.dimmed || !freshResult(t),
+        };
+        return rideFeatures(t.result!.segments, t.result!.geometry, meta);
+      }),
+  });
+  (m.getSource("reference") as maplibregl.GeoJSONSource)?.setData(
+    s.debug && s.comparison?.reference.status === "ok"
+      ? line(s.comparison.reference.geometry)
+      : empty,
+  );
+  (m.getSource("corridor") as maplibregl.GeoJSONSource)?.setData({
+    type: "FeatureCollection",
+    features: s.debug
+      ? (route?.corridor ?? []).filter((p) => p.length > 1).map(line)
+      : [],
+  });
+  (m.getSource("notes") as maplibregl.GeoJSONSource)?.setData({
+    type: "FeatureCollection",
+    features: s.notes.map((n) => ({
       type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates: geometry },
+      properties: { kind: n.kind, color: NOTE_COLORS[n.kind] },
+      geometry: { type: "Point" as const, coordinates: n.point },
+    })),
+  });
+  (m.getSource("search-area") as maplibregl.GeoJSONSource)?.setData(
+    s.searchArea
+      ? {
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Polygon", coordinates: [circle(s.searchArea)] },
+        }
+      : empty,
+  );
+  if (s.history && HEATMAP_URL && !m.getSource("history")) {
+    m.addSource("history", {
+      type: "vector",
+      url: `pmtiles://${HEATMAP_URL}`,
     });
-    (m.getSource("route") as maplibregl.GeoJSONSource)?.setData({
-      type: "FeatureCollection",
-      features: s.tracks
-        .filter((t) => t.visible && t.result?.status === "ok")
-        .flatMap((t) => {
-          const meta = {
-            trackId: t.id,
-            trackColor: t.color,
-            active: t.id === s.activeId,
-            // Dimming borrows the stale look rather than adding a third opacity per layer.
-            stale: s.dimmed || !freshResult(t),
-          };
-          return rideFeatures(
-            t.result!.segments,
-            t.result!.geometry,
-            meta,
-          );
-        }),
-    });
-    (m.getSource("reference") as maplibregl.GeoJSONSource)?.setData(
-      s.debug && s.comparison?.reference.status === "ok"
-        ? line(s.comparison.reference.geometry)
-        : empty,
-    );
-    (m.getSource("corridor") as maplibregl.GeoJSONSource)?.setData({
-      type: "FeatureCollection",
-      features: s.debug
-        ? (route?.corridor ?? []).filter((p) => p.length > 1).map(line)
-        : [],
-    });
-    if (s.history && HEATMAP_URL && !m.getSource("history")) {
-      m.addSource("history", {
-        type: "vector",
-        url: `pmtiles://${HEATMAP_URL}`,
-      });
-      m.addLayer(
-        {
-          id: "history",
-          type: "line",
-          source: "history",
-          "source-layer": "heatmap",
-          filter: [
-            "in",
-            "sport_type",
-            "Ride",
-            "GravelRide",
-            "MountainBikeRide",
-          ],
-          paint: {
-            "line-color": "#865a94",
-            "line-opacity": 0.22,
-            "line-width": 2,
-          },
+    m.addLayer(
+      {
+        id: "history",
+        type: "line",
+        source: "history",
+        "source-layer": "heatmap",
+        filter: ["in", "sport_type", "Ride", "GravelRide", "MountainBikeRide"],
+        paint: {
+          "line-color": "#865a94",
+          "line-opacity": 0.22,
+          "line-width": 2,
         },
-        "route-halo",
-      );
-    }
-    if (m.getLayer("history"))
-      m.setLayoutProperty(
-        "history",
-        "visibility",
-        s.history ? "visible" : "none",
-      );
+      },
+      "route-halo",
+    );
+  }
+  if (m.getLayer("history"))
+    m.setLayoutProperty(
+      "history",
+      "visibility",
+      s.history ? "visible" : "none",
+    );
 }

@@ -30,6 +30,8 @@ import { CENTER_COLOR } from "./rideStyle";
 import { addAppLayers, empty, MIN_SELECT_ZOOM } from "./layers";
 import { createContextMenu } from "./contextMenu";
 import { syncSources } from "./sources";
+import type { Note } from "../notes/types";
+import type { SearchArea } from "../state/useNotes";
 /**
  * Screen distance between route handles. Laid out per whole zoom level, so handles hold
  * still while the map pans and only regroup when the zoom level changes.
@@ -89,6 +91,10 @@ export function MapView({
   onPoint,
   onMove,
   onInclude,
+  onAddNote,
+  onFindAround,
+  notes,
+  searchArea,
   editable,
   onMenu,
   onCamera,
@@ -124,6 +130,14 @@ export function MapView({
   /** Waypoint `i` was dropped at `p`; `pinches` keep the edit between the nearest handles. */
   onMove: (i: number, p: Point, pinches?: Pinches) => void;
   onInclude: (index: number, point: Point, pinches?: Pinches) => void;
+  /** The map menu's "Add note here". */
+  onAddNote: (point: Point) => void;
+  /** The map menu's "Find places around here". */
+  onFindAround: (point: Point) => void;
+  /** The active track's notes, drawn as dots. */
+  notes: Note[];
+  /** The circle a place search is limited to, if one is set. */
+  searchArea?: SearchArea;
   editable: boolean;
   /** Right-click or long-press on waypoint `i`, in viewport coordinates. */
   onMenu: (i: number, x: number, y: number) => void;
@@ -161,8 +175,19 @@ export function MapView({
     onCamera,
     onCell,
     onInclude,
+    onAddNote,
+    onFindAround,
   });
-  handlers.current = { onPoint, onMove, onMenu, onCamera, onCell, onInclude };
+  handlers.current = {
+    onPoint,
+    onMove,
+    onMenu,
+    onCamera,
+    onCell,
+    onInclude,
+    onAddNote,
+    onFindAround,
+  };
   const snapshot = useRef({
     editable,
     anchors,
@@ -176,6 +201,8 @@ export function MapView({
     cellStates,
     gridZoom,
     dimmed,
+    notes,
+    searchArea,
   });
   snapshot.current = {
     editable,
@@ -190,6 +217,8 @@ export function MapView({
     cellStates,
     gridZoom,
     dimmed,
+    notes,
+    searchArea,
   };
   useEffect(() => {
     // Imagery needs nothing from the bucket, so the map starts at once and gains the
@@ -573,9 +602,13 @@ export function MapView({
       tracks: () => snapshot.current.tracks,
       locate: includeAt,
       onInclude: (index, point) => handlers.current.onInclude(index, point),
+      onAddNote: (point) => handlers.current.onAddNote(point),
+      onFindAround: (point) => handlers.current.onFindAround(point),
       beforeOpen: () => handle.remove(),
+      bottomInset: () => bottomInsetRef.current,
     });
-    const openContextMenu = (point: maplibregl.Point) => contextMenu.open(point);
+    const openContextMenu = (point: maplibregl.Point) =>
+      contextMenu.open(point);
     m.on("contextmenu", (e) => {
       e.preventDefault();
       openContextMenu(e.point);
@@ -724,6 +757,8 @@ export function MapView({
     cellStates,
     gridZoom,
     dimmed,
+    notes,
+    searchArea,
   ]);
   useEffect(() => {
     const m = map.current;
@@ -786,8 +821,7 @@ export function MapView({
     tracks.find((t) => t.id === activeId)?.color ?? CENTER_COLOR;
   useEffect(() => {
     const source = map.current?.getSource("cursor") as
-      | maplibregl.GeoJSONSource
-      | undefined;
+      maplibregl.GeoJSONSource | undefined;
     if (!source) return;
     source.setData(
       cursor
