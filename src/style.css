@@ -403,19 +403,27 @@ main,
 .anchor-marker-wrap {
   cursor: pointer;
   /* The pin tip, not the artwork centre, marks the waypoint. */
-  translate: 0 -9px;
+  translate: 0 -11px;
   -webkit-tap-highlight-color: transparent;
 }
 .anchor-marker {
   display: block;
-  width: 36px;
-  height: 36px;
+  /* Sized for a fingertip, not a cursor. */
+  width: 44px;
+  height: 44px;
   filter: drop-shadow(0 2px 4px #0007);
   transition: transform 0.12s ease;
+  /* Grows from the pin tip (y 16.7 of the 20-unit viewBox), so the tip stays on the point. */
+  transform-origin: 50% 84%;
 }
 .anchor-marker-wrap:hover .anchor-marker,
 .anchor-marker-wrap:focus-visible .anchor-marker {
   transform: scale(1.12);
+}
+/* A dragged pin grows well clear of the finger holding it, so the drop point shows. The
+   svg scales, never the wrap: MapLibre positions the wrap with `transform`. */
+.anchor-marker-wrap.is-dragging .anchor-marker {
+  transform: scale(1.8);
 }
 .anchor-marker-wrap:focus-visible {
   outline: none;

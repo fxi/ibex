@@ -53,6 +53,7 @@ function create(
 
   marker.on("dragstart", () => {
     draggedRecently = true;
+    element.classList.add("is-dragging");
     clearTimeout(pressTimer);
     callbacks.current.onDragStart(indexOf());
   });
@@ -61,6 +62,7 @@ function create(
     callbacks.current.onDrag(indexOf(), [p.lng, p.lat]);
   });
   marker.on("dragend", () => {
+    element.classList.remove("is-dragging");
     const p = marker.getLngLat();
     callbacks.current.onMove(indexOf(), [p.lng, p.lat]);
     clearTimeout(dragTimer);
