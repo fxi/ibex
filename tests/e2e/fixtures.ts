@@ -1,5 +1,4 @@
 import { test as base, expect, type Page } from "@playwright/test";
-import sharp from "sharp";
 export { expect };
 
 /** The single cell in `tests/fixtures/data`, as the Data tab labels it. */
@@ -134,43 +133,25 @@ const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
   "base64",
 );
-/** Terrarium sea level everywhere: a flat relief tile, so hillshade and contours load. */
-const FLAT_TERRAIN = sharp({
-  create: { width: 512, height: 512, channels: 3, background: { r: 128, g: 0, b: 0 } },
-})
-  .png()
-  .toBuffer();
 
-/** Relief and imagery hosts the style reads directly; the basemap itself is fixture data. */
-export const MAP_HOSTS = [
-  "https://tiles.mapterhorn.com/**",
+/** Imagery hosts, read only by the satellite and hybrid base maps. */
+export const IMAGERY_HOSTS = [
   "https://tiles.maps.eox.at/**",
   "https://data.geopf.fr/**",
   "https://wmts.geo.admin.ch/**",
-  // Glyphs and the sprite, same-origin so WebKit sends no preflight.
-  "**/data/map/fonts/**",
-  "**/data/map/sprites/**",
 ];
 
-// The fixture's map.json names the basemap archives in tests/fixtures/data/map; its glyphs,
-// its sprite and everything the map reads from elsewhere are answered here, so no test
-// depends on the network.
+// Everything else the map reads is a file in the fixture tree: WebKit does not route the
+// service worker's or a web worker's requests, so a mock there is only sometimes seen.
+// Imagery stays mocked because only the hybrid test draws it, and it asserts layers, not
+// pixels.
 export const test = base.extend<{ mapResources: void }>({
   mapResources: [
     async ({ context }, use) => {
-      for (const host of MAP_HOSTS)
-        await context.route(host, async (route) => {
-          const url = new URL(route.request().url());
-          if (url.hostname === "tiles.mapterhorn.com")
-            await route.fulfill({ contentType: "image/png", body: await FLAT_TERRAIN });
-          else if (url.pathname.endsWith(".json")) await route.fulfill({ json: {} });
-          else if (url.pathname.endsWith(".pbf"))
-            await route.fulfill({
-              contentType: "application/x-protobuf",
-              body: Buffer.alloc(0),
-            });
-          else await route.fulfill({ contentType: "image/png", body: PIXEL });
-        });
+      for (const host of IMAGERY_HOSTS)
+        await context.route(host, (route) =>
+          route.fulfill({ contentType: "image/png", body: PIXEL }),
+        );
       await use();
     },
     { auto: true },

@@ -56,6 +56,13 @@ worktree of the previous commit before concluding otherwise. Tests that encode a
 decision — a cost, a preference, a routing outcome — are not to be relaxed to make them
 pass: ask instead. Record any newly accepted failure in this section.
 
+WebKit does not route requests made by the service worker or a web worker, so a
+`page.route`/`context.route` mock there is seen only sometimes: macOS passes and CI on
+Linux fails a different few tests each run. Anything the map fetches in the browser tests
+is therefore a real file under `tests/fixtures/data` (written by
+`scripts/create_cell_fixture.ts`), and relief, which no file can stand in for, is off in
+the fixture `map.json`.
+
 ## Known defects
 
 `docs/issues.md` lists the defects found by review and not yet fixed, each with what it

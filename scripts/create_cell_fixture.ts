@@ -205,12 +205,13 @@ console.log(
   `wrote ${directory}: cell ${id}, ${blocks.length} block(s), ${files.reduce((s, f) => s + f.bytes, 0)} bytes`,
 );
 
-
 /**
- * A basemap and cycle-route archive over the same road, so the map has real sources to
- * load without the network. Glyphs and the sprite are paths the browser tests answer on the
- * app's own origin: a made-up host needs a CORS preflight, which WebKit sends past
- * Playwright's routes to a name that does not resolve. Needs `tippecanoe`; the archives are a few kilobytes and committed.
+ * A basemap and cycle-route archive over the same road, with the glyphs and sprite they
+ * name, so the map loads every file from the fixture itself. They have to be real files:
+ * WebKit does not route requests made by the service worker or a web worker, so a mock the
+ * page never sees makes a test pass or fail by who fetched first. Relief is the one input
+ * no fixture file can stand in for, so it is off. Needs `tippecanoe`; all of it is a few
+ * kilobytes and committed.
  */
 const line = (properties: Record<string, string>) =>
   JSON.stringify({
@@ -233,6 +234,22 @@ for (const [name, layer, properties] of [
   await fs.rm(source);
   if (tippecanoe.status !== 0) throw new Error(`tippecanoe exited ${tippecanoe.status}`);
 }
+/** A transparent 1×1 PNG: an empty sprite sheet. */
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+  "base64",
+);
+await fs.mkdir(`${directory}/map/sprites`, { recursive: true });
+for (const scale of ["", "@2x"]) {
+  await fs.writeFile(`${directory}/map/sprites/light${scale}.json`, "{}\n");
+  await fs.writeFile(`${directory}/map/sprites/light${scale}.png`, PIXEL);
+}
+// The fixture's only label is a route ref: one range per font, and an empty glyph set is
+// a valid one.
+for (const font of ["Noto Sans Regular", "Noto Sans Medium"]) {
+  await fs.mkdir(`${directory}/map/fonts/${font}`, { recursive: true });
+  await fs.writeFile(`${directory}/map/fonts/${font}/0-255.pbf`, new Uint8Array());
+}
 await fs.writeFile(
   `${directory}/map.json`,
   JSON.stringify(
@@ -241,6 +258,7 @@ await fs.writeFile(
       cycleRoutes: "map/cycle-routes.pmtiles",
       glyphs: "map/fonts/{fontstack}/{range}.pbf",
       sprite: "map/sprites/light",
+      terrain: null,
     },
     null,
     2,

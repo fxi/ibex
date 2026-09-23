@@ -2,5 +2,6 @@
   "basemap": "map/basemap.pmtiles",
   "cycleRoutes": "map/cycle-routes.pmtiles",
   "glyphs": "map/fonts/{fontstack}/{range}.pbf",
-  "sprite": "map/sprites/light"
+  "sprite": "map/sprites/light",
+  "terrain": null
 }
