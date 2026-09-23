@@ -33,8 +33,13 @@ export function Modal({
       className="modal glass"
       role={alert ? "alertdialog" : undefined}
       aria-labelledby={heading}
-      // Escape closes the dialog natively; the caller's state has to follow.
-      onClose={onClose}
+      // Escape closes the dialog natively; the caller's state has to follow. A `close` that
+      // arrives while the dialog is open again is stale: StrictMode's mount, cleanup, mount
+      // closes and reopens it, and the queued event from that first close would otherwise
+      // unmount it the moment it appears (dev only, so builds and tests never saw it).
+      onClose={() => {
+        if (!ref.current?.open) onClose();
+      }}
       // The dialog box itself has no padding, so a click on it is a click on the backdrop.
       onClick={(e) => {
         if (e.target === ref.current) onClose();
