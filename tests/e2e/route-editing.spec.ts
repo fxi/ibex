@@ -382,6 +382,10 @@ test("Street View is offered anywhere on the map", async ({ page }) => {
     throw new Error("No bare map in view");
   }, point);
   await page.mouse.click(away.x, away.y, { button: "right" });
+  // Closing needs no tap on the map, which would drop a waypoint in the Edit tab.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(streetView).toHaveCount(0);
+  await page.mouse.click(away.x, away.y, { button: "right" });
   await streetView.click();
   const expected = await page.locator(".map").evaluate((element, p) => {
     const q = (element as HTMLElement & { _map: any })._map.unproject([

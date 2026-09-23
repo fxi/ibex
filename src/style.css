@@ -371,6 +371,12 @@ main,
   flex-direction: column;
   min-width: 170px;
 }
+.map-context-menu .menu-rule {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
 .map-context-menu button,
 .waypoint-menu button {
   display: block;

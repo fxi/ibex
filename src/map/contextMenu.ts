@@ -131,6 +131,12 @@ export function createContextMenu(options: {
         "noopener,noreferrer",
       ),
     );
+    // Dismissing by tapping the map would drop a waypoint in the Edit tab, so the menu
+    // closes itself.
+    menu.append(
+      Object.assign(document.createElement("hr"), { className: "menu-rule" }),
+    );
+    action("Close", () => {});
     popup = new maplibregl.Popup({
       closeButton: false,
       className: "map-context-popup",
