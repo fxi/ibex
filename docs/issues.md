@@ -103,3 +103,17 @@ climb than the same bike on 60 mm.
 `tire_mm` to model a fat bike, and it made an 80 mm experiment read as a routing fix.
 **Shape of the fix:** either saturate rolling resistance at the same width, or extend the
 roughness term past 60 mm. Both move costs, so audit against `tests/fixtures/gold/`.
+
+### R5 · An anchor can snap onto an edge the network cannot reach
+Measured 2026-09-23 on a local build of `9-264..266-180..182`: Geneva `[6.151, 46.201]` to
+Lausanne `[6.633, 46.52]` with `gravel_50` returns `no-path` with `failedLeg: 1` and nothing
+explored. The destination snaps to `[6.63327, 46.52004]`, on an eligible edge that no path
+from the start reaches inside the leg's window; points 700 m away (`[6.63, 46.515]`,
+`[6.64, 46.525]`) route at 76-78 km. `snapAnchors` takes the nearest eligible edge
+regardless of whether it is connected to anything.
+**Blocks:** a rider dropping a marker in central Lausanne is told there is no path, which
+reads as a data hole.
+**Shape of the fix:** snap to the nearest edge whose end is in the reachable component
+(the reachability pass already exists in `route`), or retry the snap on the next nearest
+edge when the leg fails reachability. Either changes where some anchors land, so check the
+golden master and the gold standards.

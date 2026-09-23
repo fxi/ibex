@@ -70,6 +70,13 @@ field (`field.ts`), turn restrictions (`restrictions.ts`), the A* lower bound
 are re-exported through `engine.ts`, so existing imports and scripts are unaffected. Keep it
 that way: put new cost terms in `cost.ts`, not in `route()`.
 
+Memory is a constraint in its own right: iOS kills a tab somewhere past 1–1.5 GB, without
+an exception. The search walks a `LegGraph` (`legGraph.ts`), meaning typed arrays plus edges
+decoded on demand from compact blocks (`compactBlock`/`blockEdge`), and keeps per-edge and
+per-state data in typed arrays. Do not reintroduce an object, a string key or a Map entry per
+graph edge or search state. `node --import tsx scripts/memory_leg.ts <cells>` reports the peak
+for legs of 30–100 km. On 2026-09-23 a 102 km leg peaked at 630 MB, down from 3.7 GB.
+
 The suite asserts *relationships* (this costs more than that, this distance is in a band),
 which will not catch a refactor that moves a route. Before and after any change meant to
 preserve behaviour, run the golden master against the local packs:
