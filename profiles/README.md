@@ -1,12 +1,13 @@
 # Routing profiles
 
-Four profiles ship, one sentence each. Picking one is the whole decision; everything
+Five profiles ship, one sentence each. Picking one is the whole decision; everything
 below is for whoever wants to build their own.
 
 | Profile | File | Promise |
 | --- | --- | --- |
 | Gravel | `gravel_50` | Climb on quiet, easy gravel; ride the descents it earns. |
 | Gravel Bikepacking | `gravel_50_bikepacking` | Loaded: climb on easy ground, descend on smooth, stay off anything rough. |
+| Gravel Cycle Network | `gravel_50_cycle_network` | Follow the signposted cycle network: gravel on the climbs, sealed on the way down. |
 | MTB | `trail_60` | Climb like gravel; come down on singletrack. |
 | Road | `road_28` | Calm, sealed roads only. No gravel. |
 

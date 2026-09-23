@@ -60,6 +60,7 @@ describe("the profile format", () => {
     expect(SHIPPED.map((p) => p.name).sort()).toEqual([
       "Gravel",
       "Gravel Bikepacking",
+      "Gravel Cycle Network",
       "MTB",
       "Road",
     ]);
