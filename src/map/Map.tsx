@@ -282,6 +282,33 @@ export function MapView({
           : insertionIndex(line, s.anchors.map(project), nearest.position),
       };
     };
+    /**
+     * Where "Include in route" inserts. Dragging needs a current route, but including a
+     * point only needs to know which leg it belongs to. So a stale route, still drawn
+     * after the waypoints or profile changed, or a route never computed, falls back to
+     * the line on screen or the straight line through the waypoints.
+     */
+    const includeAt = (point: maplibregl.Point) => {
+      const fresh = locate(point);
+      if (fresh) return fresh;
+      const s = snapshot.current;
+      const track = s.tracks.find((t) => t.id === s.activeId);
+      if (!s.editable || track?.kind !== "planned" || s.anchors.length < 2)
+        return;
+      const project = (p: Point): Point => {
+        const q = m.project(p);
+        return [q.x, q.y];
+      };
+      const drawn =
+        track.visible && track.result?.status === "ok"
+          ? track.result.geometry
+          : s.anchors;
+      const line = drawn.map(project);
+      const nearest = nearestPosition(line, [point.x, point.y]);
+      return {
+        index: insertionIndex(line, s.anchors.map(project), nearest.position),
+      };
+    };
 
     // Route handles are real markers, so a finger can drag them where no hover exists.
     type HandleMarker = {
@@ -505,7 +532,7 @@ export function MapView({
     const contextMenu = createContextMenu({
       map: m,
       tracks: () => snapshot.current.tracks,
-      locate,
+      locate: includeAt,
       onInclude: (index, point) => handlers.current.onInclude(index, point),
       beforeOpen: () => handle.remove(),
     });

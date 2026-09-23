@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, saveMapData, planArve } from "./fixtures";
+import { test, expect, saveMapData, planArve, ARVE } from "./fixtures";
 
 // An edit reroutes only the legs it touched, and the status says how many it kept.
 const routeReady = /^Route ready( · \d+ of \d+ legs reused)?$/;
@@ -291,6 +291,31 @@ test("right-click on the route opens the menu over the drag handle", async ({
   await expect(
     page.getByRole("button", { name: "Open in Street View", exact: true }),
   ).toBeVisible();
+});
+
+test("a route not computed yet can still take a point from the menu", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await planArve(page);
+  await expect(page.locator(".waypoint")).toHaveCount(ARVE.length);
+  // Between the first two waypoints, where the straight line stands in for the route.
+  const point = await page.locator(".map").evaluate(async (element, [a, b]) => {
+    const map = (element as HTMLElement & { _map: any })._map;
+    const middle = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    map.jumpTo({ center: middle, zoom: 13 });
+    map.panBy([0, 150], { duration: 0 });
+    await new Promise(requestAnimationFrame);
+    const q = map.project(middle);
+    const box = map.getCanvas().getBoundingClientRect();
+    return { x: q.x + box.x, y: q.y + box.y };
+  }, ARVE);
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  await page
+    .getByRole("button", { name: "Include in route", exact: true })
+    .click();
+  await expect(page.locator(".waypoint")).toHaveCount(ARVE.length + 1);
 });
 
 test("Street View is offered anywhere on the map", async ({ page }) => {
