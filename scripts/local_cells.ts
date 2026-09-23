@@ -3,6 +3,7 @@ import { catalogueSchema, toManifest } from "../src/offline/catalogue";
 import type { Installed } from "../src/offline/store";
 import { CellGraphProvider, searchArea } from "../src/routing/provider";
 import { GENERATION } from "../src/offline/version";
+import type { LegGraph } from "../src/routing/legGraph";
 import type { Graph, Point } from "../src/routing/types";
 
 /**
@@ -19,6 +20,18 @@ export const DEFAULT_CELLS = process.env.IBEX_DATA_DIR ?? ".cache/cells";
  * so scripts route on the same seam-deduplicated graph the browser sees.
  */
 export async function loadReleaseGraph(dir: string, anchors: Point[]): Promise<Graph> {
+  const provider = await openLocalProvider(dir);
+  return provider.load(searchArea(anchors));
+}
+
+/** The area around the anchors as the route worker gets it: compact, decoded on demand. */
+export async function loadLegGraph(dir: string, anchors: Point[]): Promise<LegGraph> {
+  const provider = await openLocalProvider(dir);
+  return provider.loadLeg(searchArea(anchors));
+}
+
+/** The provider itself, for scripts that route leg by leg as the worker does. */
+export async function openLocalProvider(dir: string): Promise<CellGraphProvider> {
   const catalogue = catalogueSchema.parse(
     JSON.parse(fs.readFileSync(`${dir}/catalog.json`, "utf8")),
   );
@@ -57,5 +70,5 @@ export async function loadReleaseGraph(dir: string, anchors: Point[]): Promise<G
     reader,
   );
   await provider.open();
-  return provider.load(searchArea(anchors));
+  return provider;
 }

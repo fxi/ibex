@@ -54,6 +54,28 @@ export function restrictionAllows(
   next: Edge,
   previous?: Edge,
 ): boolean {
+  return restrictionAllowsBy(
+    rules,
+    history,
+    at,
+    next.way,
+    next.to,
+    previous?.from,
+  );
+}
+
+/**
+ * `restrictionAllows` from the three facts it reads, for a search that keeps edges as
+ * indices rather than objects.
+ */
+export function restrictionAllowsBy(
+  rules: Graph["restrictions"],
+  history: string[],
+  at: number,
+  nextWay: string,
+  nextTo: number,
+  previousFrom: number | undefined,
+): boolean {
   for (const rule of rules) {
     if (rule.via !== undefined && rule.via !== at) continue;
     // Via-way only restrictions constrain every departure in the sequence,
@@ -67,7 +89,7 @@ export function restrictionAllows(
             .every((way, i) => history[history.length - length + i] === way)
         )
           continue;
-        if (next.way !== history.at(-1) && next.way !== rule.ways[length])
+        if (nextWay !== history.at(-1) && nextWay !== rule.ways[length])
           return false;
       }
       continue;
@@ -78,16 +100,16 @@ export function restrictionAllows(
       !prefix.every((w, i) => history[history.length - prefix.length + i] === w)
     )
       continue;
-    if (rule.via === undefined && next.way === history.at(-1)) continue;
+    if (rule.via === undefined && nextWay === history.at(-1)) continue;
     const matches =
-      next.way === rule.ways.at(-1) &&
+      nextWay === rule.ways.at(-1) &&
       (!(
         rule.uTurn &&
         rule.via !== undefined &&
         rule.ways.length === 2 &&
         rule.ways[0] === rule.ways[1]
       ) ||
-        previous?.from === next.to);
+        previousFrom === nextTo);
     if (rule.only ? !matches : matches) return false;
   }
   return true;

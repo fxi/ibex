@@ -77,6 +77,14 @@ export class ByteReader {
 
   constructor(private readonly data: Uint8Array) {}
 
+  /** Return to a record found earlier through `position`, without rereading the block. */
+  seek(offset: number): this {
+    if (offset < 0 || offset > this.data.length)
+      throw new Error("Ibex seek outside the block");
+    this.offset = offset;
+    return this;
+  }
+
   private need(count: number) {
     if (this.offset + count > this.data.length)
       throw new Error("Ibex read past end of block");

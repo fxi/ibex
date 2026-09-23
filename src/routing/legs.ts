@@ -15,6 +15,7 @@ import { toCompiled } from "./compile";
 import { buildField, emptyComponents, route } from "./engine";
 import { searchArea } from "./provider";
 import { selectedRoute } from "./selection";
+import { isLegGraph, toGraph, type LegGraph } from "./legGraph";
 import type {
   Comparison,
   Components,
@@ -28,7 +29,7 @@ import type {
 
 /** Where leg graphs come from: the cell provider in the app, a fixture in tests. */
 export type LegGraphSource = {
-  load(bbox: BBox): Promise<Graph>;
+  load(bbox: BBox): Promise<Graph | LegGraph>;
   /** Published cells overlapping the area that are not installed. */
   missing(bbox: BBox): string[];
   /** Drop cached data outside the area, so memory tracks one leg rather than the route. */
@@ -70,14 +71,14 @@ export function fieldViewOf(field: Field): FieldView {
  * per leg, so every budget here is a per-leg budget.
  */
 export function compareOn(
-  graph: Graph,
+  input: Graph | LegGraph,
   request: RouteRequest,
   coverage: BBox,
   progress: (label: string) => void = () => {},
 ): Comparison & { fieldView: FieldView } {
   if (!request.diagnostics) {
     progress("Finding your route…");
-    const result = route(graph, request, "reference");
+    const result = route(input, request, "reference");
     return {
       reference: result,
       corridor: result,
@@ -85,6 +86,8 @@ export function compareOn(
       relativeCost: null,
     };
   }
+  // The audit prices every edge several times over, so it takes the objects once.
+  const graph = isLegGraph(input) ? toGraph(input) : input;
   const field = buildField(graph, request);
   const fieldView = fieldViewOf(field);
   let corridor: RouteResult | undefined;
@@ -179,7 +182,7 @@ export async function routeLeg(
   const loaded = await source.load(area);
   const loadMs = performance.now() - loadStarted;
   // The corridor field is laid over the graph bbox; keep it to the leg, not the region.
-  const graph: Graph = {
+  const graph: Graph | LegGraph = {
     ...loaded,
     bbox: bboxIntersects(loaded.bbox, area)
       ? intersect(loaded.bbox, area)

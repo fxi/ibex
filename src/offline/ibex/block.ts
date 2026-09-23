@@ -226,15 +226,14 @@ export function encodeBlock(
   return w.finish();
 }
 
-export function decodeBlock(
-  data: Uint8Array,
-  strings: string[],
-  options: {
-    releaseTag: number;
-    block?: { x: number; y: number };
-    crc?: number;
-  },
-): DecodedBlock {
+type BlockOptions = {
+  releaseTag: number;
+  block?: { x: number; y: number };
+  crc?: number;
+};
+
+/** A block's header and node table, read; its edge records follow at `r`. */
+function openBlock(data: Uint8Array, strings: string[], options: BlockOptions) {
   if (options.crc !== undefined && crc32(data) !== options.crc)
     throw new IbexError("digest", "Block failed its checksum");
   const r = new ByteReader(data);
@@ -250,7 +249,7 @@ export function decodeBlock(
     y = r.varint();
   if (options.block && (x !== options.block.x || y !== options.block.y))
     throw new IbexError("cell", `Block ${x}/${y} is not the block requested`);
-  const blockTile = `13-${x}-${y}`;
+  const tile = `13-${x}-${y}`;
 
   const nodeCount = r.varint();
   if (nodeCount > MAX_BLOCK_NODES)
@@ -279,138 +278,284 @@ export function decodeBlock(
   const edgeCount = r.varint();
   if (edgeCount > MAX_BLOCK_EDGES)
     throw new IbexError("limits", "Block declares too many edges");
-  const edges: Edge[] = [];
-  let edgeId = 0;
   const text = (at: number) => {
     const value = strings[at];
     if (value === undefined)
       throw new IbexError("bounds", `String ${at} is outside the dictionary`);
     return value;
   };
-  for (let i = 0; i < edgeCount; i++) {
-    edgeId += r.varint();
-    const flags = r.u16();
-    const utility = r.varint() / UNIT_SCALE;
-    const cyclingNetwork = r.varint() / UNIT_SCALE;
-    const junction = r.varint() / UNIT_SCALE;
-    const reward = r.varint() / UNIT_SCALE;
-    const values = SEMANTIC_FIELDS.map(() => r.varint() / SEMANTIC_SCALE);
-    const known = r.byte();
-    if (values.some((value) => value < 0 || value > 1) || known > 1)
-      throw new IbexError("field", "Invalid precomputed riding signals");
-    const semantics: Edge["semantics"] = {
-      version: 1,
-      roughness: values[0],
-      technicalUp: values[1],
-      technicalDown: values[2],
-      unpaved: values[3],
-      curvature: values[4],
-      surfaceKnown: known === 1,
-    };
+  return { r, tile, nodes, edgeCount, text };
+}
 
-    if (flags & FLAG.mirrorPrevious) {
-      const source = edges[edges.length - 1];
-      if (!source)
-        throw new IbexError("bounds", "Mirrored edge has no predecessor");
-      edges.push({
-        ...source,
-        id: edgeId,
-        way: String(Math.floor(edgeId / 8192)),
-        from: source.to,
-        to: source.from,
-        geometry: [...source.geometry].reverse(),
-        grades: source.grades
-          ? [...source.grades]
-              .reverse()
-              .map(([m, g]) => [m, -g] as [number, number])
-          : null,
-        utility,
-        cyclingNetwork,
-        junction,
-        reward,
-        semantics,
-      });
-      continue;
-    }
+type RecordContext = {
+  tile: string;
+  text: (at: number) => string;
+  node: (local: number) => Node | undefined;
+};
 
-    const from = nodes[r.varint()],
-      to = nodes[r.varint()];
-    if (!from || !to)
-      throw new IbexError("bounds", `Edge ${edgeId} references a missing node`);
-    const length = r.varint() / LENGTH_SCALE;
-    const interior = r.varint();
-    const geometry: Point[] = [from.p];
-    let px = Math.round(from.p[0] * COORD_SCALE),
-      py = Math.round(from.p[1] * COORD_SCALE);
-    for (let k = 0; k < interior; k++) {
-      px += r.zigzag();
-      py += r.zigzag();
-      geometry.push([px / COORD_SCALE, py / COORD_SCALE]);
-    }
-    geometry.push(to.p);
+/**
+ * One edge record, after its id delta. A mirrored record inherits from `previous`, the
+ * record before it; `ends` receives the node-table indices either way.
+ */
+function readEdgeRecord(
+  r: ByteReader,
+  ctx: RecordContext,
+  edgeId: number,
+  previous: Edge | undefined,
+  ends?: { from: number; to: number; mirror: boolean },
+): Edge {
+  const { text } = ctx;
+  const flags = r.u16();
+  const utility = r.varint() / UNIT_SCALE;
+  const cyclingNetwork = r.varint() / UNIT_SCALE;
+  const junction = r.varint() / UNIT_SCALE;
+  const reward = r.varint() / UNIT_SCALE;
+  const values = SEMANTIC_FIELDS.map(() => r.varint() / SEMANTIC_SCALE);
+  const known = r.byte();
+  if (values.some((value) => value < 0 || value > 1) || known > 1)
+    throw new IbexError("field", "Invalid precomputed riding signals");
+  const semantics: Edge["semantics"] = {
+    version: 1,
+    roughness: values[0],
+    technicalUp: values[1],
+    technicalDown: values[2],
+    unpaved: values[3],
+    curvature: values[4],
+    surfaceKnown: known === 1,
+  };
 
-    const surface = text(r.varint());
-    const highway = text(r.varint());
-    const name = flags & FLAG.hasName ? text(r.varint()) : "";
-    const ferryService =
-      flags & FLAG.hasFerryService ? text(r.varint()) : undefined;
-    const stress = r.varint() / UNIT_SCALE;
-    const uncertainty = r.varint() / UNIT_SCALE;
-    const urban = r.varint() / UNIT_SCALE;
-    const quality =
-      flags & FLAG.hasQuality ? r.varint() / UNIT_SCALE : undefined;
-    const forest = flags & FLAG.hasForest ? r.varint() / UNIT_SCALE : undefined;
-
-    let tags: Record<string, string> | undefined;
-    if (flags & FLAG.hasTags) {
-      const count = r.varint();
-      tags = {};
-      for (let k = 0; k < count; k++) tags[text(r.varint())] = text(r.varint());
-    }
-    let grades: [number, number][] | null = null;
-    if (flags & FLAG.hasGrades) {
-      const count = r.varint();
-      grades = [];
-      for (let k = 0; k < count; k++)
-        grades.push([
-          r.varint() / GRADE_LENGTH_SCALE,
-          r.zigzag() / GRADE_SCALE,
-        ]);
-    }
-    const ferrySeconds =
-      flags & FLAG.hasFerrySeconds
-        ? r.varint() / FERRY_SECONDS_SCALE
-        : undefined;
-
-    const edge: Edge = {
-      semantics,
+  if (flags & FLAG.mirrorPrevious) {
+    const source = previous;
+    if (!source)
+      throw new IbexError("bounds", "Mirrored edge has no predecessor");
+    if (ends) ends.mirror = true;
+    return {
+      ...source,
       id: edgeId,
-      from: from.id,
-      to: to.id,
       way: String(Math.floor(edgeId / 8192)),
-      length,
-      geometry,
-      grades,
-      surface,
-      highway,
-      stress,
-      uncertainty,
+      from: source.to,
+      to: source.from,
+      geometry: [...source.geometry].reverse(),
+      grades: source.grades
+        ? [...source.grades]
+            .reverse()
+            .map(([m, g]) => [m, -g] as [number, number])
+        : null,
       utility,
-      urban,
-      bridge: Boolean(flags & FLAG.bridge),
-      tunnel: Boolean(flags & FLAG.tunnel),
-      name,
-      tile: blockTile,
       cyclingNetwork,
       junction,
       reward,
+      semantics,
     };
-    if (quality !== undefined) edge.quality = quality;
-    if (forest !== undefined) edge.forest = forest;
-    if (tags) edge.tags = tags;
-    if (ferryService !== undefined) edge.ferryService = ferryService;
-    if (ferrySeconds !== undefined) edge.ferrySeconds = ferrySeconds;
-    edges.push(edge);
+  }
+
+  const fromIndex = r.varint(),
+    toIndex = r.varint();
+  const from = ctx.node(fromIndex),
+    to = ctx.node(toIndex);
+  if (!from || !to)
+    throw new IbexError("bounds", `Edge ${edgeId} references a missing node`);
+  if (ends) {
+    ends.from = fromIndex;
+    ends.to = toIndex;
+    ends.mirror = false;
+  }
+  const length = r.varint() / LENGTH_SCALE;
+  const interior = r.varint();
+  const geometry: Point[] = [from.p];
+  let px = Math.round(from.p[0] * COORD_SCALE),
+    py = Math.round(from.p[1] * COORD_SCALE);
+  for (let k = 0; k < interior; k++) {
+    px += r.zigzag();
+    py += r.zigzag();
+    geometry.push([px / COORD_SCALE, py / COORD_SCALE]);
+  }
+  geometry.push(to.p);
+
+  const surface = text(r.varint());
+  const highway = text(r.varint());
+  const name = flags & FLAG.hasName ? text(r.varint()) : "";
+  const ferryService =
+    flags & FLAG.hasFerryService ? text(r.varint()) : undefined;
+  const stress = r.varint() / UNIT_SCALE;
+  const uncertainty = r.varint() / UNIT_SCALE;
+  const urban = r.varint() / UNIT_SCALE;
+  const quality = flags & FLAG.hasQuality ? r.varint() / UNIT_SCALE : undefined;
+  const forest = flags & FLAG.hasForest ? r.varint() / UNIT_SCALE : undefined;
+
+  let tags: Record<string, string> | undefined;
+  if (flags & FLAG.hasTags) {
+    const count = r.varint();
+    tags = {};
+    for (let k = 0; k < count; k++) tags[text(r.varint())] = text(r.varint());
+  }
+  let grades: [number, number][] | null = null;
+  if (flags & FLAG.hasGrades) {
+    const count = r.varint();
+    grades = [];
+    for (let k = 0; k < count; k++)
+      grades.push([r.varint() / GRADE_LENGTH_SCALE, r.zigzag() / GRADE_SCALE]);
+  }
+  const ferrySeconds =
+    flags & FLAG.hasFerrySeconds ? r.varint() / FERRY_SECONDS_SCALE : undefined;
+
+  const edge: Edge = {
+    semantics,
+    id: edgeId,
+    from: from.id,
+    to: to.id,
+    way: String(Math.floor(edgeId / 8192)),
+    length,
+    geometry,
+    grades,
+    surface,
+    highway,
+    stress,
+    uncertainty,
+    utility,
+    urban,
+    bridge: Boolean(flags & FLAG.bridge),
+    tunnel: Boolean(flags & FLAG.tunnel),
+    name,
+    tile: ctx.tile,
+    cyclingNetwork,
+    junction,
+    reward,
+  };
+  if (quality !== undefined) edge.quality = quality;
+  if (forest !== undefined) edge.forest = forest;
+  if (tags) edge.tags = tags;
+  if (ferryService !== undefined) edge.ferryService = ferryService;
+  if (ferrySeconds !== undefined) edge.ferrySeconds = ferrySeconds;
+  return edge;
+}
+
+export function decodeBlock(
+  data: Uint8Array,
+  strings: string[],
+  options: BlockOptions,
+): DecodedBlock {
+  const { r, tile, nodes, edgeCount, text } = openBlock(data, strings, options);
+  const ctx: RecordContext = { tile, text, node: (i) => nodes[i] };
+  const edges: Edge[] = [];
+  let edgeId = 0;
+  for (let i = 0; i < edgeCount; i++) {
+    edgeId += r.varint();
+    edges.push(readEdgeRecord(r, ctx, edgeId, edges[edges.length - 1]));
   }
   return { nodes, edges };
+}
+
+/**
+ * A block kept as its own bytes, with just enough indexed to decode any one edge again.
+ *
+ * Decoded, an edge is an object of some twenty fields with an array per vertex and per
+ * grade run, about 1.5 KB; a 100 km leg holds over a million of them, which is several
+ * times what a phone lets a tab keep. The record itself is about 65 bytes. So a block is
+ * decoded once, checked, and kept as bytes plus a few columns; `blockEdge` rebuilds any
+ * edge from its offset, identical to what `decodeBlock` returns for it.
+ */
+export type CompactBlock = {
+  bytes: Uint8Array;
+  strings: string[];
+  tile: string;
+  nodeId: Float64Array;
+  lon: Float64Array;
+  lat: Float64Array;
+  /** NaN where the node has no elevation. */
+  elevation: Float64Array;
+  edgeId: Float64Array;
+  /** Where each record starts, after its id delta. */
+  offset: Int32Array;
+  /** The record a mirrored edge inherits from, or -1. */
+  source: Int32Array;
+  /** Node-table indices of each edge's ends. */
+  from: Int32Array;
+  to: Int32Array;
+};
+
+export function compactBlock(
+  data: Uint8Array,
+  strings: string[],
+  options: BlockOptions,
+  check: { node(node: Node): void; edge(edge: Edge): void } = {
+    node() {},
+    edge() {},
+  },
+): CompactBlock {
+  const { r, tile, nodes, edgeCount, text } = openBlock(data, strings, options);
+  const ctx: RecordContext = { tile, text, node: (i) => nodes[i] };
+  const n = nodes.length;
+  const block: CompactBlock = {
+    bytes: data,
+    strings,
+    tile,
+    nodeId: new Float64Array(n),
+    lon: new Float64Array(n),
+    lat: new Float64Array(n),
+    elevation: new Float64Array(n),
+    edgeId: new Float64Array(edgeCount),
+    offset: new Int32Array(edgeCount),
+    source: new Int32Array(edgeCount),
+    from: new Int32Array(edgeCount),
+    to: new Int32Array(edgeCount),
+  };
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i];
+    check.node(node);
+    block.nodeId[i] = node.id;
+    block.lon[i] = node.p[0];
+    block.lat[i] = node.p[1];
+    block.elevation[i] = node.elevation ?? NaN;
+  }
+  const ends = { from: 0, to: 0, mirror: false };
+  let edgeId = 0,
+    previous: Edge | undefined;
+  for (let i = 0; i < edgeCount; i++) {
+    edgeId += r.varint();
+    block.edgeId[i] = edgeId;
+    block.offset[i] = r.position;
+    previous = readEdgeRecord(r, ctx, edgeId, previous, ends);
+    check.edge(previous);
+    if (ends.mirror) {
+      block.source[i] = i - 1;
+      block.from[i] = block.to[i - 1];
+      block.to[i] = block.from[i - 1];
+    } else {
+      block.source[i] = -1;
+      block.from[i] = ends.from;
+      block.to[i] = ends.to;
+    }
+  }
+  return block;
+}
+
+/** Edge `i` of a compact block, decoded again from its record. */
+export function blockEdge(block: CompactBlock, i: number): Edge {
+  const node = (local: number): Node | undefined =>
+    local < block.nodeId.length
+      ? {
+          id: block.nodeId[local],
+          p: [block.lon[local], block.lat[local]],
+          elevation: Number.isNaN(block.elevation[local])
+            ? null
+            : block.elevation[local],
+        }
+      : undefined;
+  const ctx: RecordContext = {
+    tile: block.tile,
+    // Every string was resolved once when the block was compacted.
+    text: (at) => block.strings[at],
+    node,
+  };
+  const r = new ByteReader(block.bytes);
+  const source = block.source[i];
+  const previous =
+    source === -1 ? undefined : blockEdge(block, source);
+  return readEdgeRecord(
+    r.seek(block.offset[i]),
+    ctx,
+    block.edgeId[i],
+    previous,
+  );
 }

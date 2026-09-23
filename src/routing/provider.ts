@@ -5,9 +5,13 @@
  * each cell's graph.ibx and merged by identity — never by coordinate proximity — so a road
  * crossing a cell boundary, present in both adjacent packs, becomes one edge.
  */
-import { decodeBlock } from "../offline/ibex/block";
+import {
+  blockEdge,
+  compactBlock,
+  type CompactBlock,
+} from "../offline/ibex/block";
 import { validateEdge, validateNode } from "../offline/validate";
-import { edgeSignals } from "./signals";
+import { toGraph, type LegGraph } from "./legGraph";
 import { decodeIndex } from "../offline/ibex/index";
 import { IbexError, type BlockRef, type IbexIndex } from "../offline/ibex/spec";
 import {
@@ -17,12 +21,7 @@ import {
   type Installed,
 } from "../offline/store";
 import { bboxIntersects, cellId, type BBox } from "../geo/grid";
-import {
-  type Edge,
-  type Graph,
-  type Node,
-  type Restriction,
-} from "./types";
+import { type Graph, type Restriction } from "./types";
 
 export type ProviderStats = {
   cells: string[];
@@ -70,7 +69,7 @@ export class CellGraphProvider {
   private loaded: Loaded[] = [];
   private readonly cache = new Map<
     string,
-    { bbox: BBox; nodes: Node[]; edges: Edge[] }
+    { bbox: BBox; block: CompactBlock }
   >();
   readonly stats: ProviderStats = {
     cells: [],
@@ -157,13 +156,10 @@ export class CellGraphProvider {
       .map((c) => c.id);
   }
 
-  private async block(
-    entry: Loaded,
-    ref: BlockRef,
-  ): Promise<{ nodes: Node[]; edges: Edge[] }> {
+  private async block(entry: Loaded, ref: BlockRef): Promise<CompactBlock> {
     const key = `${entry.pack.manifest.id}:${ref.x}:${ref.y}`;
     const hit = this.cache.get(key);
-    if (hit) return hit;
+    if (hit) return hit.block;
     const stored = new Uint8Array(
       await this.reader.readRange(
         entry.pack,
@@ -176,19 +172,20 @@ export class CellGraphProvider {
     this.stats.storedBytes += stored.length;
     const raw = await inflate(stored);
     this.stats.decodedBytes += raw.length;
-    const decoded = decodeBlock(raw, entry.index.strings, {
-      releaseTag: entry.index.releaseTag,
-      block: { x: ref.x, y: ref.y },
-      crc: ref.crc,
-    });
-    for (const node of decoded.nodes) validateNode(node);
-    for (const edge of decoded.edges) {
-      validateEdge(edge);
-      edge.semantics ??= { ...edgeSignals(edge), version: 1 };
-    }
-    this.cache.set(key, { bbox: ref.bbox, ...decoded });
+    // Every record is decoded and checked here, once; what is kept is the bytes.
+    const block = compactBlock(
+      raw,
+      entry.index.strings,
+      {
+        releaseTag: entry.index.releaseTag,
+        block: { x: ref.x, y: ref.y },
+        crc: ref.crc,
+      },
+      { node: validateNode, edge: validateEdge },
+    );
+    this.cache.set(key, { bbox: ref.bbox, block });
     this.stats.blocks++;
-    return decoded;
+    return block;
   }
 
   /** Forget decoded blocks outside `bbox`, so routing leg by leg keeps memory bounded. */
@@ -197,51 +194,129 @@ export class CellGraphProvider {
       if (!bboxIntersects(block.bbox, bbox)) this.cache.delete(key);
   }
 
-  /**
-   * Merge every block intersecting the area into one graph. Nodes key on OSM id and edges
-   * on their deterministic id, so a boundary segment carried by two packs collapses to one.
-   */
+  /** The area's graph as objects, for scripts and audits; routing uses `loadLeg`. */
   async load(bbox: BBox): Promise<Graph> {
-    const nodes = new Map<number, Node>();
-    const edges = new Map<number, Edge>();
-    const restrictions = new Map<string, Restriction>();
+    return toGraph(await this.loadLeg(bbox));
+  }
 
+  /**
+   * Merge every block intersecting the area into one leg graph. Nodes key on OSM id and
+   * edges on their deterministic id, so a boundary segment carried by two packs collapses
+   * to one.
+   */
+  async loadLeg(bbox: BBox): Promise<LegGraph> {
+    const restrictions = new Map<string, Restriction>();
+    const blocks: CompactBlock[] = [];
     for (const entry of this.loaded) {
       if (!bboxIntersects(entry.index.bbox, bbox)) continue;
       for (const rule of entry.index.restrictions)
         restrictions.set(restrictionKey(rule), rule);
-      const refs = entry.index.blocks.filter((ref) =>
-        bboxIntersects(ref.bbox, bbox),
-      );
-      for (const ref of refs) {
-        const decoded = await this.block(entry, ref);
-        for (const node of decoded.nodes)
-          if (!nodes.has(node.id)) nodes.set(node.id, node);
-        for (const edge of decoded.edges) {
-          const existing = edges.get(edge.id);
-          if (existing) {
+      for (const ref of entry.index.blocks)
+        if (bboxIntersects(ref.bbox, bbox))
+          blocks.push(await this.block(entry, ref));
+    }
+    const envelope = this.envelope();
+    if (!envelope) throw new IbexError("cell", "No installed cells here");
+
+    // The first block to describe a node wins. A node in more than one block is on a
+    // seam, and only an edge with both ends there can be carried twice.
+    const of = new Map<number, number>(),
+      ids: number[] = [],
+      lon: number[] = [],
+      lat: number[] = [],
+      elevation: number[] = [],
+      shared: number[] = [];
+    const locals = blocks.map((block) => {
+      const local = new Int32Array(block.nodeId.length);
+      for (let i = 0; i < local.length; i++) {
+        const id = block.nodeId[i];
+        let g = of.get(id);
+        if (g === undefined) {
+          g = ids.length;
+          of.set(id, g);
+          ids.push(id);
+          lon.push(block.lon[i]);
+          lat.push(block.lat[i]);
+          elevation.push(block.elevation[i]);
+          shared.push(0);
+        } else shared[g] = 1;
+        local[i] = g;
+      }
+      return local;
+    });
+    of.clear();
+
+    const total = blocks.reduce((sum, b) => sum + b.edgeId.length, 0);
+    const edgeBlock = new Int32Array(total),
+      edgeLocal = new Int32Array(total),
+      from = new Int32Array(total),
+      to = new Int32Array(total);
+    const tiles: string[] = [],
+      tileOf = blocks.map((block) => {
+        const t = tiles.indexOf(block.tile);
+        return t === -1 ? tiles.push(block.tile) - 1 : t;
+      });
+    const seam = new Map<number, number>();
+    let count = 0;
+    for (const [b, block] of blocks.entries()) {
+      const local = locals[b];
+      for (let i = 0; i < block.edgeId.length; i++) {
+        const f = local[block.from[i]],
+          t = local[block.to[i]];
+        if (shared[f] && shared[t]) {
+          const id = block.edgeId[i];
+          const existing = seam.get(id);
+          if (existing !== undefined) {
             this.stats.duplicateEdges++;
-            // Identical by construction; a difference means the two packs disagree, which
-            // is worth surfacing rather than silently preferring one.
-            if (existing.length !== edge.length) this.stats.seamConflicts++;
+            // Identical by construction; a difference means the two packs disagree,
+            // which is worth surfacing rather than silently preferring one.
+            if (
+              blockEdge(blocks[edgeBlock[existing]], edgeLocal[existing])
+                .length !== blockEdge(block, i).length
+            )
+              this.stats.seamConflicts++;
             continue;
           }
-          edges.set(edge.id, edge);
+          seam.set(id, count);
         }
+        edgeBlock[count] = b;
+        edgeLocal[count] = i;
+        from[count] = f;
+        to[count] = t;
+        count++;
       }
     }
-
-    const envelope = this.envelope();
-    if (!envelope)
-      throw new IbexError("cell", "No installed cells here");
     return {
       schemaVersion: 1,
       bbox: envelope,
-      nodes: [...nodes.values()],
-      edges: [...edges.values()],
       restrictions: [...restrictions.values()],
+      nodeId: Float64Array.from(ids),
+      lon: Float64Array.from(lon),
+      lat: Float64Array.from(lat),
+      elevation: Float64Array.from(elevation),
+      from: from.slice(0, count),
+      to: to.slice(0, count),
+      tile: Int32Array.from(edgeBlock.subarray(0, count), (b) => tileOf[b]),
+      tiles,
+      ...decoders(blocks, edgeBlock.slice(0, count), edgeLocal.slice(0, count)),
     };
   }
+}
+
+/**
+ * The leg graph's edge accessors, made apart from the merge: a closure keeps its whole
+ * enclosing scope alive, and the merge's scope holds a JS array per node column.
+ */
+function decoders(
+  blocks: CompactBlock[],
+  edgeBlock: Int32Array,
+  edgeLocal: Int32Array,
+): Pick<LegGraph, "way" | "edge"> {
+  return {
+    way: (e) =>
+      String(Math.floor(blocks[edgeBlock[e]].edgeId[edgeLocal[e]] / 8192)),
+    edge: (e) => blockEdge(blocks[edgeBlock[e]], edgeLocal[e]),
+  };
 }
 
 /** Grow an anchor bbox so the corridor has room, with a floor for short requests. */

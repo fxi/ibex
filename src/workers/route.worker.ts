@@ -126,10 +126,7 @@ async function routeCells(data: CellInput) {
   }
 
   const source: LegGraphSource = {
-    async load(bbox) {
-      const graph = await provider.load(bbox);
-      return graph;
-    },
+    load: (bbox) => provider.loadLeg(bbox),
     missing: (bbox) => provider.missing(bbox),
     retain: (bbox) => provider.retain(bbox),
   };

@@ -1,6 +1,7 @@
 import { buildHeuristic } from "./heuristic";
-import { buildAdjacency } from "./adjacency";
-import { compileRestrictions, restrictionAllows } from "./restrictions";
+import { indexEdges } from "./adjacency";
+import { fromGraph, isLegGraph, nodesOf, type LegGraph } from "./legGraph";
+import { compileRestrictions, restrictionAllowsBy } from "./restrictions";
 import {
   buildField,
   cell,
@@ -19,7 +20,9 @@ import {
   scoreEdge,
   total,
   trafficHazard,
+  turnAngleCost,
   turnCost,
+  turnStrength,
   unpavedHazard,
   type HardTerm,
 } from "./cost";
@@ -36,6 +39,7 @@ import type {
   Edge,
   Field,
   Graph,
+  Node,
   Point,
   RouteRequest,
   RouteResult,
@@ -73,6 +77,8 @@ export { pointInBounds, project };
 export function snapAnchors(
   graph: Graph,
   anchors: Point[],
+  /** Ids to number new nodes and edges from, when `graph` is only part of the leg. */
+  next?: { node: number; edge: number },
 ): { graph: Graph; nodes: number[]; points: Point[] } | null {
   const nodes = [...graph.nodes],
     edges = [...graph.edges];
@@ -82,6 +88,10 @@ export function snapAnchors(
   for (const n of nodes) nextNode = Math.max(nextNode, n.id);
   nextNode++;
   let nextEdge = edges.reduce((m, e) => Math.max(m, e.id), 0) + 1;
+  if (next) {
+    nextNode = next.node;
+    nextEdge = next.edge;
+  }
   for (const p of anchors) {
     let best:
       | { edge: Edge; index: number; point: Point; along: number; gap: number }
@@ -220,13 +230,69 @@ export function ferryBoardingCost(
     ? ENGINE.ferry_boarding_meters
     : 0;
 }
-type SearchState = {
-  node: number;
-  history: string[];
-  leg: number;
-  edge?: Edge;
-  previous?: string;
-};
+/**
+ * Search states, by id, in flat arrays.
+ *
+ * A state is a node in a leg, with the restriction history that brought it there and the
+ * node the edge into it left from. It used to be an object under a string key in two
+ * Maps, a few hundred bytes each; a long leg keeps millions, and a phone kills the tab
+ * long before a desktop notices. `head` holds the latest state at each (node, leg), and
+ * `chain` links the few others there that differ in history or departure node.
+ */
+class SearchStates {
+  size = 0;
+  node = new Int32Array(1024);
+  leg = new Int32Array(1024);
+  history = new Int32Array(1024);
+  from = new Int32Array(1024);
+  previous = new Int32Array(1024);
+  chain = new Int32Array(1024);
+  cost = new Float64Array(1024);
+  /** The search edge the state was reached by, or -1. */
+  edge = new Int32Array(1024);
+  private readonly head: Int32Array;
+  constructor(
+    nodes: number,
+    private readonly legs: number,
+  ) {
+    this.head = new Int32Array(nodes * legs).fill(-1);
+  }
+  find(node: number, leg: number, history: number, from: number): number {
+    for (let s = this.head[node * this.legs + leg]; s !== -1; s = this.chain[s])
+      if (this.history[s] === history && this.from[s] === from) return s;
+    return -1;
+  }
+  add(node: number, leg: number, history: number, from: number): number {
+    if (this.size === this.node.length) this.grow();
+    const s = this.size++,
+      slot = node * this.legs + leg;
+    this.node[s] = node;
+    this.leg[s] = leg;
+    this.history[s] = history;
+    this.from[s] = from;
+    this.previous[s] = -1;
+    this.cost[s] = Infinity;
+    this.edge[s] = -1;
+    this.chain[s] = this.head[slot];
+    this.head[slot] = s;
+    return s;
+  }
+  private grow() {
+    const double = <A extends Int32Array | Float64Array>(a: A): A => {
+      const b = new (a.constructor as new (n: number) => A)(a.length * 2);
+      b.set(a);
+      return b;
+    };
+    this.node = double(this.node);
+    this.leg = double(this.leg);
+    this.history = double(this.history);
+    this.from = double(this.from);
+    this.previous = double(this.previous);
+    this.chain = double(this.chain);
+    this.cost = double(this.cost);
+    this.edge = double(this.edge);
+  }
+}
 /**
  * Describe one edge as one or more uniform stretches, appended to the running result.
  *
@@ -303,15 +369,31 @@ function appendSegments(
   flush(spans.length);
 }
 
+/** The shorter of an edge's length and its graded length, which the A* bound divides. */
+const spanOf = (edge: Edge) =>
+  Math.min(
+    edge.length,
+    edge.grades?.reduce((sum, [length]) => sum + length, 0) ?? edge.length,
+  );
+
+/** Whether any segment of `edge` lies within `meters` of `p`, measured as snapping does. */
+function reaches(edge: Edge, p: Point, meters: number): boolean {
+  for (let i = 1; i < edge.geometry.length; i++)
+    if (project(p, edge.geometry[i - 1], edge.geometry[i]).distance <= meters)
+      return true;
+  return false;
+}
+
 export function route(
-  graph: Graph,
+  input: Graph | LegGraph,
   request: RouteRequest,
   mode: "reference" | "corridor",
   providedField?: Field,
   fixedRadius?: number,
 ): RouteResult {
   request = { ...request, profile: toCompiled(request.profile) };
-  validateProfileData(graph);
+  if (!isLegGraph(input)) validateProfileData(input);
+  const graph = isLegGraph(input) ? input : fromGraph(input);
   const startTime = performance.now();
   const result: RouteResult = {
     status: "no-path",
@@ -349,52 +431,157 @@ export function route(
     result.status = "outside-coverage";
     return finish();
   }
-  graph = {
-    ...graph,
-    edges: graph.edges.filter((edge) => eligible(edge, request.profile)),
-  };
-  const snap = snapAnchors(graph, request.anchors);
+  // One pass over the leg, each edge decoded once and let go: which edges this profile
+  // may ride, and which lie near enough an anchor to be snapped to. A snap never lands
+  // farther than 250 m, so only those edges need to exist as objects for `snapAnchors`,
+  // and it sees them in the order the whole graph would have shown them.
+  const edgeCount = graph.from.length;
+  const keep: number[] = [],
+    near: Edge[] = [],
+    nearRefs: number[] = [];
+  let span: Float64Array | undefined = new Float64Array(edgeCount);
+  let maxEdgeId = 0;
+  for (let e = 0; e < edgeCount; e++) {
+    const edge = graph.edge(e);
+    if (!eligible(edge, request.profile)) continue;
+    keep.push(e);
+    maxEdgeId = Math.max(maxEdgeId, edge.id);
+    span[e] = spanOf(edge);
+    if (request.anchors.some((p) => reaches(edge, p, 250))) {
+      near.push(edge);
+      nearRefs.push(e);
+    }
+  }
+  const baseNodes = graph.nodeId.length;
+  let maxNodeId = 0;
+  for (let i = 0; i < baseNodes; i++)
+    if (!Number.isNaN(graph.lon[i]))
+      maxNodeId = Math.max(maxNodeId, graph.nodeId[i]);
+  const ends = new Map<number, number>();
+  for (const ref of nearRefs) {
+    ends.set(graph.nodeId[graph.from[ref]], graph.from[ref]);
+    ends.set(graph.nodeId[graph.to[ref]], graph.to[ref]);
+  }
+  const nearNodes: Node[] = [];
+  for (const i of ends.values())
+    if (!Number.isNaN(graph.lon[i]))
+      nearNodes.push({
+        id: graph.nodeId[i],
+        p: [graph.lon[i], graph.lat[i]],
+        elevation: Number.isNaN(graph.elevation[i]) ? null : graph.elevation[i],
+      });
+  const snap = snapAnchors(
+    {
+      schemaVersion: 1,
+      bbox: graph.bbox,
+      nodes: nearNodes,
+      edges: near,
+      restrictions: [],
+    },
+    request.anchors,
+    { node: maxNodeId + 1, edge: maxEdgeId + 1 },
+  );
   if (!snap) {
     result.status = "snap-failed";
     return finish();
   }
-  graph = snap.graph;
   result.anchors = snap.points;
-  const { adjacency, reverse } = buildAdjacency(graph.edges);
+
+  // The search graph: the eligible edges, less those a snap split, plus the pieces it
+  // split them into, in that order — the order the split used to leave the edge list in.
+  const survived = new Set(snap.graph.edges),
+    nearSet = new Set(near);
+  const removed = new Set(nearRefs.filter((_, k) => !survived.has(near[k])));
+  const extras = snap.graph.edges.filter((e) => !nearSet.has(e));
+  const extraNodes = snap.graph.nodes.slice(nearNodes.length);
+  const nodeCount = baseNodes + extraNodes.length;
+  const nodeIds = new Float64Array(nodeCount),
+    lon = new Float64Array(nodeCount),
+    lat = new Float64Array(nodeCount),
+    elevation = new Float64Array(nodeCount);
+  nodeIds.set(graph.nodeId);
+  lon.set(graph.lon);
+  lat.set(graph.lat);
+  elevation.set(graph.elevation);
+  for (const [j, node] of extraNodes.entries()) {
+    const i = baseNodes + j;
+    ends.set(node.id, i);
+    nodeIds[i] = node.id;
+    lon[i] = node.p[0];
+    lat[i] = node.p[1];
+    elevation[i] = node.elevation ?? NaN;
+  }
+  const searchCount = keep.length - removed.size + extras.length;
+  const refs = new Int32Array(searchCount),
+    from = new Int32Array(searchCount),
+    to = new Int32Array(searchCount),
+    spans = new Float64Array(searchCount);
+  let k = 0;
+  for (const e of keep) {
+    if (removed.has(e)) continue;
+    refs[k] = e;
+    from[k] = graph.from[e];
+    to[k] = graph.to[e];
+    spans[k] = span[e];
+    k++;
+  }
+  span = undefined;
+  const extraTiles = new Map<string, number>(graph.tiles.map((t, i) => [t, i]));
+  for (const [x, edge] of extras.entries()) {
+    refs[k] = edgeCount + x;
+    from[k] = ends.get(edge.from)!;
+    to[k] = ends.get(edge.to)!;
+    spans[k] = spanOf(edge);
+    if (!extraTiles.has(edge.tile)) extraTiles.set(edge.tile, extraTiles.size);
+    k++;
+  }
+  const edgeAt = (s: number): Edge =>
+    refs[s] < edgeCount ? graph.edge(refs[s]) : extras[refs[s] - edgeCount];
+  const wayOf = (s: number): string =>
+    refs[s] < edgeCount ? graph.way(refs[s]) : extras[refs[s] - edgeCount].way;
+  const tileOf = (s: number): number =>
+    refs[s] < edgeCount
+      ? graph.tile[refs[s]]
+      : extraTiles.get(extras[refs[s] - edgeCount].tile)!;
+  const index = indexEdges(lon, lat, from, to);
+  const targets = snap.nodes.map((id) => ends.get(id)!);
   // Distinct neighbours of a node, for `turnCost`: three or more is a real intersection.
-  const degrees = new Map<number, number>();
+  const degrees = new Int32Array(nodeCount).fill(-1);
   const degree = (node: number) => {
-    let d = degrees.get(node);
-    if (d === undefined) {
-      d = new Set([
-        ...(adjacency.get(node) ?? []).map((e) => e.to),
-        ...(reverse.get(node) ?? []).map((e) => e.from),
-      ]).size;
-      degrees.set(node, d);
+    let d = degrees[node];
+    if (d < 0) {
+      const neighbours = new Set<number>();
+      for (let k = index.outStart[node]; k < index.outStart[node + 1]; k++)
+        neighbours.add(index.to[index.outEdges[k]]);
+      for (let k = index.inStart[node]; k < index.inStart[node + 1]; k++)
+        neighbours.add(index.from[index.inEdges[k]]);
+      d = degrees[node] = neighbours.size;
     }
     return d;
   };
   const turnProfile = toCompiled(request.profile);
-  const reachability = new Map<number, Set<number>>();
-  const canReach = snap.nodes.map((target, leg) => {
-    if (leg === 0) return new Set<number>();
+  const reachability = new Map<number, Uint8Array>();
+  const canReach = targets.map((target, leg) => {
+    if (leg === 0) return new Uint8Array(0);
     const cached = reachability.get(target);
     if (cached) return cached;
-    const seen = new Set([target]),
-      queue = [target];
-    for (let i = 0; i < queue.length; i++) {
-      for (const edge of reverse.get(queue[i]) ?? []) {
-        const origin = edge.from;
-        if (seen.has(origin)) continue;
-        seen.add(origin);
-        queue.push(origin);
+    const seen = new Uint8Array(nodeCount),
+      queue = new Int32Array(nodeCount);
+    seen[target] = 1;
+    queue[0] = target;
+    let tail = 1;
+    for (let i = 0; i < tail; i++)
+      for (let k = index.inStart[queue[i]]; k < index.inStart[queue[i] + 1]; k++) {
+        const origin = index.from[index.inEdges[k]];
+        if (seen[origin]) continue;
+        seen[origin] = 1;
+        queue[tail++] = origin;
       }
-    }
     reachability.set(target, seen);
     return seen;
   });
-  for (let leg = 1; leg < snap.nodes.length; leg++) {
-    if (!canReach[leg].has(snap.nodes[leg - 1])) {
+  for (let leg = 1; leg < targets.length; leg++) {
+    if (!canReach[leg][targets[leg - 1]]) {
       result.failedLeg = leg;
       return finish();
     }
@@ -402,19 +589,63 @@ export function route(
   const f =
     mode === "corridor"
       ? (providedField ??
-        buildField(graph, { ...request, anchors: snap.points }))
+        buildField(
+          {
+            schemaVersion: 1,
+            bbox: graph.bbox,
+            nodes: [
+              ...nodesOf(graph),
+              ...extraNodes,
+            ],
+            edges: Array.from(refs, (_, s) => edgeAt(s)),
+            restrictions: graph.restrictions,
+          },
+          { ...request, anchors: snap.points },
+        ))
       : undefined;
   if (f) result.corridor = f.paths.map((p) => p.map((id) => center(f, id)));
   const { byWay: rulesByWay, nextHistory } = compileRestrictions(
     graph.restrictions,
   );
-  const tiles = new Set<string>();
+  const tiles = new Set<number>();
   // The corridor used to be a fixed [2, 5, 12] ladder that only widened when the search
   // failed, never because a better line lay just outside it — a second, independent
   // reason routes came out direct. It now opens as wide as the rider asked to wander,
   // and still falls back to the whole graph so no setting can cause a failure.
   const corridor = toCompiled(request.profile).detour.corridor_cells;
   const cost_ = costCache(request.profile, request.attraction);
+  // What the search needs of an edge beyond its ends, filled the first time it is priced
+  // and kept as numbers: the cost, whether and which ferry it is, and the three points a
+  // turn onto or off it is measured with.
+  const strength = turnStrength(turnProfile);
+  const priced = new Float64Array(searchCount).fill(NaN),
+    ferry = new Int32Array(searchCount),
+    turnPoints = strength < 0 ? new Float64Array(searchCount * 6) : undefined;
+  const ferries = new Map<string, number>();
+  const costOf = (s: number) => {
+    let c = priced[s];
+    if (Number.isNaN(c)) {
+      const edge = edgeAt(s);
+      c = priced[s] = total(scoreEdge(edge, turnProfile, request.attraction));
+      if (isFerry(edge)) {
+        const key = edge.ferryService ?? edge.way;
+        let id = ferries.get(key);
+        if (id === undefined) ferries.set(key, (id = ferries.size));
+        ferry[s] = id;
+      } else ferry[s] = -1;
+      if (turnPoints) {
+        const g = edge.geometry,
+          a = g.at(-2)!,
+          b = g.at(-1)!,
+          c2 = g[1] ?? g.at(-1)!;
+        turnPoints.set([a[0], a[1], b[0], b[1], c2[0], c2[1]], s * 6);
+      }
+    }
+    return c;
+  };
+  const boarding = turnProfile.permissions.ferry
+    ? ENGINE.ferry_boarding_meters
+    : 0;
   const radii = f
     ? fixedRadius !== undefined
       ? [fixedRadius]
@@ -424,29 +655,44 @@ export function route(
     estimate,
     scale: heuristicScale,
     preparedStates,
-  } = buildHeuristic(graph, snap, request, reverse, cost_);
+  } = buildHeuristic(
+    index,
+    { nodes: targets, points: snap.points },
+    request,
+    costOf,
+    spans,
+  );
   result.metrics.heuristicScale = +heuristicScale.toFixed(6);
   if (preparedStates !== undefined)
     result.metrics.preparedStates = preparedStates;
+  // Histories by content, so two equal ones reached by different paths are one state.
+  const histories: string[][] = [],
+    historyIds = new Map<string, number>();
+  const historyId = (history: string[]) => {
+    const key = history.join(",");
+    let id = historyIds.get(key);
+    if (id === undefined) {
+      id = histories.length;
+      histories.push(history);
+      historyIds.set(key, id);
+    }
+    return id;
+  };
   for (const radius of radii) {
     const allowed =
       f && Number.isFinite(radius) ? corridorCells(f, radius) : undefined;
-    const q = new Heap<string>(),
-      cost = new Map<string, number>(),
-      states = new Map<string, SearchState>();
-    const keyOf = (s: SearchState) =>
-      `${s.node}|${s.leg}|${s.history.join(",")}|${s.edge?.from ?? ""}`;
-    const initial: SearchState = { node: snap.nodes[0], history: [], leg: 1 };
-    const key = keyOf(initial);
-    states.set(key, initial);
-    cost.set(key, 0);
-    q.push(estimate(initial.node, initial.leg), key);
-    let final: string | undefined;
+    const q = new Heap<number>(),
+      states = new SearchStates(nodeCount, targets.length);
+    const initial = states.add(targets[0], 1, historyId([]), -1);
+    states.cost[initial] = 0;
+    q.push(estimate(targets[0], 1), initial);
+    let final: number | undefined;
     while (q.size) {
       const item = q.pop()!;
-      const state = states.get(item.value)!;
-      const settledCost = cost.get(item.value)!;
-      if (item.key !== settledCost + estimate(state.node, state.leg)) continue;
+      const id = item.value,
+        node = states.node[id];
+      const settledCost = states.cost[id];
+      if (item.key !== settledCost + estimate(node, states.leg[id])) continue;
       if (
         ++result.metrics.explored + (result.metrics.preparedStates ?? 0) >
         (request.maxSettled ?? 1500000)
@@ -455,43 +701,64 @@ export function route(
         result.metrics.tiles = tiles.size;
         return finish();
       }
-      let leg = state.leg;
-      while (leg < snap.nodes.length && state.node === snap.nodes[leg]) leg++;
-      if (leg === snap.nodes.length) {
-        final = item.value;
+      let leg = states.leg[id];
+      while (leg < targets.length && node === targets[leg]) leg++;
+      if (leg === targets.length) {
+        final = id;
         break;
       }
-      for (const edge of adjacency.get(state.node) || []) {
-        if (!canReach[leg].has(edge.to)) continue;
+      const history = histories[states.history[id]],
+        arrived = states.edge[id];
+      const rules = rulesByWay.get(history.at(-1) ?? "") ?? [];
+      for (let k = index.outStart[node]; k < index.outStart[node + 1]; k++) {
+        const e = index.outEdges[k],
+          to = index.to[e];
+        if (!canReach[leg][to]) continue;
         if (
           allowed &&
           f &&
-          !edge.geometry.every((p) => allowed.has(cell(f, p)))
+          !edgeAt(e).geometry.every((p) => allowed.has(cell(f, p)))
         )
           continue;
+        const way = wayOf(e);
         if (
-          !restrictionAllows(
-            rulesByWay.get(state.history.at(-1) ?? "") ?? [],
-            state.history,
-            state.node,
-            edge,
-            state.edge,
+          rules.length &&
+          !restrictionAllowsBy(
+            rules,
+            history,
+            nodeIds[node],
+            way,
+            nodeIds[to],
+            arrived === -1 ? undefined : nodeIds[index.from[arrived]],
           )
         )
           continue;
-        tiles.add(edge.tile);
-        const history = nextHistory(state.history, edge.way);
-        const next: SearchState = {
-          node: edge.to,
-          history,
-          leg,
-          edge,
-          previous: item.value,
-        };
-        const nextKey = keyOf(next),
+        tiles.add(tileOf(e));
+        const edgeCost = costOf(e);
+        let turn = 0;
+        if (
+          turnPoints &&
+          arrived !== -1 &&
+          degree(node) >= 3 &&
+          ferry[arrived] === -1 &&
+          ferry[e] === -1
+        ) {
+          const a = arrived * 6,
+            c = e * 6;
+          turn = turnAngleCost(
+            turnPoints[a],
+            turnPoints[a + 1],
+            turnPoints[a + 2],
+            turnPoints[a + 3],
+            turnPoints[c + 4],
+            turnPoints[c + 5],
+            strength,
+          );
+        }
+        const nextHistoryId = historyId(nextHistory(history, way)),
           newCost =
             settledCost +
-            total(cost_(edge)) +
+            edgeCost +
             // Turn and ferry-boarding charges need the edge arrived on. The state key
             // carries that edge's *departure* node, not its identity, so two parallel
             // edges between the same pair of nodes — a service road beside a street, a
@@ -499,30 +766,33 @@ export function route(
             // such a junction can therefore be priced against the wrong one of the two.
             // Deliberate: widening the key with the edge id multiplies the state space
             // everywhere to fix a difference of a few metres at a handful of junctions.
-            turnCost(state.edge, edge, turnProfile, degree(state.node)) +
-            ferryBoardingCost(edge, state.edge, request.profile);
-        if (newCost < (cost.get(nextKey) ?? Infinity)) {
-          cost.set(nextKey, newCost);
-          states.set(nextKey, next);
-          q.push(newCost + estimate(next.node, next.leg), nextKey);
+            turn +
+            (ferry[e] === -1 || (arrived !== -1 && ferry[arrived] === ferry[e])
+              ? 0
+              : boarding);
+        let next = states.find(to, leg, nextHistoryId, node);
+        if (newCost < (next < 0 ? Infinity : states.cost[next])) {
+          if (next < 0) next = states.add(to, leg, nextHistoryId, node);
+          states.cost[next] = newCost;
+          states.previous[next] = id;
+          states.edge[next] = e;
+          q.push(newCost + estimate(to, leg), next);
         }
       }
     }
     if (final !== undefined) {
-      const edges: Edge[] = [];
-      for (let k: string | undefined = final; k;) {
-        const state: SearchState = states.get(k)!;
-        if (state.edge) edges.push(state.edge);
-        k = state.previous;
-      }
-      edges.reverse();
+      const path: number[] = [];
+      for (let k = final; k !== -1; k = states.previous[k])
+        if (states.edge[k] !== -1) path.push(states.edge[k]);
+      path.reverse();
+      const edges = path.map(edgeAt);
       let ascent = 0,
         descent = 0,
         completeElevation = true;
-      const elevations = new Map(graph.nodes.map((n) => [n.id, n.elevation]));
       let previousEdge: Edge | undefined;
-      for (const edge of edges) {
-        let height = elevations.get(edge.from) ?? null;
+      for (const [step, edge] of edges.entries()) {
+        const start = elevation[from[path[step]]];
+        let height = Number.isNaN(start) ? null : start;
         let meters = result.distanceM;
         result.elevationProfile.push([meters, edge.grades ? height : null]);
         if (edge.grades && height !== null) {
@@ -550,7 +820,7 @@ export function route(
           previousEdge,
           edge,
           turnProfile,
-          degree(edge.from),
+          degree(from[path[step]]),
         );
         c.ferry += ferryBoardingCost(edge, previousEdge, request.profile);
         previousEdge = edge;

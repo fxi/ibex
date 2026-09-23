@@ -163,17 +163,37 @@ export function turnCost(
   p: CompiledProfile,
   degree: number,
 ): number {
-  const strength = STRENGTH[p.directionChanges];
+  const strength = turnStrength(p);
   if (!previous || strength >= 0 || degree < 3) return 0;
   if (isFerry(previous) || isFerry(edge)) return 0;
   const a = previous.geometry.at(-2)!,
     b = previous.geometry.at(-1)!,
     c = edge.geometry[1] ?? edge.geometry.at(-1)!;
-  const k = Math.cos((b[1] * Math.PI) / 180);
-  const ux = (b[0] - a[0]) * k,
-    uy = b[1] - a[1],
-    vx = (c[0] - b[0]) * k,
-    vy = c[1] - b[1];
+  return turnAngleCost(a[0], a[1], b[0], b[1], c[0], c[1], strength);
+}
+
+/** How much a profile charges for changing direction; below zero it does. */
+export const turnStrength = (p: CompiledProfile): number =>
+  STRENGTH[p.directionChanges];
+
+/**
+ * The charge for turning at `b`, arriving from `a` and leaving towards `c`. Apart from
+ * `turnCost` so the search can price a turn from stored points without the edges.
+ */
+export function turnAngleCost(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  strength: number,
+): number {
+  const k = Math.cos((by * Math.PI) / 180);
+  const ux = (bx - ax) * k,
+    uy = by - ay,
+    vx = (cx - bx) * k,
+    vy = cy - by;
   const norm = Math.hypot(ux, uy) * Math.hypot(vx, vy);
   if (!norm) return 0;
   const cos = Math.max(-1, Math.min(1, (ux * vx + uy * vy) / norm));

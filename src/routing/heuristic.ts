@@ -12,11 +12,12 @@
  * return cheaper-looking routes than the best one, which is worse than being slow.
  */
 import { Heap } from "./heap";
-import { total } from "./cost";
 import { toCompiled } from "./compile";
-import type { Components, Edge, Graph, Point, RouteRequest } from "./types";
+import type { GraphIndex } from "./adjacency";
+import type { Point, RouteRequest } from "./types";
 
 export type Heuristic = {
+  /** Lower bound from node `node` (a `GraphIndex` index) to the end, in leg `leg`. */
   estimate: (node: number, leg: number) => number;
   /**
    * The rate the bound was scaled by, in [0, 1]. 1 means every edge is priced at least as
@@ -30,39 +31,37 @@ export type Heuristic = {
 };
 
 export function buildHeuristic(
-  graph: Graph,
+  index: GraphIndex,
+  /** Snapped anchors, as `index` indices. */
   snap: { nodes: number[]; points: Point[] },
   request: RouteRequest,
-  reverse: Map<number, Edge[]>,
-  cost_: (edge: Edge) => Components,
+  /** Total cost of search edge `e`. */
+  costOf: (e: number) => number,
+  /** Per search edge, the shorter of its length and its graded length. */
+  span: Float64Array,
 ): Heuristic {
   // A fixed projection gives a true Euclidean metric. Bound every graph edge against
   // its endpoint chord, including rounded lengths, then apply the minimum cost rate.
   // Unlike the corridor this cannot exclude a better route outside a guessed area.
   const longitudeScale = Math.cos((snap.points[0][1] * Math.PI) / 180);
-  const positions = new Map(graph.nodes.map((node) => [node.id, node.p]));
-  const chord = (a: Point, b: Point) =>
-    ((6371000 * Math.PI) / 180) *
-    Math.hypot((a[0] - b[0]) * longitudeScale, a[1] - b[1]);
+  const { lon, lat } = index;
+  const n = lon.length,
+    edgeCount = index.from.length;
+  const chord = (ax: number, ay: number, bx: number, by: number) =>
+    ((6371000 * Math.PI) / 180) * Math.hypot((ax - bx) * longitudeScale, ay - by);
   let lengthScale = 1;
   if (request.search !== "dijkstra")
-    for (const edge of graph.edges) {
-      const from = positions.get(edge.from),
-        to = positions.get(edge.to);
-      if (!from || !to) {
+    for (let e = 0; e < edgeCount; e++) {
+      const a = index.from[e],
+        b = index.to[e];
+      if (Number.isNaN(lon[a]) || Number.isNaN(lon[b])) {
         // A node without a position leaves nothing to measure against, so no geometric
         // bound is admissible for this graph at all.
         lengthScale = 0;
         break;
       }
-      const d = chord(from, to);
-      const gradedLength =
-        edge.grades?.reduce((sum, [length]) => sum + length, 0) ?? edge.length;
-      if (d > 0)
-        lengthScale = Math.min(
-          lengthScale,
-          Math.min(edge.length, gradedLength) / d,
-        );
+      const d = chord(lon[a], lat[a], lon[b], lat[b]);
+      if (d > 0) lengthScale = Math.min(lengthScale, span[e] / d);
     }
   const floor =
     Math.min(1, toCompiled(request.profile).detour.rate_floor) *
@@ -72,55 +71,74 @@ export function buildHeuristic(
   const remaining = new Float64Array(snap.nodes.length);
   for (let i = snap.nodes.length - 2; i >= 0; i--)
     remaining[i] =
-      remaining[i + 1] + chord(snap.points[i], snap.points[i + 1]) * floor;
-  const estimates = snap.nodes.map(() => new Map<number, number>());
+      remaining[i + 1] +
+      chord(
+        snap.points[i][0],
+        snap.points[i][1],
+        snap.points[i + 1][0],
+        snap.points[i + 1][1],
+      ) *
+        floor;
+  // One cache per leg, NaN until a node is first asked for.
+  const estimates: (Float64Array | undefined)[] = [];
   // A relaxed node graph ignores turn restrictions and transition charges, so its
   // distances are valid lower bounds for the richer search. Stop at the source; nodes
   // not settled yet are at least as far away as the frontier. This is especially
   // effective where a cheap geometric estimate cannot see a mountain or river barrier.
-  const potential = new Map<number, number>();
+  let potential: Float64Array | undefined;
   let frontier = 0;
   let preparedStates: number | undefined;
   if (
     request.search !== "dijkstra" &&
     snap.nodes.length === 2 &&
-    graph.edges.length > 10000
+    edgeCount > 10000
   ) {
-    const pending = new Map<number, number>([[snap.nodes[1], 0]]);
+    potential = new Float64Array(n).fill(NaN);
+    const pending = new Float64Array(n).fill(Infinity);
+    pending[snap.nodes[1]] = 0;
     const heap = new Heap<number>();
     heap.push(0, snap.nodes[1]);
     const limit = Math.min(
       100000,
       Math.floor((request.maxSettled ?? 1500000) / 4),
     );
-    while (heap.size && potential.size < limit) {
+    let settled = 0;
+    while (heap.size && settled < limit) {
       const item = heap.pop()!;
-      if (item.key !== pending.get(item.value) || potential.has(item.value))
+      if (item.key !== pending[item.value] || !Number.isNaN(potential[item.value]))
         continue;
-      potential.set(item.value, item.key);
+      potential[item.value] = item.key;
+      settled++;
       frontier = item.key;
       if (item.value === snap.nodes[0]) break;
-      for (const edge of reverse.get(item.value) ?? []) {
-        const next = item.key + total(cost_(edge));
-        if (next < (pending.get(edge.from) ?? Infinity)) {
-          pending.set(edge.from, next);
-          heap.push(next, edge.from);
+      for (let k = index.inStart[item.value]; k < index.inStart[item.value + 1]; k++) {
+        const e = index.inEdges[k],
+          origin = index.from[e];
+        const next = item.key + costOf(e);
+        if (next < pending[origin]) {
+          pending[origin] = next;
+          heap.push(next, origin);
         }
       }
     }
-    preparedStates = potential.size;
+    preparedStates = settled;
   }
   const estimate = (node: number, leg: number) => {
     if (request.search === "dijkstra" || leg >= snap.nodes.length) return 0;
-    const cache = estimates[leg];
-    const hit = cache.get(node);
-    if (hit !== undefined) return hit;
-    const point = positions.get(node);
-    const geometric = point
-      ? chord(point, snap.points[leg]) * floor + remaining[leg]
-      : 0;
-    const h = Math.max(geometric, potential.get(node) ?? frontier);
-    cache.set(node, h);
+    const cache = (estimates[leg] ??= new Float64Array(n).fill(NaN));
+    const hit = cache[node];
+    if (!Number.isNaN(hit)) return hit;
+    const geometric = Number.isNaN(lon[node])
+      ? 0
+      : chord(lon[node], lat[node], snap.points[leg][0], snap.points[leg][1]) *
+          floor +
+        remaining[leg];
+    const known = potential?.[node];
+    const h = Math.max(
+      geometric,
+      known === undefined || Number.isNaN(known) ? frontier : known,
+    );
+    cache[node] = h;
     return h;
   };
   return { estimate, scale: lengthScale, preparedStates };

@@ -16,7 +16,7 @@
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { route, total } from "../src/routing/engine";
-import { DEFAULT_CELLS, loadReleaseGraph } from "./local_cells";
+import { DEFAULT_CELLS, loadLegGraph } from "./local_cells";
 import { loadProfile, SHIPPED_IDS } from "./profile";
 import type { Point, RouteResult } from "../src/routing/types";
 
@@ -71,7 +71,7 @@ const snapshot = (r: RouteResult) => ({
 
 const rows: Record<string, ReturnType<typeof snapshot>> = {};
 for (const scenario of scenarios) {
-  const graph = await loadReleaseGraph(packs, scenario.anchors);
+  const graph = await loadLegGraph(packs, scenario.anchors);
   for (const id of SHIPPED_IDS) {
     const profile = await loadProfile(id);
     const result = route(graph, { anchors: scenario.anchors, profile }, "reference");
