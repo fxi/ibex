@@ -613,10 +613,30 @@ export function streetViewURL([lng, lat]: [number, number]): string {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
 
+/** A calendar date in the rider's own time zone, as Booking reads it. */
+const isoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 /**
- * Booking.com's search around a map point, dates left to the page. Availability and prices
- * are theirs to show: no keyless API offers them, and a key cannot live in the bundle.
+ * Booking.com's search around a map point: hotels only, tonight, on the map. Availability
+ * and prices are theirs to show: no keyless API offers them, and a key cannot live in the
+ * bundle. `ht_id=204` is Booking's property type for hotels, which leaves out apartments.
  */
-export function hotelsURL([lng, lat]: [number, number]): string {
-  return `https://www.booking.com/searchresults.html?latitude=${lat.toFixed(6)}&longitude=${lng.toFixed(6)}&dest_type=latlong`;
+export function hotelsURL(
+  [lng, lat]: [number, number],
+  today = new Date(),
+): string {
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(6),
+    longitude: lng.toFixed(6),
+    dest_type: "latlong",
+    checkin: isoDay(today),
+    checkout: isoDay(tomorrow),
+    group_adults: "1",
+    no_rooms: "1",
+    nflt: "ht_id=204",
+  });
+  return `https://www.booking.com/searchresults.html?${params}#map_opened`;
 }

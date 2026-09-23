@@ -166,3 +166,11 @@ it("searches hotels around the map point itself", () => {
   expect(url.searchParams.get("latitude")).toBe("46.190000");
   expect(url.searchParams.get("longitude")).toBe("6.205123");
 });
+
+it("asks Booking for hotels only, tonight, on its map", () => {
+  const url = new URL(hotelsURL([6.2, 46.19], new Date(2026, 11, 31, 22)));
+  expect(url.searchParams.get("checkin")).toBe("2026-12-31");
+  expect(url.searchParams.get("checkout")).toBe("2027-01-01");
+  expect(url.searchParams.get("nflt")).toBe("ht_id=204");
+  expect(url.hash).toBe("#map_opened");
+});
