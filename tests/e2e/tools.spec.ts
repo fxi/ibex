@@ -25,7 +25,7 @@ test("imports a GPX file as a reference track that exports again", async ({
     page.getByRole("heading", { name: "Your tracks" }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: "Tools", exact: true }).click();
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByLabel("Import tracks").setInputFiles({
     name: "sunday-loop.gpx",
     mimeType: "application/gpx+xml",
@@ -68,7 +68,7 @@ test("reports a bad import without adding a track", async ({ page }) => {
   await startTrack(page);
   const before = await page.locator(".track-card").count();
 
-  await page.getByRole("tab", { name: "Tools", exact: true }).click();
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page.getByLabel("Import tracks").setInputFiles({
     name: "notes.gpx",
     mimeType: "application/gpx+xml",

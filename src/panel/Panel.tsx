@@ -2,7 +2,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import {
   Route,
   Layers,
-  Wrench,
+  NotebookPen,
   Palette,
   Settings,
   RefreshCw,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { TracksPanel } from "./TracksPanel";
 import { DataPanel } from "./DataPanel";
-import { ToolsPanel } from "./ToolsPanel";
+import { NotesPanel } from "./NotesPanel";
 import { ConfigurePanel } from "./ConfigurePanel";
 import { SymbologyPanel } from "./SymbologyPanel";
 import { EditPanel } from "./EditPanel";
@@ -21,7 +21,7 @@ const tabs = [
   ["tracks", "Tracks", Route],
   ["edit", "Edit", SquarePen],
   ["data", "Data", Layers],
-  ["tools", "Tools", Wrench],
+  ["notes", "Notes", NotebookPen],
   ["symbology", "Legend", Palette],
   ["configure", "Configure", Settings],
 ] as const;
@@ -108,8 +108,8 @@ export function Panel({
           <Tabs.Content value="data">
             <DataPanel ctx={ctx} />
           </Tabs.Content>
-          <Tabs.Content value="tools">
-            <ToolsPanel ctx={ctx} />
+          <Tabs.Content value="notes">
+            <NotesPanel />
           </Tabs.Content>
           <Tabs.Content value="symbology">
             <SymbologyPanel ctx={ctx} />

@@ -16,7 +16,7 @@ test("panel geometry is stable across tabs and survives a tap on the handle", as
   for (const name of [
     "Edit",
     "Data",
-    "Tools",
+    "Notes",
     "Legend",
     "Configure",
     "Tracks",
