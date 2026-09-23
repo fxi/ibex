@@ -5,6 +5,7 @@ import { parseProfile, profileSchema, type Profile } from "./routing/profiles";
 import { defaultProfile } from "./models";
 import { download, exportGPX } from "./gpx";
 import type { Point, RouteResult } from "./routing/types";
+import type { Note } from "./notes/types";
 import { emptyComponents } from "./routing/engine";
 
 /**
@@ -26,6 +27,8 @@ export type Track = {
   resultRevision?: number;
   result?: RouteResult;
   packVersion?: string;
+  /** Extra points along the track: the rider's own, and places found beside it. */
+  notes: Note[];
 };
 /** A collection may be empty; `activeId` is then undefined until a track is added. */
 export type TrackCollection = {
@@ -73,6 +76,7 @@ export function newTrack(
     anchors: [],
     profile: modelSnapshot(profile),
     revision: 0,
+    notes: [],
   };
 }
 export function editTrack(
@@ -204,6 +208,7 @@ export function importedTrack(
     revision: 0,
     resultRevision: 0,
     result,
+    notes: [],
   };
 }
 
@@ -244,7 +249,7 @@ export function exportTrack(track: Track) {
   if (result)
     download(
       `${track.name.replace(/[^a-z0-9_-]/gi, "-")}.gpx`,
-      exportGPX(result, track.name),
+      exportGPX(result, track.name, track.notes),
       "application/gpx+xml",
     );
 }
@@ -315,6 +320,19 @@ const storedTrack = z.object({
   resultRevision: z.number().int().optional(),
   packVersion: z.string().optional(),
   result: storedResult.optional(),
+  notes: z
+    .array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["manual", "water", "food", "supermarket"]),
+        point,
+        text: z.string(),
+        osm: z.string().optional(),
+        hours: z.string().optional(),
+      }),
+    )
+    .max(LIMITS.notesMax)
+    .default([]),
 });
 export function restoreCollection(value: unknown): TrackCollection {
   const data = z

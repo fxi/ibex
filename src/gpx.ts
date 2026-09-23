@@ -1,20 +1,30 @@
 import { APP_VERSION } from "./version";
 import type { RouteResult } from "./routing/types";
+import { NOTE_LABELS, type Note } from "./notes/types";
 
 const escapeXML = (text: string) =>
   text.replace(
     /[<>&"']/g,
     (c) =>
-      ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[
-        c
-      ]!,
+      ({
+        "<": "&lt;",
+        ">": "&gt;",
+        "&": "&amp;",
+        '"': "&quot;",
+        "'": "&apos;",
+      })[c]!,
   );
 
 /**
  * Write a route as GPX. Elevation is emitted when the profile covers the whole route, so
- * an exported file can be re-imported without inventing heights it never had.
+ * an exported file can be re-imported without inventing heights it never had. Notes go
+ * out as waypoints, which is what a GPS unit shows along a course.
  */
-export function exportGPX(route: RouteResult, name = "Ibex route"): string {
+export function exportGPX(
+  route: RouteResult,
+  name = "Ibex route",
+  notes: Note[] = [],
+): string {
   // The profile is sampled along the route, not per vertex, so heights are matched by
   // cumulative distance rather than by index.
   const known = route.elevationProfile.filter(
@@ -45,7 +55,16 @@ export function exportGPX(route: RouteResult, name = "Ibex route"): string {
     }</trkpt>`;
   });
 
-  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Ibex ${APP_VERSION}" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>${escapeXML(
+  const waypoints = notes.map(
+    (n) =>
+      `<wpt lat="${n.point[1]}" lon="${n.point[0]}"><name>${escapeXML(
+        n.text || NOTE_LABELS[n.kind],
+      )}</name>${
+        n.hours ? `<desc>${escapeXML(n.hours)}</desc>` : ""
+      }<type>${n.kind}</type></wpt>`,
+  );
+
+  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Ibex ${APP_VERSION}" xmlns="http://www.topografix.com/GPX/1/1">${waypoints.join("")}<trk><name>${escapeXML(
     name,
   )}</name><trkseg>${points.join("")}</trkseg></trk></gpx>`;
 }

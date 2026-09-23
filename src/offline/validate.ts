@@ -17,6 +17,8 @@ export const LIMITS = {
   // Legs are routed one at a time, so a waypoint no longer widens any search. This only
   // bounds a malformed track file.
   anchorsMax: 500,
+  // About one place per kilometre, so this is a 1000 km ride with room for water and notes.
+  notesMax: 5000,
 } as const;
 
 const unit = (v: unknown): boolean =>
