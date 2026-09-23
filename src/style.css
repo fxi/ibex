@@ -879,6 +879,12 @@ progress {
   color: var(--faint) !important;
   font-size: 11px !important;
 }
+/* A hidden track fades in the list as it is gone from the map, so the two agree at a glance. */
+.track-card.is-hidden .track-dot,
+.track-card.is-hidden .sparkline,
+.track-card.is-hidden .track-copy strong {
+  opacity: 0.4;
+}
 .sparkline {
   width: 56px;
   flex-shrink: 0;

@@ -24,8 +24,18 @@ import type { PanelContext } from "./context";
  */
 export function TracksPanel({ ctx }: { ctx: PanelContext }) {
   const { tracks, fit, setTab } = ctx;
-  const { collection, active, updateTrack, select, add, duplicate } = tracks;
+  const {
+    collection,
+    active,
+    updateTrack,
+    setVisibility,
+    select,
+    add,
+    duplicate,
+  } = tracks;
   const [confirming, setConfirming] = useState<string>();
+  const others = (id: string) =>
+    collection?.tracks.filter((o) => o.id !== id) ?? [];
 
   return (
     <>
@@ -52,7 +62,9 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           return (
             <article
               key={t.id}
-              className={`track-card ${open ? "active open" : ""}`}
+              className={`track-card ${open ? "active open" : ""} ${
+                t.visible ? "" : "is-hidden"
+              }`}
               style={{ "--track-color": t.color } as React.CSSProperties}
             >
               <div className="track-head">
@@ -89,6 +101,22 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     </small>
                   </span>
                 </button>
+                {/* Out of the menu: hiding a track to read the map under it is a glance, not a
+                    decision, and a hidden track needs one tap to come back. */}
+                <button
+                  className="icon-button"
+                  aria-label={`${t.visible ? "Hide" : "Show"} ${t.name}`}
+                  aria-pressed={!t.visible}
+                  title={t.visible ? "Hide on the map" : "Show on the map"}
+                  onClick={() =>
+                    updateTrack(t.id, (old) => ({
+                      ...old,
+                      visible: !old.visible,
+                    }))
+                  }
+                >
+                  {t.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
                 <button
                   className="icon-button"
                   aria-label={`Edit ${t.name}`}
@@ -113,15 +141,23 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                         Duplicate
                       </Menu.Item>
                       <Menu.Item
+                        disabled={
+                          t.visible && !others(t.id).some((o) => o.visible)
+                        }
+                        // Keeps this one on the map, since the point is to see it alone.
+                        onSelect={() => setVisibility((o) => o.id === t.id)}
+                      >
+                        Hide all others
+                      </Menu.Item>
+                      <Menu.Item
+                        disabled={others(t.id).every((o) => o.visible)}
                         onSelect={() =>
-                          updateTrack(t.id, (old) => ({
-                            ...old,
-                            visible: !old.visible,
-                          }))
+                          setVisibility((o) =>
+                            o.id === t.id ? o.visible : true,
+                          )
                         }
                       >
-                        {t.visible ? <EyeOff size={15} /> : <Eye size={15} />}{" "}
-                        {t.visible ? "Hide" : "Show"}
+                        Show all others
                       </Menu.Item>
                       <Menu.Item
                         onSelect={() => fit(t.result?.geometry ?? t.anchors)}

@@ -62,6 +62,16 @@ export function useTracks({
       });
   }
 
+  /** Show or hide every track at once, in one save rather than one per track. */
+  function setVisibility(visible: (track: Track) => boolean) {
+    const current = latest.current;
+    if (current)
+      commit({
+        ...current,
+        tracks: current.tracks.map((t) => ({ ...t, visible: visible(t) })),
+      });
+  }
+
   function edit(changes: Parameters<typeof editTrack>[1]) {
     const current = latest.current;
     const track = current?.tracks.find((t) => t.id === current.activeId);
@@ -190,6 +200,7 @@ export function useTracks({
     saving,
     commit,
     updateTrack,
+    setVisibility,
     edit,
     canUndo: activeHistory.undo.length > 0,
     canRedo: activeHistory.redo.length > 0,

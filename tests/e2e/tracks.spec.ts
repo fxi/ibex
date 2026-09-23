@@ -57,3 +57,38 @@ test("independent tracks persist, require explicit computation, and export only 
   const file = await event;
   expect(file.suggestedFilename()).toBe("Track-1-copy.gpx");
 });
+
+test("a track is hidden from its card, and the others all at once from its menu", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  for (let i = 0; i < 3; i++)
+    await page.getByRole("button", { name: "New track", exact: true }).click();
+  const states = page.locator(".track-state");
+  const hidden = () => states.filter({ hasText: /^Hidden/ });
+
+  await page.getByRole("button", { name: "Hide Track 2", exact: true }).click();
+  await expect(states.nth(1)).toHaveText(/^Hidden · /);
+  await expect(
+    page.getByRole("button", { name: "Show Track 2", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Show Track 2", exact: true }).click();
+  await expect(hidden()).toHaveCount(0);
+
+  await page
+    .getByRole("button", { name: "Actions for Track 1", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Hide all others" }).click();
+  await expect(hidden()).toHaveCount(2);
+  await expect(states.first()).not.toHaveText(/^Hidden/);
+
+  await page
+    .getByRole("button", { name: "Actions for Track 1", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Hide all others" }),
+  ).toHaveAttribute("data-disabled", "");
+  await page.getByRole("menuitem", { name: "Show all others" }).click();
+  await expect(hidden()).toHaveCount(0);
+});
