@@ -31,6 +31,8 @@ export type MapSnapshot = {
   cellStates?: Map<CellId, CellState>;
   /** The download grid zoom, from the catalogue. */
   gridZoom?: number;
+  /** Every track drawn at its stale opacity, so the ground under it shows. */
+  dimmed: boolean;
 };
 
 /** A bbox as a closed polygon ring, for drawing a cell outline. */
@@ -101,7 +103,8 @@ export function syncSources(m: maplibregl.Map, s: MapSnapshot) {
             trackId: t.id,
             trackColor: t.color,
             active: t.id === s.activeId,
-            stale: !freshResult(t),
+            // Dimming borrows the stale look rather than adding a third opacity per layer.
+            stale: s.dimmed || !freshResult(t),
           };
           return rideFeatures(
             t.result!.segments,

@@ -9,6 +9,8 @@ import {
   Navigation,
   Undo2,
   Redo2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
@@ -58,6 +60,9 @@ function App() {
   const [models, setModels] = useState<Profile[]>([]);
   const [debug, setDebug] = useState(false);
   const [history, setHistory] = useState(false);
+  // Fades every track to its stale look, to read the ground underneath. Not kept: a
+  // reload should never open on a map whose routes seem to be missing.
+  const [dimmed, setDimmed] = useState(false);
   const [basemap, setBasemapState] = useState<Basemap>(storedBasemap);
   const setBasemap = (value: Basemap) => {
     setBasemapState(value);
@@ -238,6 +243,7 @@ function App() {
         debug={debug}
         history={history}
         basemap={basemap}
+        dimmed={dimmed}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}
         grid={tab === "data"}
@@ -325,6 +331,14 @@ function App() {
           <Search />
         </button>
         <BasemapControl value={basemap} onChange={setBasemap} />
+        <button
+          aria-label="Dim tracks"
+          aria-pressed={dimmed}
+          title={dimmed ? "Show tracks" : "Dim tracks to see the ground"}
+          onClick={() => setDimmed(!dimmed)}
+        >
+          {dimmed ? <EyeOff /> : <Eye />}
+        </button>
         <button aria-label="Zoom in" onClick={() => moveCamera("zoomIn")}>
           <Plus />
         </button>

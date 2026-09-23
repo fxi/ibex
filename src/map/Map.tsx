@@ -102,8 +102,10 @@ export function MapView({
   cursor,
   bottomInset,
   basemap,
+  dimmed,
 }: {
   basemap: Basemap;
+  dimmed: boolean;
   tracks: Track[];
   activeId?: string;
   /** Whether the download grid is drawn at all: it belongs to the Data tab. */
@@ -173,6 +175,7 @@ export function MapView({
     grid,
     cellStates,
     gridZoom,
+    dimmed,
   });
   snapshot.current = {
     editable,
@@ -186,6 +189,7 @@ export function MapView({
     grid,
     cellStates,
     gridZoom,
+    dimmed,
   };
   useEffect(() => {
     // Imagery needs nothing from the bucket, so the map starts at once and gains the
@@ -719,6 +723,7 @@ export function MapView({
     grid,
     cellStates,
     gridZoom,
+    dimmed,
   ]);
   useEffect(() => {
     const m = map.current;
