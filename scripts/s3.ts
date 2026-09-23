@@ -8,10 +8,16 @@
  *
  * Credentials come from `.env` and are never printed.
  */
+import fs from "node:fs/promises";
 import {
   S3Client,
   PutObjectCommand,
   HeadObjectCommand,
+  GetObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { config as loadEnv } from "dotenv";
 
@@ -100,4 +106,84 @@ export async function putCatalogue(at: Bucket, catalogue: unknown): Promise<void
     type: "application/json",
     cache: CATALOGUE,
   });
+}
+
+/** Parts of a large upload: S3 allows 10 000, so 64 MB carries files up to 640 GB. */
+const PART_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Send a file of any size by multipart upload, a part at a time, so a basemap of several
+ * gigabytes never has to be in memory. Skipped when an object of the same size is already
+ * there — the name is a hash of the bytes, as for cells.
+ */
+export async function putLargeFile(
+  at: Bucket,
+  path: string,
+  file: string,
+  options: { type: string; cache: string },
+): Promise<"sent" | "skipped"> {
+  const { size } = await fs.stat(file);
+  if ((await objectSize(at, path)) === size) return "skipped";
+  const target = { Bucket: at.bucket, Key: key(at.prefix, path) };
+  const { UploadId } = await at.s3.send(
+    new CreateMultipartUploadCommand({
+      ...target,
+      ContentType: options.type,
+      CacheControl: options.cache,
+      ACL: "public-read",
+    }),
+  );
+  const handle = await fs.open(file, "r");
+  try {
+    const parts: { ETag: string; PartNumber: number }[] = [];
+    const buffer = new Uint8Array(PART_BYTES);
+    for (let offset = 0, part = 1; offset < size; offset += PART_BYTES, part++) {
+      const { bytesRead } = await handle.read(buffer, 0, PART_BYTES, offset);
+      const { ETag } = await at.s3.send(
+        new UploadPartCommand({
+          ...target,
+          UploadId,
+          PartNumber: part,
+          Body: buffer.subarray(0, bytesRead),
+        }),
+      );
+      parts.push({ ETag: ETag!, PartNumber: part });
+      process.stdout.write(
+        `\r  ${path}: ${((offset + bytesRead) / 1e9).toFixed(2)} / ${(size / 1e9).toFixed(2)} GB`,
+      );
+    }
+    process.stdout.write("\n");
+    await at.s3.send(
+      new CompleteMultipartUploadCommand({
+        ...target,
+        UploadId,
+        MultipartUpload: { Parts: parts },
+      }),
+    );
+    return "sent";
+  } catch (error) {
+    await at.s3.send(new AbortMultipartUploadCommand({ ...target, UploadId })).catch(() => {});
+    throw error;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The index to the basemap files; mutable like the catalogue, and cached like it. */
+export async function readMapIndex(at: Bucket): Promise<Record<string, string>> {
+  const response = await at.s3
+    .send(new GetObjectCommand({ Bucket: at.bucket, Key: key(at.prefix, "map.json") }))
+    .catch(() => undefined);
+  const text = await response?.Body?.transformToString();
+  return text ? JSON.parse(text) : {};
+}
+
+/** Merge entries into `map.json`, after the files they name are up. */
+export async function updateMapIndex(at: Bucket, patch: Record<string, string>): Promise<void> {
+  const index = { ...(await readMapIndex(at)), ...patch };
+  await putObject(at, "map.json", JSON.stringify(index, null, 2), {
+    type: "application/json",
+    cache: CATALOGUE,
+  });
+  console.log(`  map.json: ${JSON.stringify(index)}`);
 }

@@ -9,6 +9,11 @@ in browser tests. Building the cells is covered in [data-pipeline.md](data-pipel
 ```
 <data root>/                             VITE_DATA_URL points here
   catalog.json                           every cell that exists; the only thing that changes
+  map.json                               the basemap files below; changes when they do
+  basemap/<hash>.pmtiles                 Protomaps: the world to z6, the cells' box to z15
+  cycle-routes/<hash>.pmtiles            OSM cycle and MTB route relations, layer cycle_routes
+  assets/fonts/<fontstack>/<range>.pbf   glyphs for the basemap labels
+  assets/sprites/v4/light*.{json,png}    basemap icons
   cells/
     9-264-181/
       a1b2c3d4e5f60718.index.ibx         64-byte header + block directory
@@ -18,7 +23,10 @@ in browser tests. Building the cells is covered in [data-pipeline.md](data-pipel
       9f8e7d6c5b4a3210.graph.ibx
 ```
 
-Two objects per cell and one catalogue. There is no pointer, no release directory, no
+Two objects per cell and one catalogue for routing; the map's own files beside them, indexed
+by `map.json` and written by `scripts/basemap.ts` and `scripts/cycle_routes.ts`. Nothing
+the map draws needs a key: relief comes from Mapterhorn, imagery from EOX, IGN and swisstopo,
+all keyless. There is no pointer, no release directory, no
 edition and no version segment in any path.
 
 **Files are named after their content.** A cell's `hash` is the digest of the two files it
@@ -104,7 +112,9 @@ Nothing else is consulted.
 | Object | `Cache-Control` |
 |---|---|
 | `cells/**/*.ibx` | `public, max-age=31536000, immutable` |
-| `catalog.json` | `public, max-age=300, must-revalidate` |
+| `catalog.json`, `map.json` | `public, max-age=300, must-revalidate` |
+| `basemap/*`, `cycle-routes/*` | `public, max-age=31536000, immutable` |
+| `assets/**` | `public, max-age=604800` |
 
 The catalogue is also fetched with `cache: "no-cache"` by the app, so a cell published a
 minute ago is visible now.
