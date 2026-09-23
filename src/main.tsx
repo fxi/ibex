@@ -32,6 +32,7 @@ import { useSearch } from "./state/useSearch";
 import { usePanelHeight } from "./state/usePanelHeight";
 import { WaypointMenu, type WaypointMenuState } from "./map/WaypointMenu";
 import { Panel } from "./panel/Panel";
+import { reloadOnNewWorker } from "./serviceWorker";
 import type { PanelContext } from "./panel/context";
 
 const BASEMAP_KEY = "ibex.basemap";
@@ -369,6 +370,8 @@ function App() {
     </main>
   );
 }
+
+reloadOnNewWorker();
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

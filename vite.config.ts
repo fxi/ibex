@@ -48,7 +48,12 @@ export default defineConfig(() => {
       react(),
       localData(process.env.IBEX_DATA_DIR ?? ".cache/cells", base),
       VitePWA({
-        registerType: "prompt",
+        // The app and its data are version-locked: a pack carries a GENERATION the reader
+        // must match, and cell files are addressed by content hash. A stale client is not
+        // an older version that still works — it cannot read anything the bucket now
+        // holds. `prompt` left the new worker waiting until every tab closed, which on a
+        // phone is never, so returning riders kept the old bundle and no data at all.
+        registerType: "autoUpdate",
         includeAssets: ["icon.svg"],
         manifest: {
           name: "Ibex",
@@ -69,6 +74,9 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          // Both are implied by `autoUpdate`; stated so that changing the register type
+          // back cannot silently strand clients on the old bundle again.
+          skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           globPatterns: ["**/*.{js,css,html,svg,woff2}"],
