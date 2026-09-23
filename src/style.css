@@ -852,11 +852,19 @@ progress {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* Stays at the top of the panel while the list scrolls under it. The negative margins take
+   in the panel padding, so no row shows through above or beside it. */
 .tracks-toolbar {
+  position: sticky;
+  /* Sticky offsets count from inside the scroller's padding; this reaches its edge. */
+  top: -16px;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: -16px -16px 4px;
+  padding: 16px 16px 8px;
+  background: var(--surface);
 }
 .tracks-toolbar .icon-button {
   width: var(--control-height);
