@@ -7,6 +7,8 @@ import {
   Plus,
   Minus,
   Navigation,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
@@ -276,6 +278,29 @@ function App() {
         >
           <RefreshCw className={routing.busy ? "spin" : ""} />
         </button>
+        {/* Map edits add pinch waypoints and are easy to overdo, so each step can be
+            taken back, route and all. On the map rather than the panel, so it stays in
+            reach while the panel is folded down. */}
+        {editing && active?.kind === "planned" && (
+          <div className="button-stack" role="group" aria-label="Edit history">
+            <button
+              aria-label="Undo"
+              title="Undo (Ctrl+Z)"
+              disabled={!tracks.canUndo}
+              onClick={() => tracks.undo()}
+            >
+              <Undo2 />
+            </button>
+            <button
+              aria-label="Redo"
+              title="Redo (Ctrl+Shift+Z)"
+              disabled={!tracks.canRedo}
+              onClick={() => tracks.redo()}
+            >
+              <Redo2 />
+            </button>
+          </div>
+        )}
         <button
           aria-label="Find my location"
           onClick={() =>

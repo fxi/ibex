@@ -2,10 +2,8 @@ import { useMemo, useState } from "react";
 import {
   Crosshair,
   Download,
-  Redo2,
   RefreshCw,
   TriangleAlert,
-  Undo2,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
 import { serializeProfile } from "../routing/profiles";
@@ -143,47 +141,17 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
           </p>
         )}
 
-        {(route || planned) && (
+        {route && (
           <div className="track-actions">
-            {route && (
-              <button
-                className="icon-button"
-                aria-label="Export your route"
-                title="Export GPX"
-                disabled={stale}
-                onClick={() => exportTrack(track)}
-              >
-                <Download size={18} />
-              </button>
-            )}
-            {/* Map edits add pinch waypoints and are easy to overdo, so each step can be
-                taken back, route and all. */}
-            {planned && (
-              <div
-                className="button-group"
-                role="group"
-                aria-label="Edit history"
-              >
-                <button
-                  className="icon-button"
-                  aria-label="Undo"
-                  title="Undo (Ctrl+Z)"
-                  disabled={!tracks.canUndo}
-                  onClick={() => tracks.undo()}
-                >
-                  <Undo2 size={18} />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label="Redo"
-                  title="Redo (Ctrl+Shift+Z)"
-                  disabled={!tracks.canRedo}
-                  onClick={() => tracks.redo()}
-                >
-                  <Redo2 size={18} />
-                </button>
-              </div>
-            )}
+            <button
+              className="icon-button"
+              aria-label="Export your route"
+              title="Export GPX"
+              disabled={stale}
+              onClick={() => exportTrack(track)}
+            >
+              <Download size={18} />
+            </button>
           </div>
         )}
 

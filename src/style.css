@@ -258,6 +258,22 @@ main,
   width: 18px;
   height: 18px;
 }
+/* Undo above redo, joined into one control like the zoom pair on other maps. */
+.map-actions .button-stack {
+  display: grid;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.map-actions .button-stack button {
+  box-shadow: none;
+}
+.map-actions .button-stack button:first-child {
+  border-radius: 10px 10px 0 0;
+}
+.map-actions .button-stack button:last-child {
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+}
 .map-actions .glow {
   background: var(--accent);
 }
@@ -945,17 +961,6 @@ progress {
 .track-actions .icon-button {
   width: 36px;
   height: 36px;
-}
-.button-group {
-  display: flex;
-  margin-left: auto;
-}
-.button-group .icon-button:first-child {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-.button-group .icon-button:last-child {
-  border-left: 0;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .waypoints ul,
 .waypoints > div {
