@@ -31,7 +31,7 @@
     "idb": "^8.0.0",
     "lucide-react": "^1.44.0",
     "maplibre-contour": "^0.1.1",
-    "maplibre-gl": "^5.0.0",
+    "maplibre-gl": "^6.10.0",
     "pmtiles": "^4.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
