@@ -1,8 +1,9 @@
-import { Layers, Search, Download, Trash2, RefreshCw } from "lucide-react";
+import { Search, Download, Trash2, RefreshCw } from "lucide-react";
 import { CELL_COLORS, formatBytes } from "../offline/cells";
 import { coverageBBox } from "../offline/catalogue";
 import { cellLabel, cellSizeM, parseCellId } from "../geo/grid";
 import type { PanelContext } from "./context";
+import { SectionHeading } from "./SectionHeading";
 
 export function DataPanel({ ctx }: { ctx: PanelContext }) {
   const { data, online, fit } = ctx;
@@ -42,13 +43,10 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
 
   return (
     <>
-      <div className="section-heading">
-        <div>
-          <h1>Your map data</h1>
-          <p>Click the grid to select, update or remove areas.</p>
-        </div>
-        <Layers />
-      </div>
+      <SectionHeading
+        title="Your map data"
+        info="Click the grid to select, update or remove areas."
+      />
 
       {/* Readiness is reported whether or not there is a connection: being offline is
           exactly when it matters that the data is already here. Connectivity only

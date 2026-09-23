@@ -643,10 +643,31 @@ main,
 }
 .section-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.info-toggle {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+}
+.info-toggle[aria-expanded="true"] {
+  color: var(--text);
+}
+.section-heading p.section-info {
+  flex-basis: 100%;
+  margin-top: 0;
 }
 .section-heading p {
   margin-top: 2px;

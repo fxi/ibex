@@ -13,6 +13,7 @@ import { ProfileForm } from "./ProfileForm";
 import { HEATMAP_URL } from "../config";
 import { APP_VERSION } from "../version";
 import type { PanelContext } from "./context";
+import { SectionHeading } from "./SectionHeading";
 
 /** A file name for an exported profile. The id is a UUID, so it comes from the name. */
 const fileName = (name: string) =>
@@ -114,13 +115,10 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
 
   return (
     <>
-      <div className="section-heading">
-        <div>
-          <h1>Choose your way</h1>
-          <p>Model for {active?.name ?? "your active track"}</p>
-        </div>
-        <Settings />
-      </div>
+      <SectionHeading
+        title="Choose your way"
+        info={`Model for ${active?.name ?? "your active track"}`}
+      />
 
       {/* An open draft holds the list: picking, editing or deleting another model would
           leave the editor showing one model while the track uses another, or drop the

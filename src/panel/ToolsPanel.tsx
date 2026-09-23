@@ -4,6 +4,7 @@ import { parseGPX } from "../importers/gpx";
 import { exportTrack, freshResult, importedTrack } from "../tracks";
 
 import type { PanelContext } from "./context";
+import { SectionHeading } from "./SectionHeading";
 
 /** Files larger than this are not hand-recorded rides; refuse rather than hang. */
 const MAX_IMPORT_BYTES = 20_000_000;
@@ -55,12 +56,7 @@ export function ToolsPanel({ ctx }: { ctx: PanelContext }) {
 
   return (
     <>
-      <div className="section-heading">
-        <div>
-          <h1>Tools</h1>
-          <p>Bring rides in, take routes out.</p>
-        </div>
-      </div>
+      <SectionHeading title="Tools" info="Bring rides in, take routes out." />
 
       <button
         className="primary wide"

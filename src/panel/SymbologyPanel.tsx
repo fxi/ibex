@@ -1,6 +1,7 @@
 import { SURFACE_STYLE } from "../map/rideStyle";
 import { ProfileSample, SurfaceSample } from "./SurfaceSample";
 import type { PanelContext } from "./context";
+import { SectionHeading } from "./SectionHeading";
 
 /**
  * What the map is saying, in one place.
@@ -16,16 +17,16 @@ export function SymbologyPanel({ ctx }: { ctx: PanelContext }) {
 
   return (
     <>
-      <div className="section-heading">
-        <div>
-          <h2>Symbology</h2>
-          <p className="hint">
+      <SectionHeading
+        title="Symbology"
+        info={
+          <>
             Colour is <b>which track</b>. Pattern is <b>what it is made of</b>.
             A clean line is sealed road; the centre line breaks up as the surface
             does.
-          </p>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <h3 className="symbology-title">Track colours</h3>
       {tracks.length ? (

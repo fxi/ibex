@@ -28,6 +28,7 @@ import type { Point, RideClass, RouteResult } from "../routing/types";
 import type { Track } from "../tracks";
 import { ProfileSample } from "./SurfaceSample";
 import type { PanelContext } from "./context";
+import { SectionHeading } from "./SectionHeading";
 
 /**
  * Where the active track is shaped, and where what came out of it is read.
@@ -55,12 +56,10 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
   );
 
   const heading = (
-    <div className="section-heading">
-      <div>
-        <h1>Edit</h1>
-        <p>Shape the route, then read what it is made of.</p>
-      </div>
-    </div>
+    <SectionHeading
+      title="Edit"
+      info="Shape the route, then read what it is made of."
+    />
   );
 
   if (!track)
