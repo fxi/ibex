@@ -4,6 +4,7 @@ import {
   Download,
   RefreshCw,
   RotateCcw,
+  Route,
   TriangleAlert,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
@@ -27,6 +28,7 @@ import type { Point, RideClass, RouteResult } from "../routing/types";
 import type { Track } from "../tracks";
 import { ProfileSample } from "./SurfaceSample";
 import type { PanelContext } from "./context";
+import { ConvertDialog } from "./ConvertDialog";
 import { SectionHeading } from "./SectionHeading";
 
 /**
@@ -47,6 +49,7 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
   // Owned here rather than in the chart, because narrowing the chart also narrows the
   // warnings list: the point of focusing on a stretch is to read everything about it.
   const [range, setRange] = useState<Span>();
+  const [converting, setConverting] = useState(false);
   // Thresholds are this rider's own, so the same ramp reads differently on a road bike and
   // a trail bike. Compiling is cheap, but it would otherwise run on every render.
   const capability = useMemo(
@@ -125,10 +128,22 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
             ))}
           </select>
         ) : (
-          <p className="hint">
-            An imported track is kept exactly as recorded. Duplicate it to plan
-            a new route along the same way.
-          </p>
+          <>
+            <p className="hint">
+              An imported track is kept exactly as recorded. Convert it to plan
+              a new track along the same way, with a profile.
+            </p>
+            <button className="primary" onClick={() => setConverting(true)}>
+              <Route size={16} /> Convert…
+            </button>
+            {converting && (
+              <ConvertDialog
+                ctx={ctx}
+                track={track}
+                onClose={() => setConverting(false)}
+              />
+            )}
+          </>
         )}
 
         {/* What the track gives out on the left, what changes it on the right. */}
@@ -252,12 +267,10 @@ function RouteSummary({
   const vertices = anchorVertices(route, track.anchors.length);
   const pins: Pin[] = [
     ...warnings.map((w): Pin => ({ meters: w.startM, kind: "warning" })),
-    ...(vertices ?? []).map(
-      (vertex): Pin => ({
-        meters: metersAtVertex(route.segments, route.distanceM, vertex),
-        kind: "waypoint",
-      }),
-    ),
+    ...(vertices ?? []).map((vertex): Pin => ({
+      meters: metersAtVertex(route.segments, route.distanceM, vertex),
+      kind: "waypoint",
+    })),
   ];
 
   return (

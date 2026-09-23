@@ -22,8 +22,8 @@ export function SymbologyPanel({ ctx }: { ctx: PanelContext }) {
         info={
           <>
             Colour is <b>which track</b>. Pattern is <b>what it is made of</b>.
-            A clean line is sealed road; the centre line breaks up as the surface
-            does.
+            A clean line is sealed road; the centre line breaks up as the
+            surface does.
           </>
         }
       />
@@ -89,10 +89,10 @@ export function SymbologyPanel({ ctx }: { ctx: PanelContext }) {
           Every class is read off OSM tags on the way the router chose:{" "}
           <code>surface</code>, <code>tracktype</code> and the road hierarchy,
           plus this profile's own limits for what counts as rideable. Roughly
-          three quarters of ways carry no <code>surface</code> tag at all, so the
-          hierarchy fills the gap — a residential street is taken as sealed, a
-          forest track as gravel — and only a path with nothing at all to go on is
-          left as unknown.
+          three quarters of ways carry no <code>surface</code> tag at all, so
+          the hierarchy fills the gap — a residential street is taken as sealed,
+          a forest track as gravel — and only a path with nothing at all to go
+          on is left as unknown.
         </p>
       </details>
     </>

@@ -10,7 +10,7 @@ import {
   Undo2,
   Redo2,
   Eye,
-  EyeOff,
+  EyeDashed,
 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
@@ -38,6 +38,7 @@ import { WaypointMenu, type WaypointMenuState } from "./map/WaypointMenu";
 import { Panel } from "./panel/Panel";
 import { reloadOnNewWorker } from "./serviceWorker";
 import type { PanelContext } from "./panel/context";
+import { useConvert } from "./state/useConvert";
 
 const BASEMAP_KEY = "ibex.basemap";
 function storedBasemap(): Basemap {
@@ -110,6 +111,7 @@ function App() {
     },
   });
   cancel.current = routing.cancel;
+  const convert = useConvert({ tracks, routing, setStatus });
 
   // Undo and redo route edits from the keyboard, except where a field has its own undo.
   const shortcuts = useRef(tracks);
@@ -204,6 +206,7 @@ function App() {
     tracks,
     data,
     routing,
+    convert,
     online,
     canCompute,
     status,
@@ -337,7 +340,7 @@ function App() {
           title={dimmed ? "Show tracks" : "Dim tracks to see the ground"}
           onClick={() => setDimmed(!dimmed)}
         >
-          {dimmed ? <EyeOff /> : <Eye />}
+          {dimmed ? <EyeDashed /> : <Eye />}
         </button>
         <button aria-label="Zoom in" onClick={() => moveCamera("zoomIn")}>
           <Plus />

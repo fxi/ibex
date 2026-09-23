@@ -325,20 +325,17 @@ main,
 .basemap-swatch.outdoor {
   background:
     linear-gradient(115deg, transparent 46%, #ffffff 47% 52%, transparent 53%),
-    radial-gradient(circle at 25% 70%, #b9d39a 0 30%, transparent 31%),
-    #ece8dc;
+    radial-gradient(circle at 25% 70%, #b9d39a 0 30%, transparent 31%), #ece8dc;
 }
 .basemap-swatch.satellite {
   background:
     radial-gradient(circle at 70% 30%, #4d5a35 0 28%, transparent 29%),
-    radial-gradient(circle at 20% 80%, #7a6a4a 0 25%, transparent 26%),
-    #33402a;
+    radial-gradient(circle at 20% 80%, #7a6a4a 0 25%, transparent 26%), #33402a;
 }
 .basemap-swatch.hybrid {
   background:
     linear-gradient(115deg, transparent 46%, #f5d77a 47% 51%, transparent 52%),
-    radial-gradient(circle at 70% 30%, #4d5a35 0 28%, transparent 29%),
-    #33402a;
+    radial-gradient(circle at 70% 30%, #4d5a35 0 28%, transparent 29%), #33402a;
 }
 
 /* Popups share the menu look: a dark sheet of full-width items. */
@@ -774,23 +771,46 @@ details p {
   padding: 5px 10px;
   font-size: 12px;
 }
-.confirm {
+/* A question the app waits on. The blur says the page behind is on hold, which it is:
+   a modal dialog makes it inert. */
+.modal {
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border-radius: var(--radius);
+  color: var(--text);
+}
+.modal::backdrop {
+  background: #0000004d;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+.modal-body h2 {
+  overflow-wrap: anywhere;
+}
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.modal-actions button {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: #ff8a8014;
-  border: 1px solid #ff8a8040;
-  font-size: 12px;
-}
-.confirm span {
-  flex: 1;
-}
-.confirm button {
-  padding: 5px 10px;
-  font-size: 12px;
+  gap: 6px;
 }
 .spin {
   animation: spin 1.4s linear infinite;
@@ -807,6 +827,42 @@ progress {
 }
 
 /* ---------- Tracks ---------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tracks-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.track-search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.track-search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--faint);
+  pointer-events: none;
+}
+.track-search input {
+  padding-left: 32px;
+}
+.tracks-import {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .track-list {
   display: flex;
   flex-direction: column;

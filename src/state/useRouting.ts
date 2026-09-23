@@ -53,8 +53,12 @@ export function useRouting({
   const routeWorker = useRef<Worker | undefined>(undefined);
   const generation = useRef(0);
   const running = useRef(false);
+  // Resolves the run in flight, so a caller awaiting it is released when it is cancelled.
+  const settle = useRef<(result?: RouteResult) => void>(undefined);
 
   function cancel() {
+    settle.current?.();
+    settle.current = undefined;
     generation.current++;
     if (running.current) {
       routeWorker.current?.terminate();
@@ -69,14 +73,22 @@ export function useRouting({
   /**
    * Route the active track. `kept` holds legs a local edit already knows, numbered
    * one-based: they are cached under their own keys, so they are not routed again.
+   *
+   * Resolves with the route once it lands on the track, or with nothing when it failed or
+   * was overtaken; errors are reported here either way.
    */
-  function compute(kept?: ReadonlyMap<number, RouteResult>) {
+  function compute(
+    kept?: ReadonlyMap<number, RouteResult>,
+  ): Promise<RouteResult | undefined> {
     const current = latest.current;
     const active = current?.tracks.find((t) => t.id === current.activeId);
-    if (!active || active.anchors.length < 2) return;
+    if (!active || active.anchors.length < 2) return Promise.resolve(undefined);
     const cellPacks = routableCells;
-    if (!cellPacks.length || !catalogue) return;
+    if (!cellPacks.length || !catalogue) return Promise.resolve(undefined);
     cancel();
+    let resolve: (result?: RouteResult) => void = () => {};
+    const settled = new Promise<RouteResult | undefined>((r) => (resolve = r));
+    settle.current = resolve;
     const id = ++generation.current,
       trackId = active.id,
       revision = active.revision;
@@ -84,12 +96,7 @@ export function useRouting({
       anchors: active.anchors,
       profile: active.profile,
     };
-    const keys = legKeys(
-      request,
-      GENERATION,
-      cellPacks,
-      catalogue.cells,
-    );
+    const keys = legKeys(request, GENERATION, cellPacks, catalogue.cells);
     // Room for this route and the one it was edited from, whose legs may come back.
     legs.reserve(keys.length * 2);
     for (const [leg, route] of kept ?? []) {
@@ -151,12 +158,13 @@ export function useRouting({
         );
       setBusy(false);
       running.current = false;
+      resolve(result?.status === "ok" ? result : undefined);
     };
 
     setError("");
     if (!missing.length) {
       finish(assembleLegs(keys, request.anchors, legs, routed)!);
-      return;
+      return settled;
     }
 
     const worker = routeWorker.current ?? new RoutingWorker();
@@ -173,7 +181,10 @@ export function useRouting({
       }
       // Even for a track no longer on screen, the worker is idle again and keeps its cache.
       if (data.type === "done") running.current = false;
-      if (!current_()) return;
+      if (!current_()) {
+        resolve();
+        return;
+      }
       if (data.type === "progress") setStatus(data.label);
       if (data.type === "result") {
         // Refused before any leg ran: a waypoint off the installed data.
@@ -185,11 +196,13 @@ export function useRouting({
         else {
           setError("Routing stopped before every leg was routed.");
           setBusy(false);
+          resolve();
         }
         running.current = false;
       }
       if (data.type === "error") {
         setError(data.error);
+        resolve();
         setBusy(false);
         worker.terminate();
         routeWorker.current = undefined;
@@ -199,6 +212,7 @@ export function useRouting({
     worker.onerror = (e) => {
       if (id === generation.current) {
         setError(`Routing stopped. ${e.message || "Try a shorter route."}`);
+        resolve();
         setBusy(false);
         worker.terminate();
         routeWorker.current = undefined;
@@ -213,6 +227,7 @@ export function useRouting({
       request,
       legs: missing,
     });
+    return settled;
   }
 
   return {

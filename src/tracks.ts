@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { preference, savePreference } from "./offline/store";
 import { LIMITS } from "./offline/validate";
-import {
-  parseProfile,
-  profileSchema,
-  type Profile,
-} from "./routing/profiles";
+import { parseProfile, profileSchema, type Profile } from "./routing/profiles";
 import { defaultProfile } from "./models";
 import { download, exportGPX } from "./gpx";
 import type { Point, RouteResult } from "./routing/types";
@@ -14,7 +10,8 @@ import { emptyComponents } from "./routing/engine";
 /**
  * A planned track is anchors the router turns into a route. An imported one is a
  * recorded polyline: it renders and exports, but it has no anchors and is never routed,
- * so what you see stays exactly the file you brought.
+ * so what you see stays exactly the file you brought. Converting one makes a new planned
+ * track beside it (`convertedTrack`).
  */
 export type TrackKind = "planned" | "imported";
 export type Track = {
@@ -207,6 +204,23 @@ export function importedTrack(
     revision: 0,
     resultRevision: 0,
     result,
+  };
+}
+
+/**
+ * A planned track that retraces an imported one, through `anchors` taken from its
+ * recording. The import is left as it was, as the reference the new track is judged by.
+ */
+export function convertedTrack(
+  source: Track,
+  index: number,
+  profile: Profile,
+  anchors: Point[],
+): Track {
+  return {
+    ...newTrack(index, profile),
+    name: `${source.name} (ibex)`,
+    anchors: structuredClone(anchors),
   };
 }
 

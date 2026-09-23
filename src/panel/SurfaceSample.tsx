@@ -83,8 +83,12 @@ export function ProfileSample({
   ride: RideClass;
   color: string;
 }) {
-  const { spacing, angle, opacity, color: override } =
-    surfaceStyle(ride).profile;
+  const {
+    spacing,
+    angle,
+    opacity,
+    color: override,
+  } = surfaceStyle(ride).profile;
   // Two cards can show the same class in different track colours, so the pattern id has
   // to be unique per instance or the first one on the page wins.
   const id = `${useId().replace(/:/g, "")}-${ride}`;

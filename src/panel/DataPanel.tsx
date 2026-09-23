@@ -35,7 +35,9 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
     cells?.filter((c) => c.state === "update-available").map((c) => c.id) ?? [];
   const held = savedCells.map((p) => p.manifest.id);
   // Only downloads cost bytes; removals are what the run reclaims.
-  const adding = [...intents].filter(([, i]) => i !== "remove").map(([id]) => id);
+  const adding = [...intents]
+    .filter(([, i]) => i !== "remove")
+    .map(([id]) => id);
   const bytes =
     catalogue?.cells
       .filter((c) => adding.includes(c.id))

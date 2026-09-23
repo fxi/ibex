@@ -5,7 +5,9 @@ import {
   Plus,
   MoreHorizontal,
   Eye,
-  EyeOff,
+  EyeClosed,
+  Import,
+  Search,
   Trash2,
   SquarePen,
 } from "lucide-react";
@@ -13,6 +15,9 @@ import { Elevation } from "../Elevation";
 
 import { exportTrack, freshResult } from "../tracks";
 import type { PanelContext } from "./context";
+import { ConvertDialog } from "./ConvertDialog";
+import { ImportButton } from "./ImportButton";
+import { Modal } from "./Modal";
 
 /**
  * The tracks there are, and which one is active.
@@ -34,13 +39,41 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
     duplicate,
   } = tracks;
   const [confirming, setConfirming] = useState<string>();
+  const [converting, setConverting] = useState<string>();
+  const [query, setQuery] = useState("");
+  const deleting = collection?.tracks.find((t) => t.id === confirming);
+  const toConvert = collection?.tracks.find((t) => t.id === converting);
   const others = (id: string) =>
     collection?.tracks.filter((o) => o.id !== id) ?? [];
+  const needle = query.trim().toLowerCase();
+  const shown =
+    collection?.tracks.filter(
+      (t) =>
+        !needle ||
+        [t.name, t.kind === "imported" ? "imported" : t.profile.name].some(
+          (s) => s.toLowerCase().includes(needle),
+        ),
+    ) ?? [];
 
   return (
     <>
-      <div className="section-heading">
-        <h1>Your tracks</h1>
+      {/* The tab already says "Tracks"; the heading stays for screen readers only. */}
+      <h1 className="visually-hidden">Your tracks</h1>
+      <div className="tracks-toolbar">
+        <label className="track-search">
+          <Search size={16} aria-hidden />
+          <input
+            type="search"
+            placeholder="Search tracks"
+            aria-label="Search tracks"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <ImportButton ctx={ctx} className="tracks-import">
+          <Import size={16} />
+          Import
+        </ImportButton>
         <button
           className="icon-button"
           aria-label="New track"
@@ -56,8 +89,11 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           No track, add one to start
         </button>
       )}
+      {!!collection?.tracks.length && !shown.length && (
+        <p className="hint">No track matches “{query.trim()}”.</p>
+      )}
       <div className="track-list">
-        {collection?.tracks.map((t) => {
+        {shown.map((t) => {
           const open = t.id === active?.id;
           return (
             <article
@@ -115,7 +151,7 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                     }))
                   }
                 >
-                  {t.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+                  {t.visible ? <Eye size={18} /> : <EyeClosed size={18} />}
                 </button>
                 <button
                   className="icon-button"
@@ -137,9 +173,17 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                   </Menu.Trigger>
                   <Menu.Portal>
                     <Menu.Content className="menu glass" sideOffset={6}>
-                      <Menu.Item onSelect={() => duplicate(t.id)}>
-                        Duplicate
-                      </Menu.Item>
+                      {/* A copy of a recording is the same recording; what one wants
+                          from it is a track the router can reshape. */}
+                      {t.kind === "imported" ? (
+                        <Menu.Item onSelect={() => setConverting(t.id)}>
+                          Convert to planned track…
+                        </Menu.Item>
+                      ) : (
+                        <Menu.Item onSelect={() => duplicate(t.id)}>
+                          Duplicate
+                        </Menu.Item>
+                      )}
                       <Menu.Item
                         disabled={
                           t.visible && !others(t.id).some((o) => o.visible)
@@ -181,24 +225,6 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
                 </Menu.Root>
               </div>
 
-              {confirming === t.id && (
-                <div className="confirm" role="alertdialog">
-                  <span>{`Delete “${t.name}”?`}</span>
-                  <button onClick={() => setConfirming(undefined)}>
-                    Cancel
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() => {
-                      setConfirming(undefined);
-                      tracks.remove(t.id);
-                    }}
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                </div>
-              )}
-
               {open && (
                 <div className="track-body">
                   <div className="track-name">
@@ -230,6 +256,34 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           );
         })}
       </div>
+      {deleting && (
+        <Modal
+          alert
+          title={`Delete “${deleting.name}”?`}
+          onClose={() => setConfirming(undefined)}
+        >
+          <p>The track and its route are removed from this device.</p>
+          <div className="modal-actions">
+            <button onClick={() => setConfirming(undefined)}>Cancel</button>
+            <button
+              className="danger"
+              onClick={() => {
+                setConfirming(undefined);
+                tracks.remove(deleting.id);
+              }}
+            >
+              <Trash2 size={16} /> Delete
+            </button>
+          </div>
+        </Modal>
+      )}
+      {toConvert && (
+        <ConvertDialog
+          ctx={ctx}
+          track={toConvert}
+          onClose={() => setConverting(undefined)}
+        />
+      )}
     </>
   );
 }

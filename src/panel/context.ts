@@ -3,6 +3,7 @@ import type { Profile } from "../routing/profiles";
 import type { TracksState } from "../state/useTracks";
 import type { CatalogueState } from "../state/useCatalogue";
 import type { RoutingState } from "../state/useRouting";
+import type { ConvertState } from "../state/useConvert";
 
 /**
  * Everything the four tabs draw from. Passing one bag keeps the panels' signatures short
@@ -12,6 +13,7 @@ export type PanelContext = {
   tracks: TracksState;
   data: CatalogueState;
   routing: RoutingState;
+  convert: ConvertState;
   online: boolean;
   /** Enough data and at least two waypoints, with no run already in flight. */
   canCompute: boolean;

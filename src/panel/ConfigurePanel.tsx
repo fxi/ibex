@@ -13,6 +13,7 @@ import { ProfileForm } from "./ProfileForm";
 import { HEATMAP_URL } from "../config";
 import { APP_VERSION } from "../version";
 import type { PanelContext } from "./context";
+import { Modal } from "./Modal";
 import { SectionHeading } from "./SectionHeading";
 
 /** A file name for an exported profile. The id is a UUID, so it comes from the name. */
@@ -178,17 +179,23 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       </div>
 
       {confirming && (
-        <div className="confirm" role="alertdialog">
-          <span>{`Delete “${models.find((p) => p.id === confirming)?.name ?? confirming}”?`}</span>
-          <button onClick={() => setConfirming(undefined)}>Cancel</button>
-          <button
-            className="danger"
-            disabled={busy}
-            onClick={() => remove(confirming)}
-          >
-            Delete
-          </button>
-        </div>
+        <Modal
+          alert
+          title={`Delete “${models.find((p) => p.id === confirming)?.name ?? confirming}”?`}
+          onClose={() => setConfirming(undefined)}
+        >
+          <p>Tracks planned with it keep their own copy.</p>
+          <div className="modal-actions">
+            <button onClick={() => setConfirming(undefined)}>Cancel</button>
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() => remove(confirming)}
+            >
+              <Trash2 size={16} /> Delete
+            </button>
+          </div>
+        </Modal>
       )}
 
       {notice && <p role="status">{notice}</p>}

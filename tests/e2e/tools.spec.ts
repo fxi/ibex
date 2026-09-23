@@ -1,4 +1,12 @@
-import { expect, startTrack, test } from "./fixtures";
+import { readFileSync } from "node:fs";
+import {
+  expect,
+  planArve,
+  saveMapData,
+  SAVED_TEXT,
+  startTrack,
+  test,
+} from "./fixtures";
 
 const GPX = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
@@ -25,7 +33,9 @@ test("imports a GPX file as a reference track that exports again", async ({
   });
 
   // Importing switches to Tracks and selects the new track.
-  await expect(page.getByRole("heading", { name: "Your tracks" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your tracks" }),
+  ).toBeVisible();
   const card = page.locator(".track-card", { hasText: "Sunday loop" });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Imported");
@@ -68,4 +78,77 @@ test("reports a bad import without adding a track", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("not a GPX");
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-card")).toHaveCount(before);
+});
+
+test("an imported ride converts to a planned track that follows it", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
+
+  // A recording on the fixture's roads: the Arve route, exported and renamed.
+  await planArve(page);
+  await page.getByRole("button", { name: "Compute", exact: true }).click();
+  await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export your route" }).click();
+  const gpx = readFileSync((await (await download).path())!, "utf8").replace(
+    /<name>[^<]*<\/name>/g,
+    "<name>Arve ride</name>",
+  );
+
+  // Imported from the Tracks toolbar.
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByLabel("Import tracks").setInputFiles({
+    name: "arve-ride.gpx",
+    mimeType: "application/gpx+xml",
+    buffer: Buffer.from(gpx),
+  });
+  const recording = page.locator(".track-card", { hasText: "Arve ride" });
+  await expect(recording).toContainText("Reference");
+
+  // A recording is not duplicated but converted, with the profile asked for.
+  await page
+    .getByRole("button", { name: "Actions for Arve ride", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Duplicate", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("menuitem", { name: "Convert to planned track…" })
+    .click();
+  await page
+    .getByLabel("Profile to convert with")
+    .selectOption({ label: "Road" });
+  await page.getByRole("button", { name: "Convert", exact: true }).click();
+
+  // The new track opens in Edit, which reports the passes as they run.
+  await expect(page.locator(".edit-status")).toContainText(/^Converted · /);
+  await expect(page.locator(".heading-track")).toHaveText("Arve ride (ibex)");
+
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  const converted = page.locator(".track-card", {
+    hasText: "Arve ride (ibex)",
+  });
+  await expect(converted).toContainText("Road");
+  await expect(converted).toContainText("Ready");
+  // The recording stays, as the reference the new track is read against.
+  await expect(page.locator(".track-card")).toHaveCount(3);
+  await expect(
+    page.locator(".track-card", { hasText: "Reference" }),
+  ).toHaveCount(1);
+
+  // The search narrows the list by name and by profile.
+  const search = page.getByLabel("Search tracks");
+  await search.fill("ibex");
+  await expect(page.locator(".track-card")).toHaveCount(1);
+  await search.fill("imported");
+  await expect(page.locator(".track-card")).toHaveCount(1);
+  await expect(page.locator(".track-card")).toContainText("Reference");
+  await search.fill("nothing like it");
+  await expect(page.locator(".track-card")).toHaveCount(0);
+  await expect(page.getByText(/^No track matches/)).toBeVisible();
+  await search.fill("");
+  await expect(page.locator(".track-card")).toHaveCount(3);
 });

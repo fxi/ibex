@@ -140,6 +140,18 @@ export function useTracks({
     });
   }
 
+  /** Add a track made elsewhere, such as a conversion, and make it the active one. */
+  function insert(track: Track) {
+    const current = latest.current;
+    if (!current) return;
+    beforeChange();
+    commit({
+      ...current,
+      activeId: track.id,
+      tracks: [...current.tracks, track],
+    });
+  }
+
   function remove(id: string) {
     const current = latest.current;
     if (!current) return;
@@ -209,6 +221,7 @@ export function useTracks({
     select,
     add,
     duplicate,
+    insert,
     remove,
   };
 }
