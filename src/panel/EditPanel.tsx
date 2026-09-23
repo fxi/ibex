@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   Crosshair,
-  Download,
+  CloudDownload,
+  ListRestart,
   RefreshCw,
-  RotateCcw,
   Route,
   TriangleAlert,
 } from "lucide-react";
@@ -57,13 +57,12 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
     [track?.profile],
   );
 
-  // The track being edited is named in the heading itself, so the tab opens on what it acts on.
+  // The tab already says Edit; the heading names the track it acts on, in its colour.
   const heading = (
     <SectionHeading
       title={
         track ? (
           <>
-            Edit
             <i
               className="track-dot"
               style={{ "--track-color": track.color } as React.CSSProperties}
@@ -157,7 +156,7 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
                 disabled={stale}
                 onClick={() => exportTrack(track)}
               >
-                <Download size={18} />
+                <CloudDownload size={18} />
               </button>
             )}
             {planned && (
@@ -168,7 +167,7 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
                 disabled={!track.anchors.length}
                 onClick={() => tracks.edit({ anchors: [] })}
               >
-                <RotateCcw size={18} />
+                <ListRestart size={18} />
               </button>
             )}
             {planned && (
@@ -184,7 +183,8 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
                   </button>
                 )}
                 <button
-                  className="primary"
+                  className="icon-button primary"
+                  aria-label="Compute"
                   title={
                     routing.busy ? "Computing…" : "Route the waypoints again"
                   }
@@ -192,8 +192,7 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
                   disabled={!canCompute}
                   onClick={routing.compute}
                 >
-                  <RefreshCw size={16} className={routing.busy ? "spin" : ""} />
-                  Compute
+                  <RefreshCw size={18} className={routing.busy ? "spin" : ""} />
                 </button>
               </div>
             )}

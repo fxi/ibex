@@ -6,7 +6,7 @@ import {
   MoreHorizontal,
   Eye,
   EyeClosed,
-  Import,
+  CloudUpload,
   Search,
   Trash2,
   SquarePen,
@@ -108,7 +108,7 @@ export function TracksPanel({ ctx }: { ctx: PanelContext }) {
           />
         </label>
         <ImportButton ctx={ctx} className="icon-button" label="Import GPX">
-          <Import size={18} />
+          <CloudUpload size={18} />
         </ImportButton>
         <button
           className="icon-button"

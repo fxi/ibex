@@ -1047,6 +1047,7 @@ progress {
 .edit-toolbar-end button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   height: var(--control-height);
 }
@@ -1073,7 +1074,7 @@ progress {
   min-width: 0;
 }
 .section-title .track-dot {
-  margin: 0 8px 0 10px;
+  margin-right: 8px;
 }
 .waypoints ul,
 .waypoints > div {
