@@ -147,12 +147,14 @@ export const MAP_HOSTS = [
   "https://tiles.maps.eox.at/**",
   "https://data.geopf.fr/**",
   "https://wmts.geo.admin.ch/**",
-  "https://assets.test/**",
+  // Glyphs and the sprite, same-origin so WebKit sends no preflight.
+  "**/data/map/fonts/**",
+  "**/data/map/sprites/**",
 ];
 
-// The fixture's map.json names the basemap archives in tests/fixtures/data/map and sends
-// glyphs and the sprite to assets.test; everything the map reads from elsewhere is
-// answered here, so no test depends on the network.
+// The fixture's map.json names the basemap archives in tests/fixtures/data/map; its glyphs,
+// its sprite and everything the map reads from elsewhere are answered here, so no test
+// depends on the network.
 export const test = base.extend<{ mapResources: void }>({
   mapResources: [
     async ({ context }, use) => {

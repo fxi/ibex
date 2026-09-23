@@ -208,8 +208,9 @@ console.log(
 
 /**
  * A basemap and cycle-route archive over the same road, so the map has real sources to
- * load without the network. Glyphs and the sprite point at a host the browser tests
- * intercept. Needs `tippecanoe`; the archives are a few kilobytes and committed.
+ * load without the network. Glyphs and the sprite are paths the browser tests answer on the
+ * app's own origin: a made-up host needs a CORS preflight, which WebKit sends past
+ * Playwright's routes to a name that does not resolve. Needs `tippecanoe`; the archives are a few kilobytes and committed.
  */
 const line = (properties: Record<string, string>) =>
   JSON.stringify({
@@ -238,8 +239,8 @@ await fs.writeFile(
     {
       basemap: "map/basemap.pmtiles",
       cycleRoutes: "map/cycle-routes.pmtiles",
-      glyphs: "https://assets.test/fonts/{fontstack}/{range}.pbf",
-      sprite: "https://assets.test/sprites/light",
+      glyphs: "map/fonts/{fontstack}/{range}.pbf",
+      sprite: "map/sprites/light",
     },
     null,
     2,

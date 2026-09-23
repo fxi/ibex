@@ -1,6 +1,6 @@
 {
   "basemap": "map/basemap.pmtiles",
   "cycleRoutes": "map/cycle-routes.pmtiles",
-  "glyphs": "https://assets.test/fonts/{fontstack}/{range}.pbf",
-  "sprite": "https://assets.test/sprites/light"
+  "glyphs": "map/fonts/{fontstack}/{range}.pbf",
+  "sprite": "map/sprites/light"
 }
