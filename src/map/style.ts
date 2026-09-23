@@ -412,6 +412,12 @@ export const BASEMAPS: { id: Basemap; label: string }[] = [
 ];
 
 /**
+ * National orthophotos only take over where they are sharper than Sentinel-2. Further out,
+ * all three layers loading and fading in over each other flashed on every move.
+ */
+const NATIONAL_MINZOOM = 12;
+
+/**
  * Keyless imagery, stacked coarse to fine: Sentinel-2 cloudless everywhere, then the
  * national orthophotos of France and Switzerland where they exist. Each carries its
  * bounds, so the fine layers are never asked for tiles they do not have.
@@ -441,9 +447,9 @@ export const IMAGERY: {
         "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}",
       ],
       tileSize: 256,
-      minzoom: 6,
+      minzoom: NATIONAL_MINZOOM,
       maxzoom: 19,
-      bounds: [-5.2, 41.3, 9.6, 51.1],
+      bounds: [-5.15, 41.33, 9.57, 51.1],
       attribution: '<a href="https://geoservices.ign.fr">© IGN</a>',
     },
   },
@@ -455,9 +461,9 @@ export const IMAGERY: {
         "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg",
       ],
       tileSize: 256,
-      minzoom: 8,
+      minzoom: NATIONAL_MINZOOM,
       maxzoom: 20,
-      bounds: [5.9, 45.8, 10.5, 47.9],
+      bounds: [5.95, 45.81, 10.49, 47.81],
       attribution: '<a href="https://www.swisstopo.admin.ch">© swisstopo</a>',
     },
   },
@@ -579,10 +585,13 @@ export function mapStyle(
     },
     layers: [
       ...IMAGERY.map(
-        ({ id }): LayerSpecification => ({
+        ({ id }, i): LayerSpecification => ({
           id,
           type: "raster",
           source: imagerySourceId(id),
+          // A sharp tile replaces the Sentinel one below it in place: a cross-fade shows
+          // the coarse image through the fine one while it loads.
+          ...(i > 0 ? { paint: { "raster-fade-duration": 0 } } : {}),
         }),
       ),
       ...overlay,
