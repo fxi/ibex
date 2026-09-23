@@ -16,9 +16,7 @@ test("independent tracks persist, require explicit computation, and export only 
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-state")).toHaveText("Needs computation");
   await page.getByRole("button", { name: "Edit Track 1", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Reprocess waypoints", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Compute", exact: true }).click();
   await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await page

@@ -32,7 +32,7 @@ test("a computed route is drawn as its rideability classes", async ({
 
   await planArve(page);
   await page
-    .getByRole("button", { name: "Reprocess waypoints", exact: true })
+    .getByRole("button", { name: "Compute", exact: true })
     .click();
   await expect(page.getByText("Route ready", { exact: true })).toBeVisible({
     timeout: 90000,

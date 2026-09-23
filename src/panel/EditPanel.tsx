@@ -3,6 +3,7 @@ import {
   Crosshair,
   Download,
   RefreshCw,
+  RotateCcw,
   TriangleAlert,
 } from "lucide-react";
 import { Elevation } from "../Elevation";
@@ -53,9 +54,23 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
     [track?.profile],
   );
 
+  // The track being edited is named in the heading itself, so the tab opens on what it acts on.
   const heading = (
     <SectionHeading
-      title="Edit"
+      title={
+        track ? (
+          <>
+            Edit
+            <i
+              className="track-dot"
+              style={{ "--track-color": track.color } as React.CSSProperties}
+            />
+            <span className="heading-track">{track.name}</span>
+          </>
+        ) : (
+          "Edit"
+        )
+      }
       info="Shape the route, then read what it is made of."
     />
   );
@@ -92,41 +107,23 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
         className="stats"
         style={{ "--track-color": track.color } as React.CSSProperties}
       >
-        <h2 className="stats-track">
-          <i className="track-dot" />
-          {track.name}
-        </h2>
-
         {planned ? (
-          // One choice and one action: which kind of ride, and go.
-          <div className="track-profile">
-            <select
-              aria-label="Profile"
-              value={models.find((m) => same(m.id))?.id ?? ""}
-              onChange={(e) => {
-                const chosen = models.find((m) => m.id === e.target.value);
-                if (chosen) tracks.edit({ profile: modelSnapshot(chosen) });
-              }}
-            >
-              {/* An edited model matches nothing in the list until it is saved. */}
-              <option value="">{track.profile.name} (custom)</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <button
-              className="icon-button primary"
-              aria-label="Reprocess waypoints"
-              title={routing.busy ? "Computing…" : "Reprocess waypoints"}
-              aria-busy={routing.busy}
-              disabled={!canCompute}
-              onClick={routing.compute}
-            >
-              <RefreshCw size={18} className={routing.busy ? "spin" : ""} />
-            </button>
-          </div>
+          <select
+            aria-label="Profile"
+            value={models.find((m) => same(m.id))?.id ?? ""}
+            onChange={(e) => {
+              const chosen = models.find((m) => m.id === e.target.value);
+              if (chosen) tracks.edit({ profile: modelSnapshot(chosen) });
+            }}
+          >
+            {/* An edited model matches nothing in the list until it is saved. */}
+            <option value="">{track.profile.name} (custom)</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
         ) : (
           <p className="hint">
             An imported track is kept exactly as recorded. Duplicate it to plan
@@ -134,26 +131,66 @@ export function EditPanel({ ctx }: { ctx: PanelContext }) {
           </p>
         )}
 
-        {/* The run is started here, so its outcome is reported here too. */}
-        {!routing.busy && ctx.status && (
-          <p className="hint" role="status">
-            {ctx.status}
-          </p>
-        )}
-
-        {route && (
-          <div className="track-actions">
-            <button
-              className="icon-button"
-              aria-label="Export your route"
-              title="Export GPX"
-              disabled={stale}
-              onClick={() => exportTrack(track)}
-            >
-              <Download size={18} />
-            </button>
+        {/* What the track gives out on the left, what changes it on the right. */}
+        {(route || planned) && (
+          <div className="edit-toolbar">
+            {route && (
+              <button
+                className="icon-button"
+                aria-label="Export your route"
+                title="Export GPX"
+                disabled={stale}
+                onClick={() => exportTrack(track)}
+              >
+                <Download size={18} />
+              </button>
+            )}
+            {planned && (
+              <button
+                className="icon-button"
+                aria-label="Reset waypoints"
+                title="Reset waypoints"
+                disabled={!track.anchors.length}
+                onClick={() => tracks.edit({ anchors: [] })}
+              >
+                <RotateCcw size={18} />
+              </button>
+            )}
+            {planned && (
+              <div className="edit-toolbar-end">
+                {routing.busy && (
+                  <button
+                    onClick={() => {
+                      routing.cancel();
+                      ctx.setStatus("Cancelled");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  className="primary"
+                  title={
+                    routing.busy ? "Computing…" : "Route the waypoints again"
+                  }
+                  aria-busy={routing.busy}
+                  disabled={!canCompute}
+                  onClick={routing.compute}
+                >
+                  <RefreshCw size={16} className={routing.busy ? "spin" : ""} />
+                  Compute
+                </button>
+              </div>
+            )}
           </div>
         )}
+
+        {/* The run is started here, so its progress and outcome are reported here too. The
+            line keeps its height when empty, so the figures below never jump. */}
+        <p className="edit-status" role="status">
+          {routing.busy && <RefreshCw size={12} className="spin" />}
+          {ctx.status}
+        </p>
 
         {route && capability ? (
           <div className="result">
@@ -481,15 +518,10 @@ function RouteWaypoints({
         })}
       </ul>
       {onEdit && (
-        <>
-          <p className="hint">
-            Tap the map to add waypoints. Drag markers to move them; long-press
-            or right-click one to insert or remove.
-          </p>
-          <button className="reset-waypoints" onClick={() => onEdit([])}>
-            Reset waypoints
-          </button>
-        </>
+        <p className="hint">
+          Tap the map to add waypoints. Drag markers to move them; long-press or
+          right-click one to insert or remove.
+        </p>
       )}
     </section>
   );

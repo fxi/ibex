@@ -84,7 +84,8 @@ export function Panel({
               </button>
             </p>
           )}
-          {routing.busy && (
+          {/* The Edit tab reports its own run beside the Compute button. */}
+          {routing.busy && tab !== "edit" && (
             <div className="calculation" role="status">
               <RefreshCw className="spin" size={16} />
               {status}

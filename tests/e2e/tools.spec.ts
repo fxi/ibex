@@ -38,7 +38,7 @@ test("imports a GPX file as a reference track that exports again", async ({
   await card.getByRole("button", { name: "Edit Sunday loop" }).click();
   await expect(page.getByText(/kept exactly as recorded/)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Reprocess waypoints" }),
+    page.getByRole("button", { name: "Compute", exact: true }),
   ).toHaveCount(0);
   await expect(page.locator(".waypoint")).toHaveCount(0);
 

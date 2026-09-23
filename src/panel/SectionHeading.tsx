@@ -11,7 +11,7 @@ export function SectionHeading({
   info,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   info?: ReactNode;
   children?: ReactNode;
 }) {
