@@ -1,0 +1,50 @@
+{
+  "format_version": 3,
+  "id": "22f72cff-6688-4652-87ed-5c78078544a9",
+  "name": "Gravel Cycle Network",
+  "description": "Follow cycle network on a gravel bike",
+  "setup": {
+    "preset": "gravel_40 / steady",
+    "bike": {
+      "tire_mm": 50,
+      "mass_kg": 11.5,
+      "lowest_gear_ratio": 0.85,
+      "suspension": "none",
+      "load_kg": 3
+    },
+    "rider": {
+      "mass_kg": 75,
+      "sustained_w_per_kg": 2.5,
+      "tech_skill": 0.45,
+      "descend_confidence": 0.5
+    }
+  },
+  "settings": {
+    "detour": "neutral",
+    "climbing": "neutral",
+    "steepness": "avoid",
+    "direction_changes": "neutral"
+  },
+  "preferences": {
+    "base": {
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "prefer",
+      "surface_difficulty": "neutral",
+      "scenic": "neutral",
+      "urbanity": "neutral",
+      "cycle_infrastructure": "strongly_prefer"
+    },
+    "uphill": {
+      "unpaved": "strongly_prefer"
+    },
+    "downhill": {
+      "traffic_stress": "neutral",
+      "unpaved": "strongly_avoid"
+    }
+  },
+  "permissions": {
+    "ferry": false,
+    "stairs": true,
+    "push": true
+  }
+}
