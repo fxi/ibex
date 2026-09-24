@@ -1,22 +1,22 @@
 {
   "format_version": 3,
   "id": "cb933404-5d12-85ed-bdb2-0591c694de3f",
-  "name": "MTB copy",
-  "description": "Climb like gravel, on quiet easy tracks; come down on singletrack.",
+  "name": "MTB",
+  "description": "Climb on any unpaved ground; come down on singletrack.",
   "setup": {
     "preset": "custom",
     "bike": {
       "tire_mm": 60,
-      "mass_kg": 13.5,
+      "mass_kg": 14.5,
       "lowest_gear_ratio": 0.52,
       "suspension": "full",
       "load_kg": 2
     },
     "rider": {
       "mass_kg": 75,
-      "sustained_w_per_kg": 3.2,
-      "tech_skill": 0.85,
-      "descend_confidence": 0.95
+      "sustained_w_per_kg": 2.5,
+      "tech_skill": 0.55,
+      "descend_confidence": 0.8
     }
   },
   "settings": {

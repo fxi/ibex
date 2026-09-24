@@ -5,20 +5,21 @@ below is for whoever wants to build their own.
 
 | Profile | File | Promise |
 | --- | --- | --- |
-| Gravel | `gravel_50` | Climb on quiet, easy gravel; ride the descents it earns. |
-| Gravel Bikepacking | `gravel_50_bikepacking` | Loaded: climb on easy ground, descend on smooth, stay off anything rough. |
+| Gravel | `gravel_50` | Climb on easy gravel at a gentle grade; come down on smooth, gentle ground. |
+| Gravel Bikepacking | `gravel_50_bikepacking` | Loaded: climb on gravel, descend on smooth, stay off anything rough. |
 | Gravel Cycle Network | `gravel_50_cycle_network` | Follow the signposted cycle network: gravel on the climbs, sealed on the way down. |
-| MTB | `trail_60` | Climb like gravel; come down on singletrack. |
+| MTB | `trail_60` | Climb on any unpaved ground; come down on singletrack. |
 | Road | `road_28` | Calm, sealed roads only. No gravel. |
 
 `tests/rideIntent.test.ts` holds each of them to that sentence, and
 `tests/profiles.test.ts` holds this table to the set that actually ships — a profile whose
 filename does not end in `.profile.json` is invisible to the bundler and ships nothing.
 
-Gravel's promise stops at the climb on purpose: it carries no `downhill` override yet, so
-it does not prefer sealed descents. `gravel_50_bikepacking` is the one that does. Other
-profiles used by tests, benchmarks and audits (`gravel_40`, `touring_45`, `wanderer`,
-`gravel_50_easy_dh`) live in `tests/fixtures/profiles/` and do not ship.
+Gravel's descents are smooth and gentle, not sealed: its `downhill` override avoids
+difficulty and steepness but leaves `unpaved` alone. `gravel_50_bikepacking` is the one
+that keeps descents off gravel. Other profiles used by tests, benchmarks and audits
+(`gravel_40`, `touring_45`, `wanderer`, `gravel_50_easy_dh`) live in
+`tests/fixtures/profiles/` and do not ship.
 
 Normal routing runs one search per leg. The corridor comparison and scenic-destination
 sweep run only for explicit diagnostic requests. See
@@ -162,8 +163,9 @@ overrides; flatter ground uses `base`. Overrides reach everything a preference d
 including the charges outside the detour budget: `downhill.unpaved: strongly_avoid`
 keeps a descent off gravel the way `base` keeps Road off it, and a traffic override moves
 the traffic hazard. This is local grade, not a sustained climb or
-descent, which is why shipped Gravel has no downhill override yet: on the Fillinges gold
-standard it pushed short descents onto tarmac and cost 20 points of coverage.
+descent, which is why shipped Gravel does not override `unpaved` downhill: on the
+Fillinges gold standard that pushed short descents onto tarmac and cost 20 points of
+coverage.
 
 - `traffic_stress` — estimated from road class and cycle infrastructure in the pack, not
   from live traffic. Avoiding it does two things: it scores ways like every other

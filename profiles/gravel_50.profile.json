@@ -2,7 +2,7 @@
   "format_version": 3,
   "id": "02aae4ad-e71c-4cd4-b24a-da1e9f145ab2",
   "name": "Gravel",
-  "description": "Climb on good gravel roads",
+  "description": "Climb on easy gravel at a gentle grade; come down on smooth, gentle ground.",
   "setup": {
     "preset": "custom",
     "bike": {
