@@ -15,10 +15,11 @@
  *   node --import tsx scripts/gold_route.ts audit <name> [waypoints] [packs dir]
  *
  * `import` needs a line drawn in Ibex on the current release, so that its vertices are
- * graph vertices; the points that are not are the waypoints. Ibex does not export its
- * waypoints, so one that fell on a vertex is invisible: mark it with a note, whose
- * `<wpt>` becomes a waypoint too. `intent` (`all`, or indices) defaults to the two
- * ends. `audit` routes the case as the app does (`intent`, `all`, or comma-separated
+ * graph vertices. An export carries its waypoints and profile (`<ibex:plan>`), which are
+ * taken as they are, all of them intent; a note labels the waypoint it sits on. An older
+ * export did not: its waypoints are the points off the graph's vertices, one that fell on
+ * a vertex is invisible unless a note marks it, and `intent` defaults to the two ends.
+ * `intent` is `all` or indices. `audit` routes the case as the app does (`intent`, `all`, or comma-separated
  * waypoint indices) on its fixture, or on a local release when given one, prints the
  * share of the
  * line it rides, and every divergence with what each side costs, term by term, and the
@@ -236,36 +237,23 @@ function gpxNotes(xml: string): { p: Point; text: string }[] {
   }));
 }
 
-async function importGpx(
-  file: string,
-  name: string,
-  profile = "gravel_50",
-  intent?: string,
-  graphName?: string,
+/**
+ * Waypoints recovered from a line alone: its ends and the points off the graph's vertices,
+ * where Ibex split an edge. A note stands for the line vertex nearest it, in line order
+ * with the other waypoints, unless it was dropped on a waypoint that is already there:
+ * then it only labels it.
+ */
+function drawnWaypoints(
+  line: Point[],
+  vertices: Set<string>,
+  gpx: { p: Point; text: string }[],
 ) {
-  const { parseGPX } = await import("../src/importers/gpx");
-  const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_cells");
-  const round = (p: Point): Point => [+p[0].toFixed(7), +p[1].toFixed(7)];
-  const xml = fs.readFileSync(file, "utf8");
-  const line = parseGPX(xml).geometry.map(round);
-  const graph = await loadReleaseGraph(DEFAULT_CELLS, line);
-  const vertices = new Set(graph.edges.flatMap((e) => e.geometry.map(key)));
-  const off = line.filter((p, i) => i > 0 && i < line.length - 1 && !vertices.has(key(p)));
-  // Ibex splits an edge at each waypoint, so a drawn line leaves the graph's vertices
-  // only there. A recorded ride leaves them everywhere, and would need map matching.
-  if (off.length > 0.05 * line.length)
-    throw new Error(
-      `${off.length} of ${line.length} points are not graph vertices: ` +
-        `draw the line in Ibex on the current release, or export it again.`,
-    );
-  // A note stands for the line vertex nearest it, in line order with the other waypoints,
-  // unless it was dropped on a waypoint that is already there: then it only labels it.
   const at = new Map<number, string | undefined>();
   line.forEach((p, i) => {
     if (i === 0 || i === line.length - 1 || !vertices.has(key(p))) at.set(i, undefined);
   });
   const drawn = [...at.keys()];
-  for (const note of gpxNotes(xml)) {
+  for (const note of gpx) {
     const nearest = (indices: number[]) =>
       indices.reduce((b, i) =>
         distance(line[i], note.p) < distance(line[b], note.p) ? i : b,
@@ -283,12 +271,69 @@ async function importGpx(
   const notes = Object.fromEntries(
     order.flatMap((i, w) => (at.get(i) ? [[w, at.get(i)!]] : [])),
   );
+  return { waypoints, notes };
+}
+
+/** An export's own waypoints; a note labels the one it was dropped on, or nothing. */
+function plannedWaypoints(waypoints: Point[], gpx: { p: Point; text: string }[]) {
+  const notes: Record<number, string> = {};
+  for (const note of gpx) {
+    const nearest = waypoints.reduce(
+      (b, p, i) => (distance(p, note.p) < distance(waypoints[b], note.p) ? i : b),
+      0,
+    );
+    if (distance(waypoints[nearest], note.p) <= NOTE_ON_WAYPOINT_M)
+      notes[nearest] = note.text;
+  }
+  return { waypoints, notes };
+}
+
+async function importGpx(
+  file: string,
+  name: string,
+  profileArg?: string,
+  intent?: string,
+  graphName?: string,
+) {
+  const { parseGPX } = await import("../src/importers/gpx");
+  const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_cells");
+  const round = (p: Point): Point => [+p[0].toFixed(7), +p[1].toFixed(7)];
+  const xml = fs.readFileSync(file, "utf8");
+  const parsed = parseGPX(xml);
+  const line = parsed.geometry.map(round);
+  // An export that names its profile needs none given, when the profile ships.
+  const profile =
+    profileArg ??
+    fs
+      .readdirSync("profiles")
+      .filter((f) => f.endsWith(".profile.json"))
+      .find(
+        (f) =>
+          JSON.parse(fs.readFileSync(`profiles/${f}`, "utf8")).id ===
+          parsed.plan?.profileId,
+      )
+      ?.slice(0, -".profile.json".length) ??
+    "gravel_50";
+  const graph = await loadReleaseGraph(DEFAULT_CELLS, line);
+  const vertices = new Set(graph.edges.flatMap((e) => e.geometry.map(key)));
+  const off = line.filter((p, i) => i > 0 && i < line.length - 1 && !vertices.has(key(p)));
+  // Ibex splits an edge at each waypoint, so a drawn line leaves the graph's vertices
+  // only there. A recorded ride leaves them everywhere, and would need map matching.
+  if (off.length > 0.05 * line.length)
+    throw new Error(
+      `${off.length} of ${line.length} points are not graph vertices: ` +
+        `draw the line in Ibex on the current release, or export it again.`,
+    );
+  const { waypoints, notes } = parsed.plan
+    ? plannedWaypoints(parsed.plan.waypoints.map(round), gpxNotes(xml))
+    : drawnWaypoints(line, vertices, gpxNotes(xml));
   const gold: Gold = {
     profile,
     line,
     waypoints,
+    // An export's waypoints were all placed on purpose; recovered ones may be corrections.
     intent:
-      intent === "all"
+      intent === "all" || (!intent && parsed.plan)
         ? waypoints.map((_, i) => i)
         : intent
           ? intent.split(",").map(Number)
