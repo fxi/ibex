@@ -131,14 +131,13 @@ describe("gravel", () => {
 });
 
 describe("gravel bikepacking", () => {
-  // "Loaded touring on gravel: climbs on easy ground, descends on smooth, and stays off
-  // anything rough with the bags on." Unlike shipped Gravel, this one does carry the
-  // downhill override, so the promise is testable against the file itself.
-  // Retuned 2026-09-23: unpaved went from prefer to neutral, so a loaded climb no longer
-  // seeks gravel for its own sake and smooth tarmac is the easier ground.
-  it("climbs on easy ground without seeking gravel", () => {
-    expect(cost(tarmac(0.04), BIKEPACKING)).toBeLessThan(
-      cost(easyGravel(0.04), BIKEPACKING),
+  // "Loaded touring on gravel: climbs on gravel, descends on smooth, and stays off
+  // anything rough with the bags on."
+  // Retuned 2026-09-24: uphill.unpaved went to strongly_prefer, so a loaded climb seeks
+  // easy gravel again; the Voirons bikepacking gold standard is drawn that way.
+  it("climbs on gravel", () => {
+    expect(cost(easyGravel(0.04), BIKEPACKING)).toBeLessThan(
+      cost(tarmac(0.04), BIKEPACKING),
     );
   });
 
@@ -210,10 +209,11 @@ describe("direction overrides reach the charges outside the detour budget", () =
 });
 
 describe("mtb", () => {
-  it("climbs like gravel and comes down on singletrack", () => {
-    expect(cost(easyGravel(0.04), MTB)).toBeLessThan(
-      cost(singletrack(0.04), MTB),
-    );
+  // Retuned 2026-09-24: surface_difficulty went to neutral, so a scale 1 climb costs
+  // what an easy gravel one does. Unpaved is what the climb seeks, not easy ground.
+  it("climbs on any unpaved ground and comes down on singletrack", () => {
+    for (const unpaved of [easyGravel(0.04), singletrack(0.04)])
+      expect(cost(unpaved, MTB)).toBeLessThan(cost(tarmac(0.04), MTB));
     expect(cost(singletrack(-0.04), MTB)).toBeLessThan(
       cost(tarmac(-0.04), MTB),
     );
@@ -290,9 +290,12 @@ it("round-trips direction overrides, and drops one that repeats base", () => {
     ...ROAD,
     preferences: {
       ...ROAD.preferences,
-      uphill: { traffic_stress: ROAD.preferences.base.traffic_stress },
+      uphill: {
+        ...ROAD.preferences.uphill,
+        unpaved: ROAD.preferences.base.unpaved,
+      },
     },
   });
-  expect(redundant.preferences.uphill).toEqual({});
+  expect(redundant.preferences.uphill).toEqual(ROAD.preferences.uphill);
   expect(serializeProfile(redundant)).toBe(serializeProfile(ROAD));
 });

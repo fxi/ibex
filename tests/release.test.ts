@@ -26,7 +26,7 @@ import {
 import { cellBBox, parseCellId } from "../src/geo/grid";
 import { route } from "../src/routing/engine";
 import { compileProfile } from "../src/routing/compile";
-import { GRAVEL, ROAD, WANDERER, withPreferences } from "./helpers";
+import { GRAVEL, ROAD, WANDERER, withLevels } from "./helpers";
 import { validateEdge, validateNode } from "../src/offline/validate";
 import type { Installed } from "../src/offline/store";
 import type { Point } from "../src/routing/types";
@@ -307,7 +307,8 @@ describe.skipIf(!present)("generated release", () => {
         );
         await provider.open();
         const graph = await provider.load(searchArea(trip));
-        const profile = withPreferences(ROAD, {
+        // On every grade: shipped Road relaxes traffic downhill, and this rider does not.
+        const profile = withLevels(ROAD, {
           detour: "prefer",
           traffic_stress: "strongly_avoid",
           unpaved: "strongly_avoid",

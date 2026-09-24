@@ -5,7 +5,9 @@ import {
   SHIPPED,
   TOURING,
   TRAIL,
+  withLevels,
   withPreferences,
+  withSetup,
 } from "./helpers";
 import {
   distance,
@@ -312,7 +314,7 @@ describe("routing invariants", () => {
       // — a profile gets a surface it dislikes over with quickly — so what is pinned here
       // is that the knob moves the choice, monotonically, in the direction the word says.
       const margin = (steepness: Level) => {
-        const q = withPreferences(profile, { steepness });
+        const q = withLevels(profile, { steepness });
         return total(climb(q, 0.15)) - total(climb(q, 0.07));
       };
       expect(margin("strongly_avoid")).toBeGreaterThan(margin("avoid"));
@@ -335,7 +337,7 @@ describe("routing invariants", () => {
       );
     for (const profile of SHIPPED) {
       const at = (climbing: Level, steepness: Level = "neutral") =>
-        withPreferences(profile, { climbing, steepness });
+        withLevels(profile, { climbing, steepness });
       // Before, `strongly_prefer` only discounted the effort: still a cost, so Geneva →
       // Grenoble took the same 1330 m of ascent at every level.
       expect(run(at("strongly_prefer"), 0.06)).toBeLessThan(
@@ -542,9 +544,18 @@ describe("scenic profile: lookahead, asymmetric MTB cost, reward/junction", () =
       g.edges[2].grades = [[80, 0]];
       return g;
     };
-    // A rider out looking for difficult ground. Shipped MTB climbs like gravel now and
-    // avoids it uphill, so it is not the profile this mechanism is about.
-    const seeker = withPreferences(TRAIL, { surface_difficulty: "prefer" });
+    // An expert out looking for difficult ground. Shipped MTB is neither: it no longer
+    // prefers difficulty, and its rider is retuned with the product, so both are pinned.
+    const seeker = withSetup(
+      withPreferences(TRAIL, { surface_difficulty: "prefer" }),
+      {
+        rider: {
+          ...TRAIL.setup.rider,
+          tech_skill: 0.7,
+          descend_confidence: 0.7,
+        },
+      },
+    );
     const scenic = route(
       build(),
       { anchors: [points[0], points[1]], profile: seeker },

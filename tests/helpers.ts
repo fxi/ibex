@@ -61,6 +61,30 @@ export const withPreferences = (
   });
 };
 
+/**
+ * `withPreferences`, with each changed preference also dropped from the `uphill` and
+ * `downhill` overrides, so the knob reaches every grade. For tests that pin what a level
+ * does rather than what a shipped profile chose: an override would shadow it on a climb.
+ */
+export const withLevels = (
+  base: Profile,
+  changes: Partial<Record<SettingKey | PreferenceKey, Level>>,
+): Profile => {
+  const q = withPreferences(base, changes);
+  const drop = (overrides: Profile["preferences"]["uphill"]) =>
+    Object.fromEntries(
+      Object.entries(overrides).filter(([key]) => !(key in changes)),
+    );
+  return parseProfile({
+    ...q,
+    preferences: {
+      ...q.preferences,
+      uphill: drop(q.preferences.uphill),
+      downhill: drop(q.preferences.downhill),
+    },
+  });
+};
+
 export const withPermissions = (
   base: Profile,
   permissions: Partial<Profile["permissions"]>,
