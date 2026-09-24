@@ -11,13 +11,21 @@ import { Elevation } from "../Elevation";
 import { serializeProfile } from "../routing/profiles";
 import { exportTrack, freshResult, modelSnapshot } from "../tracks";
 
-import { surfaceStyle, type Span } from "../map/rideStyle";
+import {
+  LENSES,
+  LEVEL_COLORS,
+  surfaceStyle,
+  type Span,
+} from "../map/rideStyle";
 import {
   composition,
   heightAtM,
   metersAtVertex,
   routeWarnings,
+  steepComposition,
+  trafficComposition,
   vertexAtM,
+  type LensEntry,
   type Pin,
   type Warning,
 } from "../map/routeStats";
@@ -26,7 +34,7 @@ import { anchorVertices, pointAt } from "../routing/localEdit";
 import { compileProfile } from "../routing/compile";
 import type { Point, RideClass, RouteResult } from "../routing/types";
 import type { Track } from "../tracks";
-import { ProfileSample } from "./SurfaceSample";
+import { LevelSample, ProfileSample } from "./SurfaceSample";
 import type { PanelContext } from "./context";
 import { ConvertDialog } from "./ConvertDialog";
 import { SectionHeading } from "./SectionHeading";
@@ -252,7 +260,13 @@ function RouteSummary({
   onRange: (range?: Span) => void;
 }) {
   const stale = !freshResult(track);
-  const warnings = routeWarnings(route, capability);
+  const { lens, setLens } = ctx;
+  // Each lens lists what it draws: hike-a-bike sits under whichever of surface or gradient
+  // put the rider on foot.
+  const warnings = routeWarnings(route, capability).filter(
+    (w) => w.lens === lens,
+  );
+  const lensLabel = LENSES.find((l) => l.lens === lens)!.label;
   // A row says where a thing is in kilometres; this puts the same place on the map without
   // taking the rider's overview away from them.
   const show = (meters: number) => {
@@ -274,6 +288,20 @@ function RouteSummary({
 
   return (
     <>
+      {/* One lens for the map's centre line, the chart's fill, the composition and the
+          warnings, so all four always answer the same question. */}
+      <div className="lane-switcher" role="group" aria-label="Read the route for">
+        {LENSES.map(({ lens: value, label }) => (
+          <button
+            key={value}
+            className={`lens-${value}`}
+            aria-pressed={lens === value}
+            onClick={() => setLens(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {stale && (
         <p className="hint">
           Waypoints or profile changed. These figures describe the previous
@@ -296,7 +324,7 @@ function RouteSummary({
 
       <Elevation
         route={route}
-        detail={{ capability, pins, range, onRange, onLocate: show }}
+        detail={{ capability, lens, pins, range, onRange, onLocate: show }}
       />
       {range && (
         <div className="range-controls" role="status">
@@ -323,7 +351,21 @@ function RouteSummary({
         </div>
       )}
 
+      {lens === "surface" ? (
+        <SurfaceComposition route={route} color={track.color} />
+      ) : (
+        <LevelComposition
+          entries={
+            lens === "steep"
+              ? steepComposition(route, capability)
+              : trafficComposition(route)
+          }
+          color={track.color}
+          title={lens === "steep" ? "Climbing" : "Traffic"}
+        />
+      )}
       <RouteWarnings
+        title={`${lensLabel} warnings`}
         warnings={
           range
             ? warnings.filter(
@@ -333,7 +375,6 @@ function RouteSummary({
         }
         onShow={show}
       />
-      <SurfaceComposition route={route} color={track.color} />
     </>
   );
 }
@@ -396,15 +437,71 @@ function SurfaceComposition({
 }
 
 /**
+ * How much of the route sits at each steepness or traffic level, as one bar and a list.
+ *
+ * The bar uses the colours the map's centre line does, the calm share in the track's own
+ * colour, so the bar reads as the route pulled straight. Steepness levels are named by this
+ * rider's own gradients.
+ */
+function LevelComposition({
+  entries,
+  color,
+  title,
+}: {
+  entries: LensEntry[];
+  color: string;
+  title: string;
+}) {
+  if (!entries.length) return null;
+  const summary = entries
+    .map((e) => `${e.label} ${Math.round(e.share * 100)}%`)
+    .join(", ");
+  return (
+    <section className="surface-composition">
+      <h3>{title}</h3>
+      <div className="composition-bar" role="img" aria-label={summary}>
+        {entries.map((e) => (
+          <i
+            key={e.level}
+            style={{
+              width: `${e.share * 100}%`,
+              background:
+                e.level === "unknown" || e.level === 0
+                  ? color
+                  : LEVEL_COLORS[e.level],
+              opacity: e.level === "unknown" ? 0.2 : e.level === 0 ? 0.45 : 1,
+            }}
+          />
+        ))}
+      </div>
+      <ul className="composition-legend">
+        {entries.map((e) => (
+          <li key={e.level}>
+            <LevelSample level={e.level} color={color} />
+            <span>{e.label}</span>
+            <b>
+              {(e.meters / 1000).toFixed(1)} km ·{" "}
+              {e.share < 0.005 ? "<1" : Math.round(e.share * 100)}%
+            </b>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * The sections worth knowing about before setting off, worst first.
  *
  * Each row is a severity, a place and a length — never a time. Nothing in the app models
  * how long a ride takes, so "+2h" would be invented; how hard and how far is not.
  */
 function RouteWarnings({
+  title,
   warnings,
   onShow,
 }: {
+  title: string;
   warnings: Warning[];
   onShow: (meters: number) => void;
 }) {
@@ -435,7 +532,7 @@ function RouteWarnings({
     <section className="route-warnings">
       <h3>
         <TriangleAlert size={15} />
-        Warnings · {warnings.length}
+        {title} · {warnings.length}
       </h3>
       <ul>{visible.map(row)}</ul>
       {rest.length > 0 && (

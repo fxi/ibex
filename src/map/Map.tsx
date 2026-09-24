@@ -32,6 +32,7 @@ import { createContextMenu } from "./contextMenu";
 import { syncSources } from "./sources";
 import type { Note } from "../notes/types";
 import type { SearchArea } from "../state/useNotes";
+import type { Lens } from "./rideStyle";
 /**
  * Screen distance between route handles. Laid out per whole zoom level, so handles hold
  * still while the map pans and only regroup when the zoom level changes.
@@ -95,6 +96,7 @@ export function MapView({
   onFindAround,
   notes,
   searchArea,
+  lens,
   editable,
   onMenu,
   onCamera,
@@ -138,6 +140,8 @@ export function MapView({
   notes: Note[];
   /** The circle a place search is limited to, if one is set. */
   searchArea?: SearchArea;
+  /** What the track's centre line shows. */
+  lens: Lens;
   editable: boolean;
   /** Right-click or long-press on waypoint `i`, in viewport coordinates. */
   onMenu: (i: number, x: number, y: number) => void;
@@ -203,6 +207,7 @@ export function MapView({
     dimmed,
     notes,
     searchArea,
+    lens,
   });
   snapshot.current = {
     editable,
@@ -219,6 +224,7 @@ export function MapView({
     dimmed,
     notes,
     searchArea,
+    lens,
   };
   useEffect(() => {
     // Imagery needs nothing from the bucket, so the map starts at once and gains the
@@ -759,6 +765,7 @@ export function MapView({
     dimmed,
     notes,
     searchArea,
+    lens,
   ]);
   useEffect(() => {
     const m = map.current;

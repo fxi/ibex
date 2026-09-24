@@ -5,6 +5,7 @@ import {
   SURFACE_STYLE,
   surfaceBands,
   surfaceStyle,
+  type Lens,
   type Span,
 } from "./map/rideStyle";
 import {
@@ -21,13 +22,6 @@ const TAP_SLOP = 4;
 
 const BOX = { w: 280, h: 75, top: 10, base: 65 };
 
-/** Which signal the fill under the curve is showing. */
-type Lane = "surface" | "steep" | "stress";
-const LANES: { lane: Lane; label: string }[] = [
-  { lane: "surface", label: "Surface" },
-  { lane: "steep", label: "Steep" },
-  { lane: "stress", label: "Traffic" },
-];
 
 /**
  * The route's height, with what it is made of — or what it will cost — underneath.
@@ -38,9 +32,12 @@ const LANES: { lane: Lane; label: string }[] = [
  * gradient runs past what this rider climbs comfortably. One signal at a time, because two
  * of them in one 280×75 box is a texture rather than an answer.
  *
- * Without `detail` this is the small sparkline on a track card: surface fill, no switcher,
- * no listeners. The exclusion is structural rather than a CSS rule, so a later stylesheet
- * edit cannot accidentally light it up.
+ * The signal is the app's lens, chosen above the chart and shared with the map, so the fill
+ * and the track's centre line always say the same thing.
+ *
+ * Without `detail` this is the small sparkline on a track card: surface fill, no
+ * listeners. The exclusion is structural rather than a CSS rule, so a later stylesheet edit
+ * cannot accidentally light it up.
  */
 export function Elevation({
   route,
@@ -49,6 +46,8 @@ export function Elevation({
   route: RouteResult;
   detail?: {
     capability: CapabilityProfile;
+    /** Which signal fills the curve. */
+    lens: Lens;
     pins?: Pin[];
     /** The stretch to draw, if the rider has narrowed it. Owned by the caller. */
     range?: Span;
@@ -59,7 +58,6 @@ export function Elevation({
   const id = useId().replace(/:/g, "");
   // Declared before the early return below: hooks cannot be skipped on a route with no
   // measured terrain.
-  const [lane, setLane] = useState<Lane>("surface");
   const [drag, setDrag] = useState<{ from: number; to: number }>();
   const svg = useRef<SVGSVGElement>(null);
 
@@ -108,7 +106,7 @@ export function Elevation({
     setDrag(undefined);
   };
 
-  const showing: Lane = detail ? lane : "surface";
+  const showing: Lens = detail ? detail.lens : "surface";
   const bands = surfaceBands(route.segments, route.distanceM);
   const present = new Set(bands.map((b) => b.ride));
   const hatched = SURFACE_STYLE.filter(
@@ -127,7 +125,7 @@ export function Elevation({
           route.segments,
           route.distanceM,
         )
-      : showing === "stress"
+      : showing === "traffic"
         ? stressLaneBands(route.segments, route.distanceM)
         : [];
 
@@ -148,9 +146,9 @@ export function Elevation({
   const legend =
     showing === "steep"
       ? warm.length
-        ? `Steep: ${sections(warm.length)} past comfortable`
-        : "Steep: none past comfortable"
-      : showing === "stress"
+        ? `Steepness: ${sections(warm.length)} past comfortable`
+        : "Steepness: none past comfortable"
+      : showing === "traffic"
         ? warm.length
           ? `Traffic: ${sections(warm.length)} busier than a quiet lane`
           : "Traffic: quiet throughout"
@@ -284,23 +282,6 @@ export function Elevation({
           </g>
         ))}
       </svg>
-      {detail && (
-        <div
-          className="lane-switcher"
-          role="group"
-          aria-label="Fill under the curve"
-        >
-          {LANES.map(({ lane: value, label }) => (
-            <button
-              key={value}
-              aria-pressed={showing === value}
-              onClick={() => setLane(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
     </figure>
   );
 }

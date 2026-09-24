@@ -17,6 +17,7 @@ import "./style.css";
 import { MapView, type MapCommand } from "./map/Map";
 import { BASEMAPS, type Basemap } from "./map/style";
 import { BasemapControl } from "./map/BasemapControl";
+import { LENSES, type Lens } from "./map/rideStyle";
 import { loadModels } from "./models";
 import type { Point } from "./routing/types";
 import {
@@ -42,6 +43,16 @@ import { useConvert } from "./state/useConvert";
 import { useNotes } from "./state/useNotes";
 
 const BASEMAP_KEY = "ibex.basemap";
+const LENS_KEY = "ibex.lens";
+function storedLens(): Lens {
+  try {
+    const value = localStorage.getItem(LENS_KEY);
+    if (LENSES.some((l) => l.lens === value)) return value as Lens;
+  } catch {
+    // Storage unavailable: fall through to the default.
+  }
+  return "surface";
+}
 function storedBasemap(): Basemap {
   try {
     const value = localStorage.getItem(BASEMAP_KEY);
@@ -70,6 +81,16 @@ function App() {
     setBasemapState(value);
     try {
       localStorage.setItem(BASEMAP_KEY, value);
+    } catch {
+      // Private windows may refuse storage; the choice then lasts this session only.
+    }
+  };
+  // What the track's centre line, the profile and the warnings are read for.
+  const [lens, setLensState] = useState<Lens>(storedLens);
+  const setLens = (value: Lens) => {
+    setLensState(value);
+    try {
+      localStorage.setItem(LENS_KEY, value);
     } catch {
       // Private windows may refuse storage; the choice then lasts this session only.
     }
@@ -210,6 +231,8 @@ function App() {
     routing,
     convert,
     notes,
+    lens,
+    setLens,
     online,
     canCompute,
     status,
@@ -254,6 +277,7 @@ function App() {
         activeId={active?.id}
         notes={active?.visible ? notes.notes : []}
         searchArea={notes.area}
+        lens={lens}
         onAddNote={notes.addNote}
         onFindAround={notes.findAround}
         grid={tab === "data"}

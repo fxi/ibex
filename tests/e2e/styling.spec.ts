@@ -1,4 +1,11 @@
-import { expect, test, saveMapData, planArve, SAVED_TEXT } from "./fixtures";
+import {
+  expect,
+  test,
+  saveMapData,
+  planArve,
+  tracksSaved,
+  SAVED_TEXT,
+} from "./fixtures";
 
 /** Read back what the map source actually holds, rather than guessing from pixels. */
 async function routeFeatures(page: import("@playwright/test").Page) {
@@ -15,8 +22,7 @@ async function routeFeatures(page: import("@playwright/test").Page) {
       }
     )?._map;
     const data = map?.getStyle().sources.route?.data as
-      | { features?: { properties: Record<string, unknown> }[] }
-      | undefined;
+      { features?: { properties: Record<string, unknown> }[] } | undefined;
     return (data?.features ?? []).map((f) => f.properties);
   });
 }
@@ -31,9 +37,7 @@ test("a computed route is drawn as its rideability classes", async ({
   });
 
   await planArve(page);
-  await page
-    .getByRole("button", { name: "Compute", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Compute", exact: true }).click();
   await expect(page.getByText("Route ready", { exact: true })).toBeVisible({
     timeout: 90000,
   });
@@ -48,23 +52,54 @@ test("a computed route is drawn as its rideability classes", async ({
   await expect(composition).toContainText("%");
   await expect(page.locator(".composition-bar")).toBeVisible();
 
-  // One signal at a time under the curve, and the caption says which one, so the prose and
-  // the picture cannot drift apart.
+  // One lens at a time for the chart and the map, and the caption says which one, so the
+  // prose and the picture cannot drift apart.
   const switcher = page.locator(".lane-switcher");
   const caption = page.locator(".stats .elevation figcaption");
   await expect(switcher.getByRole("button")).toHaveCount(3);
   await expect(caption).toContainText("Surface:");
-  const steep = switcher.getByRole("button", { name: "Steep", exact: true });
+  const surfaceLine = () =>
+    page.evaluate(() =>
+      (
+        document.querySelector(".map") as HTMLElement & {
+          _map?: { getLayoutProperty: (id: string, p: string) => unknown };
+        }
+      )?._map?.getLayoutProperty("route-gravel", "visibility"),
+    );
+  expect(await surfaceLine()).not.toBe("none");
+  const steep = switcher.getByRole("button", {
+    name: "Steepness",
+    exact: true,
+  });
   await steep.click();
   await expect(steep).toHaveAttribute("aria-pressed", "true");
-  await expect(caption).toContainText("Steep:");
+  await expect(caption).toContainText("Steepness:");
+  // The steepness line takes the middle of the track, so the surface one steps aside, and
+  // the composition speaks in this rider's own gradients.
+  await expect.poll(surfaceLine).toBe("none");
+  await expect(page.locator(".composition-legend")).toContainText("%");
 
   // Traffic stress reaches the chart only because the engine now stores it per segment.
-  const traffic = switcher.getByRole("button", { name: "Traffic", exact: true });
+  const traffic = switcher.getByRole("button", {
+    name: "Traffic",
+    exact: true,
+  });
   await traffic.click();
   await expect(traffic).toHaveAttribute("aria-pressed", "true");
   await expect(steep).toHaveAttribute("aria-pressed", "false");
   await expect(caption).toContainText("Traffic:");
+  await expect(
+    page.locator(".route-warnings h3, .composition-legend").first(),
+  ).toBeVisible();
+  // Chosen once, kept: the lens outlives a reload like the base map does.
+  await tracksSaved(page);
+  await page.reload();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Traffic", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Surface", exact: true }).click();
+  await expect.poll(surfaceLine).not.toBe("none");
 
   // The waypoint list moved here from the card: numbered like the markers, each with its
   // distance along the route and a way to drop it.
@@ -77,7 +112,9 @@ test("a computed route is drawn as its rideability classes", async ({
 
   // Waypoints and warnings are marked along the top of the detailed profile, and nowhere
   // near the card's sparkline.
-  expect(await page.locator(".stats .elevation .pin-head").count()).toBeGreaterThan(0);
+  expect(
+    await page.locator(".stats .elevation .pin-head").count(),
+  ).toBeGreaterThan(0);
 
   // Pointing at a row puts exactly one mark on the map. The dot is a circle layer rather
   // than a DOM marker, so it pans and zooms with the map and nothing tracks a transform.
@@ -144,15 +181,14 @@ test("a computed route is drawn as its rideability classes", async ({
   }
 
   // The dedicated overlay layers exist for the rougher classes.
-  const layers = await page.evaluate(
-    () =>
-      (
-        document.querySelector(".map") as HTMLElement & {
-          _map?: { getStyle: () => { layers: { id: string }[] } };
-        }
-      )?._map
-        ?.getStyle()
-        .layers.map((l) => l.id),
+  const layers = await page.evaluate(() =>
+    (
+      document.querySelector(".map") as HTMLElement & {
+        _map?: { getStyle: () => { layers: { id: string }[] } };
+      }
+    )?._map
+      ?.getStyle()
+      .layers.map((l) => l.id),
   );
   expect(layers).toContain("route-gravel");
   expect(layers).toContain("route-walk");

@@ -1,7 +1,9 @@
 import { useId } from "react";
 import {
   CENTER_COLOR,
+  LEVEL_COLORS,
   surfaceStyle,
+  type Level,
   type SurfaceStyle,
 } from "../map/rideStyle";
 import type { RideClass } from "../routing/types";
@@ -119,6 +121,50 @@ export function ProfileSample({
           <rect width="30" height="14" fill={`url(#${id})`} rx="2" />
         </>
       ) : null}
+    </svg>
+  );
+}
+
+/**
+ * A steepness or traffic level as the map draws it: the track's line, carrying the level's
+ * colour down its middle — or nothing, where the going is fine.
+ */
+export function LevelSample({
+  level,
+  color,
+  width = 30,
+}: {
+  level: Level | "unknown";
+  color: string;
+  width?: number;
+}) {
+  const w = TRACK_W * 0.5;
+  return (
+    <svg
+      className="symbology-sample level-sample"
+      viewBox={`0 0 ${width} 14`}
+      style={{ width }}
+      aria-hidden="true"
+    >
+      <line
+        x1="0"
+        y1="7"
+        x2={width}
+        y2="7"
+        stroke={color}
+        strokeWidth={TRACK_W}
+        strokeOpacity={level === "unknown" ? 0.35 : 1}
+      />
+      {level !== "unknown" && level > 0 && (
+        <line
+          x1="0"
+          y1="7"
+          x2={width}
+          y2="7"
+          stroke={LEVEL_COLORS[level as 1 | 2 | 3]}
+          strokeWidth={w}
+        />
+      )}
     </svg>
   );
 }

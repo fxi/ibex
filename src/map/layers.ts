@@ -26,6 +26,7 @@ export function addAppLayers(m: maplibregl.Map) {
     "corridor",
     "reference",
     "route",
+    "route-lens",
     "edit-preview",
     "search-area",
     "notes",
@@ -170,6 +171,26 @@ export function addAppLayers(m: maplibregl.Map) {
       },
     });
   }
+  // The steepness or traffic centre line, warm where the going is hard and absent where it
+  // is fine, drawn at the rough surface line's weight so the two lenses read alike.
+  m.addLayer({
+    id: "route-lens",
+    type: "line",
+    source: "route-lens",
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": trackWidthExpression(0.5),
+      "line-opacity": [
+        "case",
+        ["get", "stale"],
+        0.5,
+        ["get", "active"],
+        1,
+        0.85,
+      ],
+    },
+  });
   // Added last, so a pinch dot is never hidden under the route it sits on.
   m.addLayer({
     id: "edit-preview-line",

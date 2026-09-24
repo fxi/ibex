@@ -1669,26 +1669,33 @@ button.link {
   fill: #ff7043;
 }
 
-/* One signal at a time under the curve; the pressed button says which. */
+/* The lens: one question the map, the chart, the bar and the warnings all answer. It leads
+   the route summary, so the pressed button is the loudest thing above the figures. */
 .lane-switcher {
   display: flex;
-  gap: 2px;
-  margin-top: 8px;
+  gap: 4px;
+  margin: 4px 0 14px;
 }
 .lane-switcher button {
   flex: 1 1 0;
   min-width: 0;
-  padding: 5px 8px;
-  font-size: 11px;
+  padding: 7px 8px;
+  font-size: 12px;
   color: var(--muted);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 .lane-switcher button[aria-pressed="true"] {
-  color: var(--text);
-  background: var(--raised);
-  border-color: var(--border-strong);
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: transparent;
+  font-weight: 500;
+}
+/* Under the profile, right where the eye leaves the chart. */
+.elevation + .surface-composition,
+.range-controls + .surface-composition {
+  margin-top: 10px;
 }
 
 /* One bar for the glance, the list underneath for the numbers. */

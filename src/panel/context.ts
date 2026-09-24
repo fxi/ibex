@@ -5,6 +5,7 @@ import type { CatalogueState } from "../state/useCatalogue";
 import type { RoutingState } from "../state/useRouting";
 import type { ConvertState } from "../state/useConvert";
 import type { NotesState } from "../state/useNotes";
+import type { Lens } from "../map/rideStyle";
 
 /**
  * Everything the four tabs draw from. Passing one bag keeps the panels' signatures short
@@ -16,6 +17,9 @@ export type PanelContext = {
   routing: RoutingState;
   convert: ConvertState;
   notes: NotesState;
+  /** What the map's centre line, the profile and the warnings are read for. */
+  lens: Lens;
+  setLens: (lens: Lens) => void;
   online: boolean;
   /** Enough data and at least two waypoints, with no run already in flight. */
   canCompute: boolean;
