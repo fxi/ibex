@@ -76,6 +76,8 @@ export type StressContext = {
   urban: number;
   /** ISO 3166-1 alpha-2, where the builder knows it. */
   country?: string;
+  /** Share of the way right beside a motorway or four-lane road, 0..1 (`proximity.ts`). */
+  beside?: number;
 };
 
 export type SpeedSource = "tagged" | "zone" | "legal";
@@ -197,6 +199,11 @@ export function roadStress(highway: string, tags: OsmTags, ctx: StressContext): 
   if (MAIN_ROADS.has(highway) && lanesEachWay(tags) >= 2) floor = Math.max(floor, HARD);
   if (highway.startsWith("trunk") || highway.startsWith("motorway")) floor = Math.max(floor, HARD);
   if (tags.hgv === "designated") floor = Math.max(floor, BUSY);
+  // A quiet lane along a dual carriageway is not quiet to ride: as much of "some traffic"
+  // as the share of it that runs alongside. Its noise is not a hazard, so no further. A
+  // cycle track beside one is the separated infrastructure LTS rates calmest, and a
+  // traffic-shy rider is not to be sent off it into the back streets.
+  if (ctx.beside && highway !== "cycleway") floor = Math.max(floor, SOME * ctx.beside);
 
   return { base, floor, separated, ...(speed ? { speed } : {}) };
 }

@@ -21,6 +21,7 @@ import { junctionSeverity, networkUtility, rewardPotential, type PassEdge } from
 import { cyclingMemberships, ferryWays, onCyclingNetwork } from "./relations";
 import { roundTo } from "./round";
 import { riddenStress, roadStress } from "./stress";
+import { isMajorRoad, majorRoadProximity } from "./proximity";
 import { sliceProfile, structureGrade, wayProfile, type Grade } from "./terrain";
 import { directions, edgeQuality, permitted, PAVED } from "./tags";
 import type { CellSource } from "./osm/source";
@@ -193,6 +194,8 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
   counts.attractors = clusters.length;
   const attraction = attractionSurface(clusters, surfaceBox, options.metresPerPixel);
 
+  const beside = majorRoadProximity(source);
+
   const barriers = new Map<number, OsmTags>();
   for (const node of source.nodes) if ("barrier" in node.tags) barriers.set(node.id, node.tags);
   const blocked = new Set<number>();
@@ -295,6 +298,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
       const traffic = roadStress(highway, tags, {
         urban: urbanShare,
         country: options.country?.(mid[0], mid[1]),
+        beside: isMajorRoad(tags) ? 0 : beside(coords),
       });
       const stress = riddenStress(traffic, undefined);
       // A signed route calms the road for the direction it is signed in, never below the

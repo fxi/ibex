@@ -100,6 +100,9 @@ export function networkUtility(
 
 /** How busy the roads meeting at a node are, by class. */
 const JUNCTION_CLASS_WEIGHT: Record<string, number> = {
+  trunk: 1.0,
+  trunk_link: 1.0,
+  motorway_link: 1.0,
   primary: 1.0,
   primary_link: 1.0,
   secondary: 0.7,
