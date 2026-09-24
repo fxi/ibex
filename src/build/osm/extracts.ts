@@ -34,6 +34,8 @@ export type Extract = {
   usable: boolean;
   /** Whether Geofabrik gave it an ISO country code, which marks a real country. */
   iso: boolean;
+  /** That code, first of several where a country has two. */
+  country?: string;
   rings: Ring[];
 };
 
@@ -50,9 +52,9 @@ type Feature = {
   geometry?: { type?: unknown; coordinates?: unknown };
 };
 
-function iso(value: unknown): boolean {
-  if (typeof value === "string") return value.length > 0;
-  return Array.isArray(value) && value.length > 0;
+function iso(value: unknown): string | undefined {
+  if (typeof value === "string") return value || undefined;
+  return Array.isArray(value) && typeof value[0] === "string" ? value[0] : undefined;
 }
 
 /** Rings are flattened to `[lon, lat, lon, lat, …]`: the index holds about 1.5 M vertices. */
@@ -105,6 +107,7 @@ export function readExtractIndex(document: unknown): Extract[] {
       Math.max(...rings.map((r) => r.north)),
     ];
     const parent = feature.properties?.parent;
+    const country = iso(feature.properties?.["iso3166-1:alpha2"]);
     extracts.push({
       id,
       name: typeof feature.properties?.name === "string" ? feature.properties.name : id,
@@ -114,7 +117,8 @@ export function readExtractIndex(document: unknown): Extract[] {
       area: (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]),
       usable: true,
       // Published as an array — a country with two codes is still a country.
-      iso: iso(feature.properties?.["iso3166-1:alpha2"]),
+      iso: country !== undefined,
+      country,
       rings,
     });
   }
@@ -197,6 +201,47 @@ export function extractAt(
     if (extract.usable && (!best || extract.area < best.area) && contains(extract, lon, lat))
       best = extract;
   return best;
+}
+
+/**
+ * The ISO country a point is in, as far as Geofabrik's outlines tell: the smallest extract
+ * holding it, then up its parents to the first that is a country.
+ *
+ * Outlines are buffered past the border, so within a kilometre or two of one the answer
+ * may be the neighbour. What it decides — the legal default speed of an untagged road — is
+ * the same on both sides of most borders, and a road near one usually says which it is.
+ */
+export function countryAt(
+  extracts: readonly Extract[],
+  lon: number,
+  lat: number,
+): string | undefined {
+  const byId = new Map(extracts.map((e) => [e.id, e]));
+  for (let e = extractAt(extracts, lon, lat); e; e = e.parent ? byId.get(e.parent) : undefined)
+    if (e.country) return e.country;
+  return undefined;
+}
+
+/**
+ * `countryAt` sampled once over a box, for asking per edge: a containment test against
+ * national outlines of tens of thousands of vertices is far too slow to run fifty thousand
+ * times a cell. `samples` per side; 16 over a z9 cell and its halo is a probe every 5 km.
+ * Outside the box it answers from the nearest probe.
+ */
+export function countryLookup(
+  extracts: readonly Extract[],
+  bbox: BBox,
+  samples = 16,
+): (lon: number, lat: number) => string | undefined {
+  const [west, south, east, north] = bbox;
+  const dx = (east - west) / samples;
+  const dy = (north - south) / samples;
+  const grid: (string | undefined)[] = [];
+  for (let iy = 0; iy < samples; iy++)
+    for (let ix = 0; ix < samples; ix++)
+      grid.push(countryAt(extracts, west + (ix + 0.5) * dx, south + (iy + 0.5) * dy));
+  const clamp = (v: number) => Math.max(0, Math.min(samples - 1, Math.floor(v)));
+  return (lon, lat) => grid[clamp((lat - south) / dy) * samples + clamp((lon - west) / dx)];
 }
 
 /**

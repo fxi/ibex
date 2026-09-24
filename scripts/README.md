@@ -1,7 +1,8 @@
 # scripts/
 
 Run everything from the repo root (`node --import tsx scripts/<name>.ts`).
-Outputs go under the gitignored `.cache/`; nothing here writes to `src/`.
+Outputs go under the gitignored `.cache/`; nothing here writes to `src/` except
+`legal_speeds.ts`, which refreshes a committed table.
 Modules marked **lib** are imported by other scripts: do not rename or move them in isolation.
 Scripts that read a local build take its cells directory as an argument, defaulting to
 `DEFAULT_CELLS` in `local_cells.ts`.
@@ -10,6 +11,7 @@ Scripts that read a local build take its cells directory as an argument, default
 |---|---|---|
 | Cell pipeline | `build_cells.ts` | **The pipeline.** `--bbox W,S,E,N`, `--regions <geofabrik id,…>` or `--cells`: picks the Geofabrik downloads that cover each cell, parses each one once, cuts every cell it touches, builds and packs them. `--publish` sends each cell to the bucket as it is built (`--keep-local` to keep it on disk too), `--skip-built` resumes, `--terrain-budget <MB>` caps the DEM cache. Also `--dry-run`, `--out`, `--extracts`, `--zoom`, `--no-terrain`, `--keep-extracts`, `--limit`. Run it as `npm run data:build -- --regions …` |
 | | `s3.ts` | **lib**: the bucket client, key layout and cache headers both writers share |
+| | `legal_speeds.ts` | The legal default speed limits per country, reduced from the OSM wiki (via osm-legal-default-speeds) → `src/build/legal-speeds.json`, the one table a script commits into `src/`. Rerun to refresh it |
 | Map | `basemap.ts` | Protomaps basemap for the map: the world to z6 plus the published cells' box (or `--bbox`) to z15, joined into one archive by `tile-join`; `--publish` sends it, the fonts and the sprite, and updates `map.json`. `--dry-run`, `--build <YYYYMMDD>`, `--world-maxzoom`, `--skip-assets`, `--keep-local`. Needs `pmtiles` and `tippecanoe` |
 | | `cycle_routes.ts` | Cycle and MTB route relations under the published cells (or `--regions`) → `cycle-routes.pmtiles`; downloads one extract at a time, filters it with osmium and deletes it. `--publish`, `--dry-run`, `--keep-extracts`. Needs `osmium` and `tippecanoe` |
 | Publish | `publish.ts` | `npm run data:publish`: verify every byte against the catalogue, upload cells one at a time, write `catalog.json` last. `--dry-run`, `--setup-bucket`, `--verify <url>` ([data-format.md](../docs/data-format.md)) |

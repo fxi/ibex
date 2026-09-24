@@ -7,7 +7,14 @@
  * was once published with no Geneva in it.
  */
 import { describe, expect, test } from "vitest";
-import { extractAt, extractsFor, extractKey, readExtractIndex } from "../src/build/osm/extracts";
+import {
+  countryAt,
+  countryLookup,
+  extractAt,
+  extractsFor,
+  extractKey,
+  readExtractIndex,
+} from "../src/build/osm/extracts";
 
 const box = (west: number, south: number, east: number, north: number) => [
   [west, south],
@@ -77,6 +84,16 @@ describe("extract index", () => {
 
   test("a cell well inside one country reads only it", () => {
     expect(extractKey(extractsFor(index, [4, 12, 6, 14], 4))).toBe("west-north");
+  });
+
+  test("a point's country is found up the parents of the region holding it", () => {
+    expect(index.find((e) => e.id === "eastland")!.country).toBe("EL");
+    expect(countryAt(index, 5, 15)).toBe("WL");
+    expect(countryAt(index, 30, 5)).toBe("EL");
+    expect(countryAt(index, 5, 35)).toBeUndefined();
+    const lookup = countryLookup(index, [0, 0, 40, 20], 8);
+    expect(lookup(5, 15)).toBe("WL");
+    expect(lookup(35, 5)).toBe("EL");
   });
 
   test("a cell with no coverage reads nothing", () => {
