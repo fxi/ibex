@@ -285,9 +285,10 @@ export const ENGINE = {
    */
   traffic_from: 0.55,
   /**
-   * What a signed cycle route multiplies road-class stress by. Stress is read off road
-   * class alone, which cannot tell the signed departmental road from the lorry route
-   * beside it; a signed route is one someone chose for bikes.
+   * What a signed cycle route multiplies a road's class stress by, applied by the builder
+   * per direction (`src/build/stress.ts`). A signed route is one someone chose for bikes,
+   * which tells the signed departmental road from the lorry route beside it; but it never
+   * takes a road below the floor its speed and lanes set.
    */
   network_calming: 0.6,
   /**

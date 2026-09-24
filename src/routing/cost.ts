@@ -97,13 +97,6 @@ export function trafficHazard(
   return ENGINE.traffic * Math.abs(STRENGTH[w.level]) * excess * excess;
 }
 
-/** Traffic stress as ridden: road class, calmed where a cycle route is signed. */
-export function effectiveStress(edge: Edge): number {
-  return edge.cyclingNetwork
-    ? edge.stress * ENGINE.network_calming
-    : edge.stress;
-}
-
 /**
  * Roots and steps ask something of the bike before they exceed the rider's handling
  * limit. Tire volume, suspension and luggage already meet in the surface threshold, so
@@ -323,7 +316,7 @@ function riddenRate(
         ? p.downhillWeights
         : p.weights;
   const value: Record<ScoredKey, number> = {
-    traffic_stress: effectiveStress(edge),
+    traffic_stress: edge.stress,
     unpaved: s.unpaved,
     roughness: s.roughness,
     technicality: technical,
@@ -418,7 +411,7 @@ function riddenRate(
     roughness:
       ENGINE.threshold_rate * exceedance(s.roughness, k.surface_roughness) +
       unpavedHazard(edge, s, p, weights),
-    traffic: trafficHazard(effectiveStress(edge), p, weights),
+    traffic: trafficHazard(edge.stress, p, weights),
     uncertainty: ENGINE.uncertainty * edge.uncertainty,
     network: ENGINE.off_network * (1 - edge.utility),
   };

@@ -36,6 +36,7 @@ import {
   type CellSource,
 } from "../src/build/osm/source";
 import {
+  countryLookup,
   extractsFor,
   readExtractIndex,
   type Extract,
@@ -277,7 +278,7 @@ async function main() {
         skipped++;
         continue;
       }
-      const result = await buildOne(entry.cell, mergeSources(entry.parts), bucket);
+      const result = await buildOne(entry.cell, mergeSources(entry.parts), index, bucket);
       entry.parts.length = 0;
       if (!result) {
         skipped++;
@@ -322,6 +323,7 @@ type Built = { id: string; cell: Cell; entry: CatalogueCell };
 async function buildOne(
   cell: Cell,
   source: CellSource,
+  index: readonly Extract[],
   bucket?: Bucket,
 ): Promise<Built | undefined> {
   const id = cellId(cell);
@@ -341,7 +343,8 @@ async function buildOne(
     coverage = wanted.size ? elevations.size / wanted.size : 0;
   }
 
-  const { graph } = buildGraph(source, { cell, elevations });
+  const country = countryLookup(index, sourceBBox(cell));
+  const { graph } = buildGraph(source, { cell, elevations, country });
   if (graph.edges.length < MIN_EDGES) return undefined;
 
   // What OpenStreetMap said, from the download's own header — not when this ran, so a

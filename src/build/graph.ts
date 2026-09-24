@@ -20,12 +20,14 @@ import {
 import { junctionSeverity, networkUtility, rewardPotential, type PassEdge } from "./passes";
 import { cyclingMemberships, ferryWays, onCyclingNetwork } from "./relations";
 import { roundTo } from "./round";
+import { riddenStress, roadStress } from "./stress";
 import { sliceProfile, structureGrade, wayProfile, type Grade } from "./terrain";
 import { directions, edgeQuality, permitted, PAVED } from "./tags";
 import type { CellSource } from "./osm/source";
 import type { OsmTags } from "./osm/pbf";
 import type { BBox } from "./surface";
 import type { Point } from "../routing/types";
+import { ENGINE } from "../routing/vocabulary";
 
 /**
  * Deterministic edge identity. The same physical segment must get the same id in every cell
@@ -42,23 +44,6 @@ export function edgeUid(wayId: number, segmentIndex: number, direction: 0 | 1): 
   return (wayId * SEGMENT_SLOTS + segmentIndex) * 2 + direction;
 }
 
-/** How stressful each road class is to ride before any cycleway or surface adjustment. */
-const STRESS_BY_HIGHWAY: Record<string, number> = {
-  primary: 0.95,
-  primary_link: 0.95,
-  secondary: 0.8,
-  secondary_link: 0.8,
-  tertiary: 0.55,
-  residential: 0.2,
-  service: 0.15,
-  unclassified: 0.3,
-  living_street: 0.05,
-  cycleway: 0.02,
-};
-const STRESS_DEFAULT = 0.08;
-/** A cycle track alongside removes most of the road's stress. */
-const SEPARATED_CYCLEWAY = new Set(["track", "separate", "protected_lane"]);
-const CYCLEWAY_KEYS = ["cycleway", "cycleway:left", "cycleway:right", "cycleway:both"];
 /** The tags an edge carries into the pack, beyond the ones it stores in its own fields. */
 const CARRIED_TAGS = [
   "bicycle", "vehicle", "access", "foot", "route", "duration", "interval",
@@ -116,6 +101,8 @@ export type BuildOptions = {
   elevations?: ReadonlyMap<number, number>;
   haloKm?: number;
   metresPerPixel?: number;
+  /** The ISO country at a point, for the legal speed of an untagged road. */
+  country?: (lon: number, lat: number) => string | undefined;
 };
 
 export type BuildResult = { graph: Graph; counts: Record<string, number> };
@@ -303,8 +290,17 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
             : (sliceProfile(samples, profileStart, profileEnd) ?? null);
       const estimated = gradeSamples === null || bridge || tunnel;
 
-      let stress = STRESS_BY_HIGHWAY[highway] ?? STRESS_DEFAULT;
-      if (CYCLEWAY_KEYS.some((key) => SEPARATED_CYCLEWAY.has(tags[key] ?? ""))) stress *= 0.35;
+      const urbanShare = urbanFraction(coords, tags, urban);
+      const mid = coords[coords.length >> 1];
+      const traffic = roadStress(highway, tags, {
+        urban: urbanShare,
+        country: options.country?.(mid[0], mid[1]),
+      });
+      const stress = riddenStress(traffic, undefined);
+      // A signed route calms the road for the direction it is signed in, never below the
+      // floor its speed and lanes set (`stress.ts`).
+      const ridden = (network: number) =>
+        roundTo(riddenStress(traffic, network ? ENGINE.network_calming : undefined), 3);
       const raw = tags.surface ?? "unknown";
       const surface = PAVED.has(raw) ? "paved" : raw;
       const uncertainty = Math.min(
@@ -326,7 +322,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
         stress: roundTo(stress, 3),
         uncertainty: roundTo(uncertainty, 3),
         utility: 0,
-        urban: roundTo(urbanFraction(coords, tags, urban), 3),
+        urban: roundTo(urbanShare, 3),
         quality: edgeQuality(highway, surface, tags, stress),
         forest: roundTo(forest.sampleLine(coords), 3),
         bridge,
@@ -350,12 +346,16 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
       }
       if (highway === "steps") counts.stepsSegments++;
 
+      const onNetwork = (direction: "forward" | "backward") => {
+        const cyclingNetwork = onCyclingNetwork({ ...way, tags }, direction, networks);
+        return { cyclingNetwork, ...(highway === "ferry" ? {} : { stress: ridden(cyclingNetwork) }) };
+      };
       const [forward, backward] = directions(tags);
       if (forward)
         edges.push({
           ...base,
           id: edgeUid(way.id, segmentIndex, 0),
-          cyclingNetwork: onCyclingNetwork({ ...way, tags }, "forward", networks),
+          ...onNetwork("forward"),
           from: ids[0],
           to: ids[ids.length - 1],
           geometry: coords,
@@ -367,7 +367,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
         edges.push({
           ...base,
           id: edgeUid(way.id, segmentIndex, 1),
-          cyclingNetwork: onCyclingNetwork({ ...way, tags }, "backward", networks),
+          ...onNetwork("backward"),
           from: ids[ids.length - 1],
           to: ids[0],
           geometry: [...coords].reverse(),

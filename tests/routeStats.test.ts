@@ -905,7 +905,7 @@ describe("lenses", () => {
   it("leaves traffic calm up to the engine's own threshold, then steps by road class", () => {
     expect(trafficLevel(ENGINE.traffic_from)).toBe(0);
     expect(trafficLevel(0.2)).toBe(0);
-    // A signed primary, calmed by the network.
+    // A signed town primary, calmed by the network.
     expect(trafficLevel(0.95 * ENGINE.network_calming)).toBe(1);
     expect(trafficLevel(0.8)).toBe(2);
     expect(trafficLevel(0.95)).toBe(3);

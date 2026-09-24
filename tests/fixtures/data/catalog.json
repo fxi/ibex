@@ -19,22 +19,22 @@
         6.328125,
         46.5588603
       ],
-      "hash": "b8a3588fe54ca788",
+      "hash": "6e60d1e7ee92e93d",
       "builtAt": "1970-01-01T00:00:00.000Z",
       "osm": "1970-01-01T00:00:00.000Z",
-      "bytes": 1002,
+      "bytes": 1003,
       "blocks": 3,
       "terrainCoverage": 1,
       "files": [
         {
           "path": "index.ibx",
-          "bytes": 647,
-          "sha256": "d33c9cadf16ae8f2470f29a417ff31c47baf966c80d763f077c3c17d63fe320a"
+          "bytes": 646,
+          "sha256": "bcbdc813dc4ba2e08a028c002f733c2d80feccdfabd2d9876ab2b1ce14080d77"
         },
         {
           "path": "graph.ibx",
-          "bytes": 355,
-          "sha256": "83510ea5b476ae95578752018672a095d0d92826bd900b2703e68fad60a70ca7"
+          "bytes": 357,
+          "sha256": "b64e3a7197cfa287089c8bcd072214c071b3574a81c09f12911f524a3c70abda"
         }
       ],
       "nodes": 4,

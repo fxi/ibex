@@ -14,7 +14,6 @@ import {
   costCache,
   cycleInfrastructure,
   deviation,
-  effectiveStress,
   emptyComponents,
   HARD_TERMS,
   scoreEdge,
@@ -59,7 +58,6 @@ export {
   costCache,
   cycleInfrastructure,
   deviation,
-  effectiveStress,
   emptyComponents,
   HARD_TERMS,
   scoreEdge,
@@ -347,8 +345,8 @@ function appendSegments(
       ...(sac === undefined ? {} : { sac }),
       grade: startRun.grade,
       // Constant per edge, so segments split out of one edge share it. Two decimals because
-      // stress is a road-class proxy: more digits would be noise in every stored route.
-      stress: Math.round(effectiveStress(edge) * 100) / 100,
+      // stress is an estimate: more digits would be noise in every stored route.
+      stress: Math.round(edge.stress * 100) / 100,
       roughness: Math.round(edgeSignals(edge).roughness * 100) / 100,
       lengthM,
     });

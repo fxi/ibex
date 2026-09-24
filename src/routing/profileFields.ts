@@ -140,7 +140,7 @@ export const SIGNAL_FIELDS: Field<SignalKey>[] = [
   {
     key: "traffic_stress",
     label: "Traffic",
-    hint: "Estimated from road class and cycle infrastructure in the pack, not from live traffic. Avoiding it keeps you off main roads even at a small detour.",
+    hint: "Estimated from road class, speed limit (signed, or the country's default), lanes and cycle infrastructure, not from live traffic. Avoiding it keeps you off main roads even at a small detour.",
   },
   {
     key: "unpaved",
