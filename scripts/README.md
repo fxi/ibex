@@ -20,12 +20,12 @@ Scripts that read a local build take its cells directory as an argument, default
 | | `memory_leg.ts` | Heap of a leg's decoded graph and peak RSS while routing it, Geneva outward from 30 to 100 km, one process per leg; the phone's limit is what it watches |
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `build_parity.ts` | Diff two cell builds: ids and extents exactly, derived values to a tolerance (use around builder changes) |
-| | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex, `audit` where the router parts from it and why |
+| | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex (its notes become waypoints), `audit` where the router parts from it and why |
 | | `local_cells.ts` | **lib**: load a local build through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_signals.ts` | Routing audits → `.cache/derived/` |
 | Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests, with a tiny basemap; needs `tippecanoe`) |
 | | `gen_grid_fixture.ts`, `gen_grid_vectors.ts` | `tests/fixtures/grid-fixture`, `tests/fixtures/grid-vectors.json` |
-| | `gen_graph_fixture.ts` | Real-data routing fixtures in `tests/fixtures/`: a named region, or `gold/<name>` for the corridor around a gold standard |
+| | `gen_graph_fixture.ts` | Real-data routing fixtures in `tests/fixtures/`: a named region, or `gold/<name>` for the corridor around a gold standard and every case sharing its `graph` |
 | Dev & browser tests | `setup.mjs` | `npm run setup`: install, create `.env`, report missing settings |
 | | `data-server.ts`, `local-env.ts` | **lib** for `vite.config.ts`: serve the cells directory with byte ranges; read only this workspace's `.env` |
 | | `build_browser_tests.ts`, `test-server.mjs` | Isolated browser test build and its server |

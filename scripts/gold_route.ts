@@ -6,15 +6,19 @@
  * through in Ibex, and `intent`, the indices of the few waypoints that say where the
  * rider wanted to go. The others were corrections, and a good model needs none of them.
  * `min_shared` is the share of the line the router must already ride from the intent
- * alone: a ratchet, raised as the model improves. Its graph, `<name>-graph.json.gz`, is
- * the corridor around the line (`scripts/gen_graph_fixture.ts gold/<name>`).
+ * alone: a ratchet, raised as the model improves. Its graph, `<graph>-graph.json.gz`, is
+ * the corridor around the line (`scripts/gen_graph_fixture.ts gold/<name>`); cases drawn
+ * in the same area name one `graph` and share it, the corridor around all their lines.
+ * `notes` keeps what the author wrote at a waypoint.
  *
- *   node --import tsx scripts/gold_route.ts import <gpx> <name> [profile id] [intent]
+ *   node --import tsx scripts/gold_route.ts import <gpx> <name> [profile id] [intent] [graph]
  *   node --import tsx scripts/gold_route.ts audit <name> [waypoints] [packs dir]
  *
  * `import` needs a line drawn in Ibex on the current release, so that its vertices are
- * graph vertices; the points that are not are the waypoints. `intent` defaults to the
- * two ends. `audit` routes the case as the app does (`intent`, `all`, or comma-separated
+ * graph vertices; the points that are not are the waypoints. Ibex does not export its
+ * waypoints, so one that fell on a vertex is invisible: mark it with a note, whose
+ * `<wpt>` becomes a waypoint too. `intent` (`all`, or indices) defaults to the two
+ * ends. `audit` routes the case as the app does (`intent`, `all`, or comma-separated
  * waypoint indices) on its fixture, or on a local release when given one, prints the
  * share of the
  * line it rides, and every divergence with what each side costs, term by term, and the
@@ -24,6 +28,7 @@
 import fs from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { distance } from "../src/geo/distance";
+import { decode } from "../src/importers/gpx";
 import { scoreEdge, total, turnCost } from "../src/routing/engine";
 import { compareOn, joinLegs } from "../src/routing/legs";
 import { selectedRoute } from "../src/routing/selection";
@@ -43,6 +48,10 @@ export type Gold = {
   waypoints: Point[];
   intent: number[];
   min_shared: number;
+  /** The shared corridor graph; the case's own name when absent. */
+  graph?: string;
+  /** What the author wrote at a waypoint, by waypoint index. */
+  notes?: Record<number, string>;
 };
 
 export const loadGold = (path: string): Gold =>
@@ -189,8 +198,10 @@ function describe(e: Edge, profile: Profile): string {
 }
 
 export const goldPath = (name: string) => `tests/fixtures/gold/${name}.json`;
+export const goldGraphName = (name: string) =>
+  loadGold(goldPath(name)).graph ?? name;
 export const goldGraphPath = (name: string) =>
-  `tests/fixtures/gold/${name}-graph.json.gz`;
+  `tests/fixtures/gold/${goldGraphName(name)}-graph.json.gz`;
 export const loadGoldGraph = (name: string): Graph =>
   JSON.parse(gunzipSync(fs.readFileSync(goldGraphPath(name))).toString());
 
@@ -214,11 +225,29 @@ export function pickWaypoints(gold: Gold, pick = "intent"): number[] {
   return pick.split(",").map(Number);
 }
 
-async function importGpx(file: string, name: string, profile = "gravel_50", intent?: string) {
+/** Measured: a note dropped on a waypoint lands 6-9 m from it. */
+const NOTE_ON_WAYPOINT_M = 25;
+
+/** A GPX file's `<wpt>`s: the notes Ibex exports along a route. */
+function gpxNotes(xml: string): { p: Point; text: string }[] {
+  return [...xml.matchAll(/<wpt\b([^>]*)>([\s\S]*?)<\/wpt>/g)].map(([, attrs, body]) => ({
+    p: [Number(/lon="([^"]+)"/.exec(attrs)![1]), Number(/lat="([^"]+)"/.exec(attrs)![1])],
+    text: decode(/<name>([\s\S]*?)<\/name>/.exec(body)?.[1] ?? "").trim(),
+  }));
+}
+
+async function importGpx(
+  file: string,
+  name: string,
+  profile = "gravel_50",
+  intent?: string,
+  graphName?: string,
+) {
   const { parseGPX } = await import("../src/importers/gpx");
   const { DEFAULT_CELLS, loadReleaseGraph } = await import("./local_cells");
   const round = (p: Point): Point => [+p[0].toFixed(7), +p[1].toFixed(7)];
-  const line = parseGPX(fs.readFileSync(file, "utf8")).geometry.map(round);
+  const xml = fs.readFileSync(file, "utf8");
+  const line = parseGPX(xml).geometry.map(round);
   const graph = await loadReleaseGraph(DEFAULT_CELLS, line);
   const vertices = new Set(graph.edges.flatMap((e) => e.geometry.map(key)));
   const off = line.filter((p, i) => i > 0 && i < line.length - 1 && !vertices.has(key(p)));
@@ -229,20 +258,51 @@ async function importGpx(file: string, name: string, profile = "gravel_50", inte
       `${off.length} of ${line.length} points are not graph vertices: ` +
         `draw the line in Ibex on the current release, or export it again.`,
     );
-  const waypoints = [line[0], ...off, line.at(-1)!];
+  // A note stands for the line vertex nearest it, in line order with the other waypoints,
+  // unless it was dropped on a waypoint that is already there: then it only labels it.
+  const at = new Map<number, string | undefined>();
+  line.forEach((p, i) => {
+    if (i === 0 || i === line.length - 1 || !vertices.has(key(p))) at.set(i, undefined);
+  });
+  const drawn = [...at.keys()];
+  for (const note of gpxNotes(xml)) {
+    const nearest = (indices: number[]) =>
+      indices.reduce((b, i) =>
+        distance(line[i], note.p) < distance(line[b], note.p) ? i : b,
+      );
+    const waypoint = nearest(drawn);
+    at.set(
+      distance(line[waypoint], note.p) <= NOTE_ON_WAYPOINT_M
+        ? waypoint
+        : nearest(line.map((_, i) => i)),
+      note.text,
+    );
+  }
+  const order = [...at.keys()].sort((a, b) => a - b);
+  const waypoints = order.map((i) => line[i]);
+  const notes = Object.fromEntries(
+    order.flatMap((i, w) => (at.get(i) ? [[w, at.get(i)!]] : [])),
+  );
   const gold: Gold = {
     profile,
     line,
     waypoints,
-    intent: intent
-      ? intent.split(",").map(Number)
-      : [0, waypoints.length - 1],
+    intent:
+      intent === "all"
+        ? waypoints.map((_, i) => i)
+        : intent
+          ? intent.split(",").map(Number)
+          : [0, waypoints.length - 1],
     min_shared: 0,
+    ...(graphName ? { graph: graphName } : {}),
+    ...(Object.keys(notes).length ? { notes } : {}),
   };
   fs.writeFileSync(goldPath(name), JSON.stringify(gold));
   console.log(
     `${goldPath(name)}: ${line.length} points, ${waypoints.length} waypoints, ` +
-      `intent ${gold.intent.join(",")}. Now generate its graph with ` +
+      `intent ${gold.intent.join(",")}` +
+      (gold.notes ? `, notes ${JSON.stringify(gold.notes)}` : "") +
+      `. Now generate its graph with ` +
       `scripts/gen_graph_fixture.ts gold/${name}, audit it, and set min_shared.`,
   );
 }
@@ -319,11 +379,11 @@ async function audit(name: string, pick?: string, packs?: string) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [command, ...args] = process.argv.slice(2);
   if (command === "import" && args.length >= 2)
-    await importGpx(args[0], args[1], args[2], args[3]);
+    await importGpx(args[0], args[1], args[2], args[3], args[4]);
   else if (command === "audit" && args.length >= 1)
     await audit(args[0], args[1], args[2]);
   else
     throw new Error(
-      "usage: gold_route.ts import <gpx> <name> [profile] [intent] | audit <name> [waypoints] [packs dir]",
+      "usage: gold_route.ts import <gpx> <name> [profile] [intent] [graph] | audit <name> [waypoints] [packs dir]",
     );
 }

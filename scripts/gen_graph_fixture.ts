@@ -4,24 +4,26 @@
  * Clips the real graph to a region's bbox and writes it as gzipped JSON, so tests exercise
  * real OSM tags, terrain and topology in Node without the packs. A region is either one
  * of `REGIONS` or a gold standard, `gold/<name>`: its graph is the corridor around the
- * gold line, which keeps every local alternative to it and none of the city beyond.
+ * gold line, which keeps every local alternative to it and none of the city beyond. Cases
+ * that name the same `graph` share one, the corridor around all of their lines.
  *
  *   node --import tsx scripts/gen_graph_fixture.ts <region | gold/name> [packs dir]
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
-import { CellGraphProvider, type PackReader } from "../src/routing/provider";
-import type { Installed } from "../src/offline/store";
 import type { BBox } from "../src/geo/grid";
 import type { Graph, Point } from "../src/routing/types";
 import { distance } from "../src/geo/distance";
-import { DEFAULT_CELLS } from "./local_cells";
+import { DEFAULT_CELLS, openLocalProvider } from "./local_cells";
+import { goldGraphName, goldGraphPath, goldPath, loadGold } from "./gold_route";
 
 type Region = {
   bbox: BBox;
   required: string[];
-  /** Keep only edges within `radiusM` of this line: its alternatives, not a whole city. */
-  corridor?: { line: string; radiusM: number };
+  /** Keep only edges within `radiusM` of these lines: their alternatives, not a whole city. */
+  corridor?: { lines: Point[][]; radiusM: number };
+  /** Where to write it, when not `tests/fixtures/<name>-graph.json.gz`. */
+  out?: string;
 };
 const REGIONS: Record<string, Region> = {
   /**
@@ -49,8 +51,15 @@ const REGIONS: Record<string, Region> = {
  */
 const GOLD_RADIUS_M = 2500;
 
-function goldRegion(path: string): Region {
-  const line: Point[] = JSON.parse(readFileSync(path, "utf8")).line;
+/** Every case that shares `name`'s graph, and the file they share. */
+function goldRegion(name: string): Region {
+  const graph = goldGraphName(name);
+  const lines = readdirSync("tests/fixtures/gold")
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => f.slice(0, -".json".length))
+    .filter((other) => goldGraphName(other) === graph)
+    .map((other) => loadGold(goldPath(other)).line);
+  const line = lines.flat();
   // Wide enough that the bbox never clips the corridor.
   const lat = line[0][1];
   const padLat = GOLD_RADIUS_M / 111_320;
@@ -63,30 +72,30 @@ function goldRegion(path: string): Region {
       Math.max(...line.map((p) => p[1])) + padLat,
     ],
     required: [],
-    corridor: { line: path, radiusM: GOLD_RADIUS_M },
+    corridor: { lines, radiusM: GOLD_RADIUS_M },
+    out: goldGraphPath(name),
   };
 }
 
 const name = process.argv[2] ?? "";
 const region = name.startsWith("gold/")
-  ? goldRegion(`tests/fixtures/${name}.json`)
+  ? goldRegion(name.slice("gold/".length))
   : REGIONS[name];
 if (!region)
   throw new Error(
     `Unknown region "${name}": ${Object.keys(REGIONS).join(", ")}, or gold/<name>`,
   );
 const DIR = process.argv[3] ?? DEFAULT_CELLS;
-const OUT = `tests/fixtures/${name}-graph.json.gz`;
+const OUT = region.out ?? `tests/fixtures/${name}-graph.json.gz`;
 const BBOX = region.bbox;
 
-/** Within `radiusM` of the line's vertices, which are dense enough to stand for it. */
+/** Within `radiusM` of the lines' vertices, which are dense enough to stand for them. */
 function corridorTest(corridor: Region["corridor"]): (p: Point) => boolean {
   if (!corridor) return () => true;
-  const line: Point[] = JSON.parse(readFileSync(corridor.line, "utf8")).line;
   const cell = 0.01;
   const index = new Map<string, Point[]>();
   const key = (x: number, y: number) => `${x},${y}`;
-  for (const p of line) {
+  for (const p of corridor.lines.flat()) {
     const k = key(Math.floor(p[0] / cell), Math.floor(p[1] / cell));
     index.set(k, [...(index.get(k) ?? []), p]);
   }
@@ -103,38 +112,7 @@ function corridorTest(corridor: Region["corridor"]): (p: Point) => boolean {
   };
 }
 
-const read = (path: string) => new Uint8Array(readFileSync(path));
-const catalogue = JSON.parse(readFileSync(`${DIR}/catalogue.json`, "utf8"));
-const packs: Installed[] = catalogue.cells.map(
-  (cell: { id: string }) =>
-    ({
-      manifest: JSON.parse(
-        readFileSync(`${DIR}/${cell.id}/manifest.json`, "utf8"),
-      ),
-      installedAt: "1970-01-01T00:00:00.000Z",
-      directory: cell.id,
-      backend: "idb",
-    }) as Installed,
-);
-const reader: PackReader = {
-  async readFile(pack, path) {
-    return read(`${DIR}/${pack.manifest.id}/${path}`).buffer.slice(
-      0,
-    ) as ArrayBuffer;
-  },
-  async readRange(pack, path, offset, length) {
-    const bytes = read(`${DIR}/${pack.manifest.id}/${path}`);
-    return bytes.slice(offset, offset + length).buffer as ArrayBuffer;
-  },
-};
-
-const provider = new CellGraphProvider(
-  packs,
-  catalogue.release,
-  catalogue.cells,
-  reader,
-);
-await provider.open();
+const provider = await openLocalProvider(DIR);
 const loaded = await provider.load(BBOX);
 
 const inside = (p: Point) =>
@@ -170,5 +148,5 @@ writeFileSync(OUT, bytes);
 console.log(
   `${OUT}: ${edges.length} edges, ${nodes.length} nodes, ` +
     `${restrictions.length} restrictions, ${(bytes.length / 1024).toFixed(0)} KB gzipped ` +
-    `(release ${catalogue.release})`,
+    `(${DIR})`,
 );

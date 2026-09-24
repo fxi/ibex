@@ -21,7 +21,7 @@ const entities: Record<string, string> = {
   quot: '"',
   apos: "'",
 };
-function decode(text: string): string {
+export function decode(text: string): string {
   return text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
