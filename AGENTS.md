@@ -69,7 +69,8 @@ the fixture `map.json`.
 blocks. As of 2026-09-22: **R1 fails a real pair** (Thonon → Lausanne returns `no-path`
 because the detour sits outside the search window) and is the one to treat first; **B8**
 means `build_parity.ts` cannot read a cell build, so the guard below is unavailable; **B7**
-is a road inside a cell that produces no edges and nobody knows why. B1 and B6 were fixed
+is a road inside a cell that produces no edges and nobody knows why; **R6** (2026-09-24)
+is that traffic stress knows speed and lanes but not how many cars. B1 and B6 were fixed
 before the rebuild of that date. Read it before touching the builder, the publisher or the
 cost model — the entry probably says what you are about to rediscover. Fix an entry by
 deleting it, not by marking it done, and add one when you leave a defect behind.

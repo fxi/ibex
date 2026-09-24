@@ -117,3 +117,22 @@ reads as a data hole.
 (the reachability pass already exists in `route`), or retry the snap on the next nearest
 edge when the leg fails reachability. Either changes where some anchors land, so check the
 golden master and the gold standards.
+
+### R6 · Traffic stress knows speed and lanes, not how many cars
+`src/build/stress.ts` grades a road by class, then by its speed (tagged, zoned, or the
+country's legal default), lanes, `hgv=designated`, and whether it runs beside a motorway.
+None of that counts traffic. On two roads the user rode and checked in Street View (2026-09-24),
+class and speed rank them the wrong way round. Route de Juvigny, a tertiary on signed route
+23 near Annemasse, is very quiet and reads 0.6 ("moderate"). The D907 up the Vallée Verte,
+a secondary with no speed tag, is very busy and fast uphill and reads 0.8 ("busy"), not
+"very busy". Unclassified roads are all "calm" whatever they carry.
+A port of BRouter's `estimated_traffic_class` (population nearby, divided by distance
+squared, adjusted for motorway density and slip roads) was tried and dropped: it put
+Juvigny in class 4–5 for being near Annemasse and the D907 in class 3. It sent the Saxel
+release case onto 4.5 km of the D907.
+**Blocks:** trust in the traffic lens on untagged roads, and routing that avoids busy
+valley roads.
+**Shape of the fix:** estimate flow by routing trips on the car network (towns weighted by
+population, pop × pop / distance²) and summing per way, so that a valley's only road and a
+quiet road beside an arterial come out right. Check it first against Juvigny, the D907 and
+the Saxel test in `tests/release.test.ts`.
