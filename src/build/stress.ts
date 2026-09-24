@@ -45,6 +45,7 @@ const MAIN_ROADS = new Set([
   "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
   "secondary", "secondary_link", "tertiary", "tertiary_link",
 ]);
+const MOTORWAYS = new Set(["motorway", "motorway_link", "trunk", "trunk_link"]);
 /** Roads a car can use at all, and so the ones a speed limit applies to. */
 const MOTOR_ROADS = new Set([
   ...MAIN_ROADS, "unclassified", "residential", "living_street", "service", "road",
@@ -91,6 +92,11 @@ export type Stress = {
   /** Separated from the traffic: the whole value is scaled, floor and all. */
   separated: boolean;
   speed?: Speed;
+  /**
+   * What set the floor, as `TRAFFIC_WHY_TAG` carries it to the app: `speed=80/legal`,
+   * `lanes=2`, `hgv`, `beside=70` (per cent of the way).
+   */
+  why: string[];
 };
 
 /** `50`, `30 mph`, `walk`; `none` and `signals` say nothing about a number. */
@@ -195,17 +201,28 @@ export function roadStress(highway: string, tags: OsmTags, ctx: StressContext): 
   if (speed && speed.kmh <= 30) base *= 0.6;
   if (speed && speed.kmh <= 50 && cycleways.some((v) => PAINTED_CYCLEWAY.has(v))) base *= 0.8;
 
+  const why: string[] = [];
   let floor = speedFloor(highway, speed);
-  if (MAIN_ROADS.has(highway) && lanesEachWay(tags) >= 2) floor = Math.max(floor, HARD);
-  if (highway.startsWith("trunk") || highway.startsWith("motorway")) floor = Math.max(floor, HARD);
-  if (tags.hgv === "designated") floor = Math.max(floor, BUSY);
+  if (speed && (floor > 0 || speed.kmh <= 30)) why.push(`speed=${speed.kmh}/${speed.source}`);
+  if (MAIN_ROADS.has(highway) && lanesEachWay(tags) >= 2) {
+    floor = Math.max(floor, HARD);
+    why.push(`lanes=${lanesEachWay(tags)}`);
+  }
+  if (MOTORWAYS.has(highway)) floor = Math.max(floor, HARD);
+  if (tags.hgv === "designated") {
+    floor = Math.max(floor, BUSY);
+    why.push("hgv");
+  }
   // A quiet lane along a dual carriageway is not quiet to ride: as much of "some traffic"
   // as the share of it that runs alongside. Its noise is not a hazard, so no further. A
   // cycle track beside one is the separated infrastructure LTS rates calmest, and a
   // traffic-shy rider is not to be sent off it into the back streets.
-  if (ctx.beside && highway !== "cycleway") floor = Math.max(floor, SOME * ctx.beside);
+  if (ctx.beside && highway !== "cycleway") {
+    floor = Math.max(floor, SOME * ctx.beside);
+    if (ctx.beside >= 0.25) why.push(`beside=${Math.round(ctx.beside * 100)}`);
+  }
 
-  return { base, floor, separated, ...(speed ? { speed } : {}) };
+  return { base, floor, separated, why, ...(speed ? { speed } : {}) };
 }
 
 /** A separated track leaves this share of the road's stress. */

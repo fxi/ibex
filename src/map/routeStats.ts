@@ -391,6 +391,28 @@ export const TRAFFIC_LABELS: Record<Level, string> = {
   3: "Very busy",
 };
 
+/**
+ * What made a stretch busy, in words, from the reasons the builder recorded
+ * (`TRAFFIC_WHY_TAG`). A speed the tags did not state says it was assumed: the rider
+ * should know which judgements rest on a guess.
+ */
+export function trafficReasons(why: string | undefined): string[] {
+  if (!why) return [];
+  const reasons: string[] = [];
+  for (const token of why.split(";")) {
+    const [key, value = ""] = token.split("=");
+    if (key === "speed") {
+      const [kmh, source] = value.split("/");
+      reasons.push(
+        source === "tagged" ? `${kmh} km/h` : source === "zone" ? `${kmh} km/h zone` : `${kmh} km/h assumed`,
+      );
+    } else if (key === "lanes") reasons.push(`${value} lanes each way`);
+    else if (key === "hgv") reasons.push("lorry route");
+    else if (key === "beside") reasons.push("beside a motorway or dual carriageway");
+  }
+  return reasons;
+}
+
 /** Where the route runs busier than a quiet departmental road, warm where it is worse. */
 export function stressLaneBands(
   segments: RouteSegment[],
@@ -404,7 +426,10 @@ export function stressLaneBands(
       startM,
       endM,
       color: LEVEL_COLORS[level],
-      label: `${Math.round(segment.stress * 100)}% traffic stress`,
+      label: [
+        `${Math.round(segment.stress * 100)}% traffic stress`,
+        ...trafficReasons(segment.trafficWhy),
+      ].join(" · "),
     });
   }
   return bands;
@@ -822,7 +847,10 @@ export function routeWarnings(
       lens: "traffic",
       severity: worst >= 3 ? "hard" : "caution",
       headline: worst >= 3 ? "Very busy road" : "Busy road",
-      detail: `${km(section.endM - section.startM)} km on ${roads.join(", ")} roads`,
+      detail: [
+        `${km(section.endM - section.startM)} km on ${roads.join(", ")} roads`,
+        ...new Set(section.parts.flatMap((p) => trafficReasons(p.segment.trafficWhy))),
+      ].join(" · "),
     });
   }
 

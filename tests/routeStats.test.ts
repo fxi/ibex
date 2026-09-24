@@ -19,6 +19,7 @@ import {
   smoothLevels,
   stressLaneBands,
   trafficComposition,
+  trafficReasons,
   trafficLevel,
   TRAFFIC_MIN_M,
   vertexAtM,
@@ -1016,5 +1017,18 @@ describe("composition", () => {
 
   it("has nothing to say about an empty route", () => {
     expect(composition([], 1000)).toEqual([]);
+  });
+});
+
+describe("trafficReasons", () => {
+  it("says what made a stretch busy, and when a speed was assumed", () => {
+    expect(trafficReasons(undefined)).toEqual([]);
+    expect(trafficReasons("speed=80/legal")).toEqual(["80 km/h assumed"]);
+    expect(trafficReasons("speed=90/tagged;hgv")).toEqual(["90 km/h", "lorry route"]);
+    expect(trafficReasons("speed=30/zone;lanes=2;beside=70")).toEqual([
+      "30 km/h zone",
+      "2 lanes each way",
+      "beside a motorway or dual carriageway",
+    ]);
   });
 });

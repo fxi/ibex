@@ -33,6 +33,7 @@ import { toCompiled, type CompiledProfile } from "./compile";
 import { ENGINE } from "./vocabulary";
 import { eligible, isFerry, rideClass, traversalSegments } from "./eligibility";
 import { edgeSignals } from "./signals";
+import { TRAFFIC_WHY_TAG } from "./types";
 import type {
   Components,
   Edge,
@@ -330,6 +331,7 @@ function appendSegments(
   };
 
   const sac = edge.tags?.sac_scale;
+  const trafficWhy = edge.tags?.[TRAFFIC_WHY_TAG];
   let cursor = 0;
   let startIndex = 0;
   let startRun = runAt(spans[0] / 2);
@@ -347,6 +349,7 @@ function appendSegments(
       // Constant per edge, so segments split out of one edge share it. Two decimals because
       // stress is an estimate: more digits would be noise in every stored route.
       stress: Math.round(edge.stress * 100) / 100,
+      ...(trafficWhy === undefined ? {} : { trafficWhy }),
       roughness: Math.round(edgeSignals(edge).roughness * 100) / 100,
       lengthM,
     });

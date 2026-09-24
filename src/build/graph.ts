@@ -27,7 +27,7 @@ import { directions, edgeQuality, permitted, PAVED } from "./tags";
 import type { CellSource } from "./osm/source";
 import type { OsmTags } from "./osm/pbf";
 import type { BBox } from "./surface";
-import type { Point } from "../routing/types";
+import { TRAFFIC_WHY_TAG, type Point } from "../routing/types";
 import { ENGINE } from "../routing/vocabulary";
 
 /**
@@ -316,6 +316,8 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
 
       const carried: OsmTags = {};
       for (const key of CARRIED_TAGS) if (key in tags) carried[key] = tags[key];
+      // The app cannot redo this: it knows neither the country nor what runs alongside.
+      if (traffic.why.length) carried[TRAFFIC_WHY_TAG] = traffic.why.join(";");
 
       const base = {
         way: String(way.id),

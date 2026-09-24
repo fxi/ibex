@@ -96,6 +96,12 @@ export type Components = {
  * One stretch of the finished route that is uniform in how it rides. Indices address
  * `RouteResult.geometry`, so a segment can be drawn without re-deriving anything.
  */
+/**
+ * The edge tag in which the builder says what made a road stressful (`src/build/stress.ts`),
+ * and which a segment carries on as `trafficWhy` for the traffic lens to say so.
+ */
+export const TRAFFIC_WHY_TAG = "ibex:traffic";
+
 export type RouteSegment = {
   /** First vertex, indexing `RouteResult.geometry`. */
   start: number;
@@ -118,6 +124,8 @@ export type RouteSegment = {
   grade: number | null;
   /** Traffic stress as ridden, 0..1, calmed where a cycle route is signed. */
   stress: number;
+  /** What made it so, where the builder recorded it (`TRAFFIC_WHY_TAG`). */
+  trafficWhy?: string;
   /**
    * The router's own roughness, 0..1 — the worst of `surface`, `smoothness` and
    * `tracktype`, not a second opinion derived from `surface` alone. It is here because

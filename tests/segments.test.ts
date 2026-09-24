@@ -116,6 +116,14 @@ describe("route segments", () => {
     expect(result.segments.every((s) => s.stress === 0.1)).toBe(true);
   });
 
+  it("carries the reason the builder recorded for its traffic stress", () => {
+    const result = run(chain({}, { tags: { "ibex:traffic": "speed=80/legal" } }, {}));
+    expect(result.status).toBe("ok");
+    const why = new Set(result.segments.map((s) => s.trafficWhy));
+    expect(why).toContain("speed=80/legal");
+    expect(why).toContain(undefined);
+  });
+
   it("marks a ferry crossing", () => {
     const result = run(chain({}, { highway: "ferry", surface: "water" }, {}));
     expect(result.status).toBe("ok");

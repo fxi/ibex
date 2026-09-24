@@ -105,3 +105,17 @@ describe("roadStress", () => {
     expect(level("primary", { cycleway: "track", maxspeed: "90" })).toBe(0);
   });
 });
+
+describe("why a road is stressful", () => {
+  it("records the evidence that set the floor, and nothing that did not", () => {
+    expect(roadStress("secondary", {}, RURAL).why).toEqual(["speed=80/legal"]);
+    expect(roadStress("secondary", { maxspeed: "90", hgv: "designated" }, RURAL).why).toEqual([
+      "speed=90/tagged",
+      "hgv",
+    ]);
+    expect(roadStress("primary", { lanes: "4" }, TOWN).why).toEqual(["lanes=2"]);
+    expect(roadStress("residential", { maxspeed: "30" }, TOWN).why).toEqual(["speed=30/tagged"]);
+    expect(roadStress("residential", {}, { ...RURAL, beside: 0.8 }).why).toEqual(["beside=80"]);
+    expect(roadStress("residential", {}, TOWN).why).toEqual([]);
+  });
+});
