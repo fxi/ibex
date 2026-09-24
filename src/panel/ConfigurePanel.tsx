@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Settings, Bike, Mountain, Plus, Trash2 } from "lucide-react";
 import { download } from "../gpx";
 import { loadModels, saveModels, shippedProfiles } from "../models";
-import { modelSnapshot } from "../tracks";
+import { freshResult, modelSnapshot } from "../tracks";
 import {
   newProfileId,
   parseProfile,
@@ -199,6 +199,14 @@ export function ConfigurePanel({ ctx }: { ctx: PanelContext }) {
       )}
 
       {notice && <p role="status">{notice}</p>}
+      {/* Changing the model does not route again, and the map keeps drawing the old line:
+          without this it passes for the new one. */}
+      {active?.result && !freshResult(active) && (
+        <p className="hint">
+          The route on the map is out of date: it was computed before the last
+          change of profile or waypoints. Compute it again from Edit.
+        </p>
+      )}
 
       {editing ? (
         <section className="profile-editor-panel" aria-label="Edit profile">
