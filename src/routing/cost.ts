@@ -228,14 +228,53 @@ export function steepnessCost(
   /** The climbing threshold as the ground leaves it; see `tractionGrade`. */
   uphill: Threshold = p.capability.uphill_grade,
 ): number {
-  const band =
-    ENGINE.flow_band *
-    (grade > 0
-      ? uphill.comfortable_until
-      : p.capability.downhill_grade.comfortable_until);
+  const band = ENGINE.flow_band * comfortableGrade(grade, p, uphill);
   return (
     ENGINE.flow * p.steepnessAversion * Math.max(0, Math.abs(grade) - band)
   );
+}
+
+/** The grade this rider takes comfortably in the direction of `grade`. */
+function comfortableGrade(
+  grade: number,
+  p: CompiledProfile,
+  uphill: Threshold,
+): number {
+  return grade > 0
+    ? uphill.comfortable_until
+    : p.capability.downhill_grade.comfortable_until;
+}
+
+/**
+ * Credit to `net` for the height and gradient a rider says they want, zero unless
+ * `climbing` or `steepness` is preferred. The climb is full at the comfortable grade
+ * and no more past it: how steep is the second question, and past the comfortable grade
+ * the capability terms are speaking. The budget's `tanh` bounds both.
+ *
+ * Climbing is credited going down as well. Between two fixed points every extra metre
+ * climbed is descended again, and with only the way up credited the descent still cost
+ * what a flat way does: Geneva → Grenoble gained 30 m at `strongly_prefer` for a credit
+ * five times this one. The hill is what the rider asked for, both sides of it.
+ */
+function terrainCredit(
+  grade: number | null,
+  p: CompiledProfile,
+  uphill: Threshold,
+): number {
+  if (grade === null) return 0;
+  const comfortable = comfortableGrade(grade, p, uphill);
+  const band = ENGINE.flow_band * comfortable;
+  const climb =
+    Math.abs(grade) > ENGINE.grade_from
+      ? Math.min(1, Math.abs(grade) / comfortable)
+      : 0;
+  // Not capped, unlike the climb: per metre of height this rises with the gradient, as
+  // `steepnessCost` does. Capped at the comfortable grade, a loaded rider for whom 7% is
+  // already past the band earned the same credit per metre there as at 15%, and the
+  // longer, gentler way up collected more of it.
+  const steep =
+    Math.max(0, Math.abs(grade) - band) / Math.max(1e-6, comfortable - band);
+  return p.climbCredit * climb + p.steepCredit * steep;
 }
 
 /** Physical cycle infrastructure remains distinguishable from signed route membership. */
@@ -384,7 +423,7 @@ function riddenRate(
     network: ENGINE.off_network * (1 - edge.utility),
   };
   return {
-    net: weight > 0 ? sum / weight : 0,
+    net: (weight > 0 ? sum / weight : 0) - terrainCredit(grade, p, uphill),
     hard: HARD_TERMS.reduce((total, key) => total + terms[key], 0),
     terms,
     effort,

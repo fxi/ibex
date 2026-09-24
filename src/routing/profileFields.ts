@@ -127,7 +127,7 @@ export const SETTING_FIELDS: Field<SettingKey>[] = [
   {
     key: "steepness",
     label: "Steepness",
-    hint: "How the height is gained, apart from how much of it there is. Avoiding it takes the gentler way up the same hill, and the gentler way down.",
+    hint: "How the height is gained, apart from how much of it there is. Avoiding it takes the gentler way up the same hill, and the gentler way down; preferring it seeks the steeper one.",
   },
   {
     key: "direction_changes",

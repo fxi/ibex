@@ -47,6 +47,10 @@ export type CompiledProfile = {
   climbAversion: number;
   /** How much this rider minds the gradient itself; see `steepnessCost`. */
   steepnessAversion: number;
+  /** Credit to `net` for climbing at the comfortable grade; 0 unless climbing is preferred. */
+  climbCredit: number;
+  /** Credit to `net` for grade past the momentum band; 0 unless steepness is preferred. */
+  steepCredit: number;
   /** How much a change of direction at an intersection costs; see `turnCost`. */
   directionChanges: Level;
   capability: CapabilityProfile;
@@ -107,6 +111,10 @@ export function compileProfile(profile: Profile): CompiledProfile {
     downhillWeights: directional("downhill"),
     climbAversion: CLIMB_AVERSION(STRENGTH[profile.settings.climbing]),
     steepnessAversion: STEEPNESS_AVERSION(STRENGTH[profile.settings.steepness]),
+    climbCredit:
+      Math.max(0, STRENGTH[profile.settings.climbing]) * ENGINE.climb_credit,
+    steepCredit:
+      Math.max(0, STRENGTH[profile.settings.steepness]) * ENGINE.steep_credit,
     directionChanges: profile.settings.direction_changes,
     capability,
     permissions: profile.permissions,

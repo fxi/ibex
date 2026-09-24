@@ -128,19 +128,25 @@ Whole-ride choices, one value each, in the same five-word vocabulary as preferen
   not a cap on route length — a route is as long as the good line it follows — and it also
   widens the search corridor so that line is reachable. This is the knob that decides
   whether the app explores or commutes.
-- `climbing` — whether height gain is the point or the price. It scales a cost that
-  already adds up over the ride (`ENGINE.climb_effort`, 5 equivalent metres per metre
-  climbed): `strongly_prefer` pays 0.4× of it, `strongly_avoid` 1.6×. Note what it cannot
-  do: climbing effort is charged per metre of *height*, so between two ways up the same
-  hill it is the same number on both and cancels. `climbing` chooses how much ascent a
-  ride has, never which side of the hill it is taken on. That is `steepness`.
+- `climbing` — whether height gain is the point or the price. Avoided, it scales a cost
+  that already adds up over the ride (`ENGINE.climb_effort`, 5 equivalent metres per metre
+  climbed): 1.6× at `strongly_avoid`. Preferred, the effort is discounted (0.4× at
+  `strongly_prefer`) and height is also credited inside the detour budget like any other
+  virtue (`ENGINE.climb_credit`), on the way down as well as up, since every extra metre
+  climbed is descended again. Discounting alone never made a hill worth riding: Geneva →
+  Grenoble took the same 1330 m at every level. Note what it cannot do: the effort is
+  charged per metre of *height*, so between two ways up the same hill it cancels.
+  `climbing` chooses how much ascent a ride has, never which side of the hill it is taken
+  on. That is `steepness`. And no preference outweighs capability: a loaded bike's
+  comfortable grade is lower, and past it the grade terms, outside the budget, decide.
 - `steepness` — how the height is gained, apart from how much of it there is. Charged per
   metre outside a momentum band of 0.6 × the rider's comfortable grade in that direction
   (`ENGINE.flow`, 20 equivalent metres per unit of grade past the band at `neutral`,
   scaled 0.4× to 1.6× by the word). It applies uphill and downhill alike. Unlike
   `direction_changes` it charges in full at `neutral`: gradient has a cost whatever the
   rider thinks of it, and a setting that vanished in the middle left Road and MTB — both
-  shipped `direction_changes: neutral` — with no opinion about gradient at all.
+  shipped `direction_changes: neutral` — with no opinion about gradient at all. Preferred,
+  grade past the band is also credited inside the detour budget (`ENGINE.steep_credit`).
 - `direction_changes` — the attention a change of direction takes at an intersection.
   Only where three or more ways meet: going straight on is free, a right angle pays half,
   a U-turn pays in full (`ENGINE.turn_meters`, 60 m at `strongly_avoid`). Hairpins inside

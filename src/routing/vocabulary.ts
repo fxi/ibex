@@ -41,6 +41,9 @@ export const STRENGTH: Record<Level, number> = {
  * metre of height, so between two ways up the same hill it is identical and cancels:
  * `climbing` can only choose how much ascent a ride has, never which side of the hill it
  * is taken on. `steepness` is the second question.
+ *
+ * Like every preference, avoided they cost and preferred they are credited within the
+ * detour budget; neither cost ever falls below the physical effort's discounted share.
  */
 export const SETTING_KEYS = [
   "detour",
@@ -99,6 +102,11 @@ export const levelKey = (key: ScoredKey): SignalKey =>
  * charged for the same hill twice and, worse, left a rider who marked climbing "neutral"
  * paying the full physical cost with no way to say they did not mind — which in the Alps
  * is most of what there is to say. This scales the real cost instead.
+ *
+ * That alone left `prefer` meaning "mind it less", never "go and find it": the discounted
+ * effort was still a cost, and Geneva → Grenoble took the same 1330 m at every level. So
+ * preferring climbing also credits height gain inside the detour budget (`climb_credit`),
+ * as every other preferred virtue is. Avoiding it only scales the cost, as before.
  */
 export const CLIMB_AVERSION = (strength: number) => 1 - 0.6 * strength;
 
@@ -111,6 +119,9 @@ export const CLIMB_AVERSION = (strength: number) => 1 - 0.6 * strength;
  * scales what is already there. The alternative — a signed preference that vanishes at
  * `neutral`, as `direction_changes` does — is what left Road and MTB with no opinion about
  * gradient at all, and a 15% ramp costing the same as the 7% road beside it.
+ *
+ * Preferring it credits grade past the momentum band inside the detour budget as well
+ * (`steep_credit`), for the same reason as `CLIMB_AVERSION`.
  */
 export const STEEPNESS_AVERSION = (strength: number) => 1 - 0.6 * strength;
 
@@ -380,6 +391,24 @@ export const ENGINE = {
    * about 6% up and 10% down for the shipped gravel rider.
    */
   flow_band: 0.6,
+  /**
+   * Preference credit, at `climbing: strongly_prefer`, for a run at the rider's
+   * comfortable grade, up or down (see `terrainCredit`). Added to `net` rather than
+   * averaged into it: averaged, a climb pulled an otherwise ideal gravel run back towards
+   * ordinary. On Gravel 50 with `detour: strongly_prefer`, Geneva → Grenoble climbs
+   * 1800 m at `neutral`, 1900 m at `prefer` and 2570 m at `strongly_prefer`; at 0.2
+   * `strongly_prefer` barely reached what 0.4 gives `prefer`. See `CLIMB_AVERSION`.
+   */
+  climb_credit: 0.4,
+  /**
+   * Preference credit, at `steepness: strongly_prefer`, for a run at the rider's
+   * comfortable grade, prorated from the edge of the momentum band and uncapped past it.
+   * Half `climb_credit`: at 0.4 a loaded rider's 7% run, already past the band, reached
+   * the budget floor as a 15% one did, and the longer way up won on credit
+   * (`tests/routing.test.ts`). On the ride above it takes 2170 m instead of 1800.
+   * See `steepnessCost`.
+   */
+  steep_credit: 0.2,
   /**
    * How much of the climbing threshold loose ground takes away, per unit of roughness
    * past `traction_free`. See `tractionGrade`.

@@ -320,6 +320,88 @@ describe("routing invariants", () => {
       expect(margin("neutral")).toBeGreaterThan(margin("strongly_prefer"));
     }
   });
+  it("credits height and gradient a rider prefers, and nothing a rider avoids", () => {
+    const base = fixture(p, [[0, 1]]).edges[0];
+    const run = (profile: Profile, grade: number) =>
+      total(
+        scoreEdge(
+          {
+            ...base,
+            length: 1000,
+            grades: [[1000, grade]] as [number, number][],
+          },
+          profile,
+        ),
+      );
+    for (const profile of SHIPPED) {
+      const at = (climbing: Level, steepness: Level = "neutral") =>
+        withPreferences(profile, { climbing, steepness });
+      // Before, `strongly_prefer` only discounted the effort: still a cost, so Geneva →
+      // Grenoble took the same 1330 m of ascent at every level.
+      expect(run(at("strongly_prefer"), 0.06)).toBeLessThan(
+        run(at("neutral"), 0.06),
+      );
+      // Down as well: every extra metre climbed is descended again.
+      expect(run(at("strongly_prefer"), -0.06)).toBeLessThan(
+        run(at("neutral"), -0.06),
+      );
+      // Flat ground is neither.
+      expect(run(at("strongly_prefer"), 0)).toBeCloseTo(
+        run(at("neutral"), 0),
+        6,
+      );
+      expect(run(at("neutral", "strongly_prefer"), 0)).toBeCloseTo(
+        run(at("neutral"), 0),
+        6,
+      );
+      expect(run(at("neutral", "strongly_prefer"), 0.14)).toBeLessThan(
+        run(at("neutral"), 0.14),
+      );
+      // Avoiding either only scales the physical cost, as it always did.
+      expect(
+        compileProfile(at("strongly_avoid", "strongly_avoid")),
+      ).toMatchObject({
+        climbCredit: 0,
+        steepCredit: 0,
+      });
+    }
+  });
+  it("goes over the ridge for a rider who prefers climbing", () => {
+    const points: Point[] = [
+      [6, 46],
+      [6.012, 46],
+      [6.006, 45.996],
+    ];
+    const g = fixture(points, [
+      [0, 1, "ridge"],
+      [0, 2, "valleyA"],
+      [2, 1, "valleyB"],
+    ]);
+    // A 2 km way over a hill (up and down again) against 1.4 km of flat valley road.
+    g.edges[0].length = 2000;
+    g.edges[0].grades = [
+      [1000, 0.06],
+      [1000, -0.06],
+    ];
+    g.edges[1].length = 700;
+    g.edges[1].grades = [[700, 0]];
+    g.edges[2].length = 700;
+    g.edges[2].grades = [[700, 0]];
+    const via = (climbing: Level) =>
+      route(
+        g,
+        {
+          anchors: [points[0], points[1]],
+          profile: withPreferences(GRAVEL, {
+            climbing,
+            detour: "strongly_prefer",
+          }),
+        },
+        "reference",
+      ).edgeIds;
+    expect(via("neutral")).toEqual([1, 2]);
+    expect(via("strongly_prefer")).toEqual([0]);
+  });
   it("prices grade non-linearly, and only past what the rider is comfortable with", () => {
     const grade = (g: number): [number, number][] => [[1000, g]];
     const base = fixture(p, [[0, 1]]).edges[0];
