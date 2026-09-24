@@ -32,25 +32,17 @@ export const STRENGTH: Record<Level, number> = {
 };
 
 /**
- * Whole-ride settings: one value for the ride, never changed by direction. `detour` sets
- * the budget, `climbing` scales the climbing cost (see `CLIMB_AVERSION`), `steepness`
- * scales the gradient cost (see `STEEPNESS_AVERSION`), and `direction_changes` prices
- * turning at intersections.
- *
- * `climbing` and `steepness` are two questions, not one. Climbing effort is charged per
- * metre of height, so between two ways up the same hill it is identical and cancels:
- * `climbing` can only choose how much ascent a ride has, never which side of the hill it
- * is taken on. `steepness` is the second question.
+ * Whole-ride settings: one value for the ride, because none of them can mean anything
+ * different uphill and downhill. `detour` is a budget on the route's whole length.
+ * `climbing` scales the climbing cost (see `CLIMB_AVERSION`) and is credited on both
+ * sides of a hill, since between two fixed points every metre climbed is descended again.
+ * `direction_changes` prices turning at intersections, which the search does from three
+ * points without the edges or their grades.
  *
  * Like every preference, avoided they cost and preferred they are credited within the
- * detour budget; neither cost ever falls below the physical effort's discounted share.
+ * detour budget; the climbing cost never falls below the physical effort's discounted share.
  */
-export const SETTING_KEYS = [
-  "detour",
-  "climbing",
-  "steepness",
-  "direction_changes",
-] as const;
+export const SETTING_KEYS = ["detour", "climbing", "direction_changes"] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 /**
@@ -70,6 +62,20 @@ export const SIGNAL_KEYS = [
   "cycle_infrastructure",
 ] as const;
 export type SignalKey = (typeof SIGNAL_KEYS)[number];
+
+/**
+ * Everything a profile states per direction: the signals, and `steepness`, which scales
+ * the gradient cost (see `STEEPNESS_AVERSION`) and is not scored against a reference.
+ *
+ * `climbing` and `steepness` are two questions, not one. Climbing effort is charged per
+ * metre of height, so between two ways up the same hill it is identical and cancels:
+ * `climbing` can only choose how much ascent a ride has, never which side of the hill it
+ * is taken on. `steepness` is the second question, and it is the one riders answer
+ * differently each way: the gravel rider who takes a steep ramp up but wants the gentle
+ * way down, the mountain biker who is the other way round.
+ */
+export const PREFERENCE_KEYS = [...SIGNAL_KEYS, "steepness"] as const;
+export type PreferenceKey = (typeof PREFERENCE_KEYS)[number];
 
 /**
  * What the engine actually scores. `surface_difficulty` is one level for the rider but

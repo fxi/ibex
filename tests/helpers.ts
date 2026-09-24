@@ -7,7 +7,7 @@ import {
   SETTING_KEYS,
   type Level,
   type SettingKey,
-  type SignalKey,
+  type PreferenceKey,
 } from "../src/routing/vocabulary";
 
 /**
@@ -47,7 +47,7 @@ export const SHIPPED: Profile[] = shippedProfiles();
  */
 export const withPreferences = (
   base: Profile,
-  changes: Partial<Record<SettingKey | SignalKey, Level>>,
+  changes: Partial<Record<SettingKey | PreferenceKey, Level>>,
 ): Profile => {
   const settings: Record<string, Level> = { ...base.settings };
   const signals: Record<string, Level> = { ...base.preferences.base };

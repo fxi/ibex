@@ -362,7 +362,7 @@ describe("routing invariants", () => {
         compileProfile(at("strongly_avoid", "strongly_avoid")),
       ).toMatchObject({
         climbCredit: 0,
-        steepCredit: 0,
+        steepCredit: { uphill: 0, downhill: 0 },
       });
     }
   });

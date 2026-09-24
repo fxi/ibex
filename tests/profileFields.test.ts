@@ -4,7 +4,7 @@ import {
   PERMISSION_FIELDS,
   RIDER_FIELDS,
   SETTING_FIELDS,
-  SIGNAL_FIELDS,
+  PREFERENCE_FIELDS,
   SUSPENSION_OPTIONS,
 } from "../src/routing/profileFields";
 import {
@@ -15,7 +15,7 @@ import {
   settingsSchema,
 } from "../src/routing/profiles";
 import { BIKE_PRESETS, RIDER_PRESETS } from "../src/routing/presets";
-import { SIGNAL_KEYS } from "../src/routing/vocabulary";
+import { PREFERENCE_KEYS } from "../src/routing/vocabulary";
 import { GRAVEL } from "./helpers";
 
 /**
@@ -47,7 +47,7 @@ describe("profile form descriptors", () => {
     expect(SETTING_FIELDS.map((f) => f.key).sort()).toEqual(
       Object.keys(settingsSchema.shape).sort(),
     );
-    expect(SIGNAL_FIELDS.map((f) => f.key)).toEqual([...SIGNAL_KEYS]);
+    expect(PREFERENCE_FIELDS.map((f) => f.key)).toEqual([...PREFERENCE_KEYS]);
     expect(PERMISSION_FIELDS.map((f) => f.key).sort()).toEqual(
       Object.keys(permissionsSchema.shape).sort(),
     );
@@ -58,7 +58,7 @@ describe("profile form descriptors", () => {
       ...BIKE_FIELDS,
       ...RIDER_FIELDS,
       ...SETTING_FIELDS,
-      ...SIGNAL_FIELDS,
+      ...PREFERENCE_FIELDS,
       ...PERMISSION_FIELDS,
     ]) {
       expect(f.label.length, f.key).toBeGreaterThan(0);

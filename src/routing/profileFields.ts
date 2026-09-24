@@ -2,9 +2,9 @@ import { BIKE_PRESET_IDS, RIDER_PRESET_IDS } from "./presets";
 import type { Bike, Rider } from "./profiles";
 import {
   SETTING_KEYS,
-  SIGNAL_KEYS,
+  PREFERENCE_KEYS,
   type SettingKey,
-  type SignalKey,
+  type PreferenceKey,
 } from "./vocabulary";
 
 /**
@@ -125,18 +125,13 @@ export const SETTING_FIELDS: Field<SettingKey>[] = [
     hint: "Whether height gain is the point or the price. Adds up over the whole ride.",
   },
   {
-    key: "steepness",
-    label: "Steepness",
-    hint: "How the height is gained, apart from how much of it there is. Avoiding it takes the gentler way up the same hill, and the gentler way down; preferring it seeks the steeper one.",
-  },
-  {
     key: "direction_changes",
     label: "Turns",
     hint: "Changing direction at intersections takes attention. Avoiding it prefers a straight line over a zigzag through side streets.",
   },
 ];
 
-export const SIGNAL_FIELDS: Field<SignalKey>[] = [
+export const PREFERENCE_FIELDS: Field<PreferenceKey>[] = [
   {
     key: "traffic_stress",
     label: "Traffic",
@@ -167,6 +162,11 @@ export const SIGNAL_FIELDS: Field<SignalKey>[] = [
     label: "Cycle routes",
     hint: "Membership of mapped cycle and MTB route relations.",
   },
+  {
+    key: "steepness",
+    label: "Steepness",
+    hint: "How the height is gained, apart from how much of it there is. Avoiding it takes the gentler way; preferring it seeks the steeper one. Set it apart for climbs and descents to take the steep ramp up and the gentle road down, or the other way round.",
+  },
 ];
 
 export const PERMISSION_FIELDS: {
@@ -191,4 +191,4 @@ export const PERMISSION_FIELDS: {
   },
 ];
 
-export { SETTING_KEYS, SIGNAL_KEYS };
+export { SETTING_KEYS, PREFERENCE_KEYS };

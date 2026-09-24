@@ -8,7 +8,8 @@ import {
 import { compileProfile } from "../src/routing/compile";
 import { eligible, traversalSegments } from "../src/routing/eligibility";
 import { route, scoreEdge, total, turnCost } from "../src/routing/engine";
-import { SETTING_KEYS, SIGNAL_KEYS } from "../src/routing/vocabulary";
+import { steepnessCost } from "../src/routing/cost";
+import { PREFERENCE_KEYS, SETTING_KEYS } from "../src/routing/vocabulary";
 import { matchBike, matchRider, BIKE_PRESETS } from "../src/routing/presets";
 import { DEFAULT_PROFILE_ID } from "../src/models";
 import type { Edge, Graph, Point } from "../src/routing/types";
@@ -75,7 +76,7 @@ describe("the profile format", () => {
       expect(p.format_version).toBe(3);
       expect(Object.keys(p.settings)).toEqual([...SETTING_KEYS]);
       expect(Object.keys(p.preferences.base).sort()).toEqual(
-        [...SIGNAL_KEYS].sort(),
+        [...PREFERENCE_KEYS].sort(),
       );
       expect(p.setup.bike.tire_mm).toBeGreaterThan(0);
       expect(p.setup.rider.sustained_w_per_kg).toBeGreaterThan(0);
@@ -490,5 +491,45 @@ describe("capability replaces exclusion", () => {
       tags: { foot: "no" },
     });
     expect(eligible(wall, GRAVEL)).toBe(false);
+  });
+});
+
+describe("steepness by direction", () => {
+  const withSteepness = (
+    base: string,
+    uphill?: string,
+    downhill?: string,
+  ) => {
+    const p = JSON.parse(JSON.stringify(GRAVEL));
+    p.preferences.base.steepness = base;
+    if (uphill) p.preferences.uphill.steepness = uphill;
+    if (downhill) p.preferences.downhill.steepness = downhill;
+    return parseProfile(p);
+  };
+
+  it("takes the steep way up and the gentle way down when told to", () => {
+    const c = compileProfile(withSteepness("neutral", "strongly_prefer", "strongly_avoid"));
+    expect(c.steepnessAversion.uphill).toBeLessThan(1);
+    expect(c.steepnessAversion.downhill).toBeGreaterThan(1);
+    expect(c.steepCredit.uphill).toBeGreaterThan(0);
+    expect(c.steepCredit.downhill).toBe(0);
+    const ramp = (grade: number) => steepnessCost(grade, c);
+    expect(ramp(0.15)).toBeLessThan(steepnessCost(0.15, compileProfile(withSteepness("neutral"))));
+    expect(ramp(-0.15)).toBeGreaterThan(steepnessCost(-0.15, compileProfile(withSteepness("neutral"))));
+  });
+
+  it("leaves a direction with no override at the base", () => {
+    const c = compileProfile(withSteepness("avoid", undefined, "prefer"));
+    expect(c.steepnessAversion.uphill).toBe(compileProfile(withSteepness("avoid")).steepnessAversion.uphill);
+    expect(c.steepnessAversion.downhill).toBeLessThan(c.steepnessAversion.uphill);
+  });
+
+  it("reads a stored profile that still states steepness as a setting", () => {
+    const old = JSON.parse(JSON.stringify(GRAVEL));
+    delete old.preferences.base.steepness;
+    old.settings.steepness = "strongly_avoid";
+    const p = parseProfile(old);
+    expect(p.preferences.base.steepness).toBe("strongly_avoid");
+    expect("steepness" in p.settings).toBe(false);
   });
 });

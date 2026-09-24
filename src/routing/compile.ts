@@ -45,17 +45,20 @@ export type CompiledProfile = {
   downhillWeights: Weights;
   /** How much this rider minds height gained: 1 is neutral, below 1 enjoys it. */
   climbAversion: number;
-  /** How much this rider minds the gradient itself; see `steepnessCost`. */
-  steepnessAversion: number;
+  /** How much this rider minds the gradient itself, going up and down; see `steepnessCost`. */
+  steepnessAversion: ByDirection;
   /** Credit to `net` for climbing at the comfortable grade; 0 unless climbing is preferred. */
   climbCredit: number;
   /** Credit to `net` for grade past the momentum band; 0 unless steepness is preferred. */
-  steepCredit: number;
+  steepCredit: ByDirection;
   /** How much a change of direction at an intersection costs; see `turnCost`. */
   directionChanges: Level;
   capability: CapabilityProfile;
   permissions: Permissions;
 };
+
+/** A value for grade runs going up and one for those going down. */
+export type ByDirection = Readonly<{ uphill: number; downhill: number }>;
 
 type Weights = Record<
   ScoredKey,
@@ -94,6 +97,12 @@ export function compileProfile(profile: Profile): CompiledProfile {
     );
   const base = profile.preferences.base;
   const weights = weightsFor(base);
+  // Steepness only ever applies off the flat: within the momentum band both its cost and
+  // its credit are zero, so a grade run is always one direction or the other.
+  const steepness = (direction: "uphill" | "downhill"): Level =>
+    overrides(profile.preferences, direction).steepness ?? base.steepness;
+  const byDirection = (value: (level: Level) => number): ByDirection =>
+    Object.freeze({ uphill: value(steepness("uphill")), downhill: value(steepness("downhill")) });
   const directional = (direction: "uphill" | "downhill") => {
     const changed = overrides(profile.preferences, direction);
     return Object.keys(changed).length
@@ -110,11 +119,12 @@ export function compileProfile(profile: Profile): CompiledProfile {
     uphillWeights: directional("uphill"),
     downhillWeights: directional("downhill"),
     climbAversion: CLIMB_AVERSION(STRENGTH[profile.settings.climbing]),
-    steepnessAversion: STEEPNESS_AVERSION(STRENGTH[profile.settings.steepness]),
+    steepnessAversion: byDirection((level) => STEEPNESS_AVERSION(STRENGTH[level])),
     climbCredit:
       Math.max(0, STRENGTH[profile.settings.climbing]) * ENGINE.climb_credit,
-    steepCredit:
-      Math.max(0, STRENGTH[profile.settings.steepness]) * ENGINE.steep_credit,
+    steepCredit: byDirection(
+      (level) => Math.max(0, STRENGTH[level]) * ENGINE.steep_credit,
+    ),
     directionChanges: profile.settings.direction_changes,
     capability,
     permissions: profile.permissions,

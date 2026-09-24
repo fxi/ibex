@@ -1,11 +1,11 @@
 import { z } from "zod";
 import {
   LEVELS,
+  PREFERENCE_KEYS,
   SETTING_KEYS,
-  SIGNAL_KEYS,
   type Level,
+  type PreferenceKey,
   type SettingKey,
-  type SignalKey,
 } from "./vocabulary";
 
 /**
@@ -64,39 +64,58 @@ export const setupSchema = z.strictObject({
   rider: riderSchema,
 });
 
-/**
- * `steepness` defaults rather than being required, unlike every other setting.
- *
- * It was added after format 3 shipped, and a profile snapshot that fails to parse is not
- * a warning here: `restoreCollection` parses the whole track collection at once, so one
- * stored profile without the key would lose every saved track. A profile that predates
- * the setting means the rider never expressed an opinion about gradient, which is exactly
- * what `neutral` says. Every profile this repo ships states it outright.
- */
 export const settingsSchema = z.strictObject(
-  Object.fromEntries(
-    SETTING_KEYS.map((k) => [
-      k,
-      k === "steepness" ? level.default("neutral") : level,
-    ]),
-  ) as Record<SettingKey, typeof level>,
+  Object.fromEntries(SETTING_KEYS.map((k) => [k, level])) as Record<
+    SettingKey,
+    typeof level
+  >,
 );
 
-const signalsSchema = z.strictObject(
-  Object.fromEntries(SIGNAL_KEYS.map((k) => [k, level])) as Record<
-    SignalKey,
-    typeof level
+/**
+ * `steepness` defaults rather than being required, unlike every other preference.
+ *
+ * A profile snapshot that fails to parse is not a warning here: `restoreCollection`
+ * parses the whole track collection at once, so one stored profile without the key would
+ * lose every saved track. A profile that predates it means the rider never expressed an
+ * opinion about gradient, which is exactly what `neutral` says. Every profile this repo
+ * ships states it outright.
+ */
+const basePreferencesSchema = z.strictObject(
+  Object.fromEntries(
+    PREFERENCE_KEYS.map((k) => [k, k === "steepness" ? level.default("neutral") : level]),
+  ) as Record<PreferenceKey, typeof level>,
+);
+// Built apart rather than as `.partial()` of the above: a partial field keeps its default,
+// and every climb and descent would then state `steepness: neutral` over the base.
+const directionPreferencesSchema = z.strictObject(
+  Object.fromEntries(PREFERENCE_KEYS.map((k) => [k, level.optional()])) as Record<
+    PreferenceKey,
+    z.ZodOptional<typeof level>
   >,
 );
 
 export const preferencesSchema = z.strictObject({
   /** Every way preference, stated once. */
-  base: signalsSchema,
+  base: basePreferencesSchema,
   /** Only what changes on a climb. */
-  uphill: signalsSchema.partial().default({}),
+  uphill: directionPreferencesSchema.default({}),
   /** Only what changes on a descent. */
-  downhill: signalsSchema.partial().default({}),
+  downhill: directionPreferencesSchema.default({}),
 });
+
+/**
+ * `steepness` was a whole-ride setting until it became a way preference that a climb
+ * and a descent may state apart. A stored profile from before still says it under
+ * `settings`, and one profile that fails to parse loses every saved track (see above),
+ * so it is moved across on the way in.
+ */
+function steepnessToPreferences(value: unknown): unknown {
+  const p = value as { settings?: Record<string, unknown>; preferences?: { base?: Record<string, unknown> } };
+  if (!p?.settings || !("steepness" in p.settings)) return value;
+  const { steepness, ...settings } = p.settings;
+  const base = { steepness, ...(p.preferences?.base ?? {}) };
+  return { ...p, settings, preferences: { ...p.preferences, base } };
+}
 
 export const permissionsSchema = z.strictObject({
   ferry: z.boolean(),
@@ -106,7 +125,7 @@ export const permissionsSchema = z.strictObject({
   push: z.boolean(),
 });
 
-export const profileSchema = z.strictObject({
+export const profileSchema = z.preprocess(steepnessToPreferences, z.strictObject({
   format_version: z.literal(FORMAT_VERSION),
   /** Generated, never chosen: two people's "my_gravel" must not overwrite each other. */
   id: z.uuid(),
@@ -116,7 +135,7 @@ export const profileSchema = z.strictObject({
   settings: settingsSchema,
   preferences: preferencesSchema,
   permissions: permissionsSchema,
-});
+}));
 
 export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
@@ -144,9 +163,9 @@ export function newProfileId(): string {
 export function overrides(
   preferences: Preferences,
   direction: Direction,
-): Partial<Record<SignalKey, Level>> {
+): Partial<Record<PreferenceKey, Level>> {
   return Object.fromEntries(
-    SIGNAL_KEYS.filter(
+    PREFERENCE_KEYS.filter(
       (k) =>
         preferences[direction][k] !== undefined &&
         preferences[direction][k] !== preferences.base[k],
@@ -219,7 +238,7 @@ export function orderProfile(profile: Profile) {
     ),
     preferences: {
       base: Object.fromEntries(
-        SIGNAL_KEYS.map((k) => [k, profile.preferences.base[k]]),
+        PREFERENCE_KEYS.map((k) => [k, profile.preferences.base[k]]),
       ),
       uphill: overrides(profile.preferences, "uphill"),
       downhill: overrides(profile.preferences, "downhill"),

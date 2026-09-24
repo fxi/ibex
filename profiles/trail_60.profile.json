@@ -22,7 +22,6 @@
   "settings": {
     "detour": "prefer",
     "climbing": "neutral",
-    "steepness": "neutral",
     "direction_changes": "neutral"
   },
   "preferences": {
@@ -32,7 +31,8 @@
       "surface_difficulty": "avoid",
       "scenic": "prefer",
       "urbanity": "strongly_avoid",
-      "cycle_infrastructure": "neutral"
+      "cycle_infrastructure": "neutral",
+      "steepness": "neutral"
     },
     "uphill": {},
     "downhill": {

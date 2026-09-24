@@ -213,7 +213,8 @@ export function turnAngleCost(
  * fluid line and there was nothing better. But that setting vanishes at `neutral`, which
  * both Road and MTB ship, so those two profiles had no opinion about gradient at all —
  * 656 km and 416 km of the Voirons network priced at nothing. `steepness` is the setting
- * this always wanted, and it charges in full at `neutral`.
+ * this always wanted, and it charges in full at `neutral`. It is set per direction: a
+ * rider may take the steep way up and want the gentle way down.
  */
 export function steepnessCost(
   grade: number,
@@ -223,7 +224,9 @@ export function steepnessCost(
 ): number {
   const band = ENGINE.flow_band * comfortableGrade(grade, p, uphill);
   return (
-    ENGINE.flow * p.steepnessAversion * Math.max(0, Math.abs(grade) - band)
+    ENGINE.flow *
+    (grade > 0 ? p.steepnessAversion.uphill : p.steepnessAversion.downhill) *
+    Math.max(0, Math.abs(grade) - band)
   );
 }
 
@@ -267,7 +270,8 @@ function terrainCredit(
   // longer, gentler way up collected more of it.
   const steep =
     Math.max(0, Math.abs(grade) - band) / Math.max(1e-6, comfortable - band);
-  return p.climbCredit * climb + p.steepCredit * steep;
+  const credit = grade > 0 ? p.steepCredit.uphill : p.steepCredit.downhill;
+  return p.climbCredit * climb + credit * steep;
 }
 
 /** Physical cycle infrastructure remains distinguishable from signed route membership. */

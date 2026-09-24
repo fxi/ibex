@@ -61,22 +61,24 @@ parse rather than guessing what it meant.
                "tech_skill": 0.7, "descend_confidence": 0.7 }
   },
   "settings": { "detour": "prefer", "climbing": "neutral",
-                "steepness": "neutral", "direction_changes": "neutral" },
+                "direction_changes": "neutral" },
   "preferences": {
     "base": { "traffic_stress": "strongly_avoid", "unpaved": "strongly_prefer",
               "surface_difficulty": "avoid", "scenic": "prefer",
-              "urbanity": "strongly_avoid", "cycle_infrastructure": "neutral" },
-    "uphill": {},                                        // only what changes on a climb
-    "downhill": { "surface_difficulty": "strongly_prefer" } // only what changes down
+              "urbanity": "strongly_avoid", "cycle_infrastructure": "neutral",
+              "steepness": "neutral" },
+    "uphill": { "steepness": "avoid" },                  // only what changes on a climb
+    "downhill": { "surface_difficulty": "strongly_prefer",
+                  "steepness": "prefer" }                // only what changes down
   },
   "permissions": { "ferry": true, "stairs": true, "push": true }
 }
 ```
 
 `base` must state every preference. `uphill` and `downhill` may state any subset, and
-nothing else: `detour`, `climbing`, `steepness` and `direction_changes` cannot be
-overridden by direction. An override equal to `base` says nothing and is dropped on save, so two
-profiles that mean the same thing serialize the same.
+nothing else: `detour`, `climbing` and `direction_changes` are whole-ride settings and
+cannot be overridden by direction. An override equal to `base` says nothing and is
+dropped on save, so two profiles that mean the same thing serialize the same.
 
 ## Setup
 
@@ -137,16 +139,9 @@ Whole-ride choices, one value each, in the same five-word vocabulary as preferen
   Grenoble took the same 1330 m at every level. Note what it cannot do: the effort is
   charged per metre of *height*, so between two ways up the same hill it cancels.
   `climbing` chooses how much ascent a ride has, never which side of the hill it is taken
-  on. That is `steepness`. And no preference outweighs capability: a loaded bike's
-  comfortable grade is lower, and past it the grade terms, outside the budget, decide.
-- `steepness` — how the height is gained, apart from how much of it there is. Charged per
-  metre outside a momentum band of 0.6 × the rider's comfortable grade in that direction
-  (`ENGINE.flow`, 20 equivalent metres per unit of grade past the band at `neutral`,
-  scaled 0.4× to 1.6× by the word). It applies uphill and downhill alike. Unlike
-  `direction_changes` it charges in full at `neutral`: gradient has a cost whatever the
-  rider thinks of it, and a setting that vanished in the middle left Road and MTB — both
-  shipped `direction_changes: neutral` — with no opinion about gradient at all. Preferred,
-  grade past the band is also credited inside the detour budget (`ENGINE.steep_credit`).
+  on. That is `steepness`, a preference. And no preference outweighs capability: a
+  loaded bike's comfortable grade is lower, and past it the grade terms, outside the
+  budget, decide.
 - `direction_changes` — the attention a change of direction takes at an intersection.
   Only where three or more ways meet: going straight on is free, a right angle pays half,
   a U-turn pays in full (`ENGINE.turn_meters`, 60 m at `strongly_avoid`). Hairpins inside
@@ -156,8 +151,8 @@ Whole-ride choices, one value each, in the same five-word vocabulary as preferen
 
 ## Preferences
 
-Six ways a route can be good or bad, one vocabulary: `strongly_avoid`, `avoid`,
-`neutral`, `prefer`, `strongly_prefer`. Each is scored against what an ordinary way looks
+Six ways a route can be good or bad, and `steepness`, in one vocabulary: `strongly_avoid`,
+`avoid`, `neutral`, `prefer`, `strongly_prefer`. The six are each scored against what an ordinary way looks
 like (`REFERENCE` in `src/routing/vocabulary.ts`), so a preference both penalises and
 rewards: "strongly avoid traffic" makes a main road expensive *and* makes the quiet lane
 cheap.
@@ -203,6 +198,17 @@ standard it pushed short descents onto tarmac and cost 20 points of coverage.
 - `urbanity` — how built-up the surroundings are, from land use and settlement density. A
   quiet residential street has low traffic stress and high urbanity.
 - `cycle_infrastructure` — membership of mapped cycle and MTB route relations.
+- `steepness` — how the height is gained, apart from how much of it there is. Charged per
+  metre outside a momentum band of 0.6 × the rider's comfortable grade in that direction
+  (`ENGINE.flow`, 20 equivalent metres per unit of grade past the band at `neutral`,
+  scaled 0.4× to 1.6× by the word). Unlike the other preferences it is not scored against
+  a reference, and it is the one riders most often want different each way: the steep ramp up and the gentle road down,
+  or a gentle climb to a steep descent. Its `uphill` and `downhill` overrides apply to
+  every grade run past the band, since within it there is nothing to charge. Unlike
+  `direction_changes` it charges in full at `neutral`: gradient has a cost whatever the
+  rider thinks of it, and a setting that vanished in the middle left Road and MTB — both
+  shipped `direction_changes: neutral` — with no opinion about gradient at all. Preferred,
+  grade past the band is also credited inside the detour budget (`ENGINE.steep_credit`).
 
 A preference you *prefer* is credited in full where a way has it. Merely lacking something
 you *avoid* is credited at `REWARD_SHARE`, so a smooth main road cannot collect a reward

@@ -5,7 +5,7 @@ import {
   RIDER_FIELDS,
   RIDER_OPTIONS,
   SETTING_FIELDS,
-  SIGNAL_FIELDS,
+  PREFERENCE_FIELDS,
   SUSPENSION_OPTIONS,
   type NumberField,
 } from "../routing/profileFields";
@@ -176,7 +176,7 @@ export function ProfileForm({
 
       <details className="profile-group" open>
         <summary>What you want from a route</summary>
-        {SIGNAL_FIELDS.map((f) => (
+        {PREFERENCE_FIELDS.map((f) => (
           <div className="field" key={f.key}>
             <span className="field-label">{f.label}</span>
             <LevelPicker
@@ -207,7 +207,7 @@ export function ProfileForm({
               ? "Only what changes on a climb."
               : "Only what changes on a descent: smooth tarmac for a gravel rider, singletrack for an MTB rider."}
           </p>
-          {SIGNAL_FIELDS.map((f) => (
+          {PREFERENCE_FIELDS.map((f) => (
             <label className="field" key={f.key}>
               <span className="field-label">{f.label}</span>
               <select
