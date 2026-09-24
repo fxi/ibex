@@ -1,5 +1,5 @@
 import { APP_VERSION } from "./version";
-import type { RouteResult } from "./routing/types";
+import type { Point, RouteResult } from "./routing/types";
 import { NOTE_LABELS, type Note } from "./notes/types";
 
 const escapeXML = (text: string) =>
@@ -15,15 +15,24 @@ const escapeXML = (text: string) =>
       })[c]!,
   );
 
+/** Where Ibex keeps what only Ibex reads back. */
+export const IBEX_GPX_NAMESPACE = "https://fxi.io/ibex/gpx/1";
+
+/** What a planned track was drawn through, so importing the file makes it editable again. */
+export type GpxPlan = { waypoints: Point[]; profileId: string };
+
 /**
  * Write a route as GPX. Elevation is emitted when the profile covers the whole route, so
  * an exported file can be re-imported without inventing heights it never had. Notes go
- * out as waypoints, which is what a GPS unit shows along a course.
+ * out as waypoints, which is what a GPS unit shows along a course. The routing waypoints
+ * do not: a device would show each one as a place. They go in `<extensions>`, which
+ * devices ignore and Ibex reads back.
  */
 export function exportGPX(
   route: RouteResult,
   name = "Ibex route",
   notes: Note[] = [],
+  plan?: GpxPlan,
 ): string {
   // The profile is sampled along the route, not per vertex, so heights are matched by
   // cumulative distance rather than by index.
@@ -64,9 +73,17 @@ export function exportGPX(
       }<type>${n.kind}</type></wpt>`,
   );
 
-  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Ibex ${APP_VERSION}" xmlns="http://www.topografix.com/GPX/1/1">${waypoints.join("")}<trk><name>${escapeXML(
+  const extensions = plan
+    ? `<extensions><ibex:plan profile="${escapeXML(plan.profileId)}">${plan.waypoints
+        .map(([lon, lat]) => `<ibex:waypoint lat="${lat}" lon="${lon}"/>`)
+        .join("")}</ibex:plan></extensions>`
+    : "";
+
+  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="Ibex ${APP_VERSION}" xmlns="http://www.topografix.com/GPX/1/1"${
+    plan ? ` xmlns:ibex="${IBEX_GPX_NAMESPACE}"` : ""
+  }>${waypoints.join("")}<trk><name>${escapeXML(
     name,
-  )}</name><trkseg>${points.join("")}</trkseg></trk></gpx>`;
+  )}</name><trkseg>${points.join("")}</trkseg></trk>${extensions}</gpx>`;
 }
 
 export function download(name: string, contents: string, type: string) {

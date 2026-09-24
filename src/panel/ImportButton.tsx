@@ -1,13 +1,15 @@
 import { useRef } from "react";
 import { parseGPX } from "../importers/gpx";
-import { importedTrack } from "../tracks";
+import { defaultProfile } from "../models";
+import { importedTrack, plannedTrack, type Track } from "../tracks";
 import type { PanelContext } from "./context";
 
 /** Files larger than this are not hand-recorded rides; refuse rather than hang. */
 const MAX_IMPORT_BYTES = 20_000_000;
 
 /**
- * A button that picks GPX files and adds each as an imported track, the first one active.
+ * A button that picks GPX files and adds each as a track, the first one active: an Ibex
+ * export comes back as the planned track it was, anything else as an imported recording.
  * Tracks and Tools both offer it; the file input is labelled the same in either.
  */
 export function ImportButton({
@@ -24,14 +26,14 @@ export function ImportButton({
   children: React.ReactNode;
   onImported?: (count: number) => void;
 }) {
-  const { tracks, setError, setTab } = ctx;
+  const { tracks, routing, models, setError, setTab } = ctx;
   const input = useRef<HTMLInputElement>(null);
 
   async function importFiles(files: File[]) {
     setError("");
     const current = tracks.latest.current;
     if (!current) return;
-    const added = [];
+    const added: Track[] = [];
     const failures: string[] = [];
     for (const file of files) {
       try {
@@ -41,7 +43,18 @@ export function ImportButton({
           await file.text(),
           file.name.replace(/\.gpx$/i, ""),
         );
-        added.push(importedTrack(current.tracks.length + added.length, parsed));
+        const index = current.tracks.length + added.length;
+        added.push(
+          parsed.plan
+            ? plannedTrack(
+                index,
+                parsed.name,
+                parsed.plan.waypoints,
+                models.find((m) => m.id === parsed.plan!.profileId) ??
+                  defaultProfile(),
+              )
+            : importedTrack(index, parsed),
+        );
       } catch (e) {
         failures.push(`${file.name}: ${e instanceof Error ? e.message : e}`);
       }
@@ -56,6 +69,8 @@ export function ImportButton({
     if (added.length) {
       onImported?.(added.length);
       setTab("tracks");
+      // Routes the active track, when the data for it is installed; otherwise it waits.
+      if (added[0].kind === "planned") void routing.compute();
     }
   }
 

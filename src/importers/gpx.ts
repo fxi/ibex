@@ -9,6 +9,12 @@ export type ImportedTrack = {
   distanceM: number;
   ascentM: number | null;
   descentM: number | null;
+  /**
+   * What an Ibex export was drawn through (`<ibex:plan>`), so the file comes back as a
+   * track to edit rather than a recording. The profile is named by id only: the reader
+   * may not have it.
+   */
+  plan?: { waypoints: Point[]; profileId?: string };
 };
 
 /** Ignore elevation noise below this, so a flat ride does not accumulate false climb. */
@@ -37,6 +43,29 @@ function attribute(tag: string, name: string): string | undefined {
     tag,
   );
   return match ? (match[2] ?? match[3]) : undefined;
+}
+
+/** A usable coordinate out of a start tag, or nothing. */
+function coordinate(tag: string): Point | undefined {
+  const lon = Number(attribute(tag, "lon"));
+  const lat = Number(attribute(tag, "lat"));
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return undefined;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return undefined;
+  return [lon, lat];
+}
+
+/** The waypoints an Ibex export keeps in `<extensions>`; fewer than two make no route. */
+function readPlan(xml: string): Pick<ImportedTrack, "plan"> {
+  const plan = /<ibex:plan\b([^>]*)>([\s\S]*?)<\/ibex:plan>/i.exec(xml);
+  if (!plan) return {};
+  const waypoints = [...plan[2].matchAll(/<ibex:waypoint\b([^>]*)>/gi)]
+    .map((m) => coordinate(m[1]))
+    .filter((p): p is Point => p !== undefined);
+  if (waypoints.length < 2) return {};
+  const profileId = attribute(plan[1], "profile");
+  return {
+    plan: { waypoints, ...(profileId ? { profileId: decode(profileId) } : {}) },
+  };
 }
 
 /**
@@ -70,17 +99,15 @@ export function parseGPX(xml: string, fallbackName = "Imported track") {
   const geometry: Point[] = [];
   const elevations: (number | null)[] = [];
   starts.forEach((match, i) => {
-    const lon = Number(attribute(match[1], "lon"));
-    const lat = Number(attribute(match[1], "lat"));
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
-    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+    const point = coordinate(match[1]);
+    if (!point) return;
     const from = match.index + match[0].length;
     const body = match[1].trimEnd().endsWith("/")
       ? ""
       : xml.slice(from, starts[i + 1]?.index ?? xml.length);
     const raw = /<(?:\w+:)?ele\b[^>]*>([\s\S]*?)<\/(?:\w+:)?ele>/i.exec(body);
     const ele = raw ? Number(decode(raw[1]).trim()) : NaN;
-    geometry.push([lon, lat]);
+    geometry.push(point);
     elevations.push(Number.isFinite(ele) ? ele : null);
   });
   if (geometry.length < 2)
@@ -112,6 +139,7 @@ export function parseGPX(xml: string, fallbackName = "Imported track") {
   return {
     name,
     geometry,
+    ...readPlan(xml),
     elevationProfile,
     distanceM,
     ascentM: complete ? Math.round(ascentM) : null,

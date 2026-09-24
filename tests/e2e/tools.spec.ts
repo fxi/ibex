@@ -87,16 +87,16 @@ test("an imported ride converts to a planned track that follows it", async ({
   await saveMapData(page);
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
 
-  // A recording on the fixture's roads: the Arve route, exported and renamed.
+  // A recording on the fixture's roads: the Arve route, exported and renamed, without
+  // the waypoints an export keeps, which a device's recording never has.
   await planArve(page);
   await page.getByRole("button", { name: "Compute", exact: true }).click();
   await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export your route" }).click();
-  const gpx = readFileSync((await (await download).path())!, "utf8").replace(
-    /<name>[^<]*<\/name>/g,
-    "<name>Arve ride</name>",
-  );
+  const gpx = readFileSync((await (await download).path())!, "utf8")
+    .replace(/<name>[^<]*<\/name>/g, "<name>Arve ride</name>")
+    .replace(/<extensions>[\s\S]*<\/extensions>/, "");
 
   // Imported from the Tracks toolbar.
   await page.getByRole("tab", { name: "Tracks", exact: true }).click();
@@ -151,4 +151,38 @@ test("an imported ride converts to a planned track that follows it", async ({
   await expect(page.getByText(/^No track matches/)).toBeVisible();
   await search.fill("");
   await expect(page.locator(".track-card")).toHaveCount(3);
+});
+
+test("an exported planned track imports as the planned track it was", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();
+
+  await planArve(page);
+  const waypoints = await page.locator(".waypoint").count();
+  expect(waypoints).toBeGreaterThan(1);
+  await page.getByRole("button", { name: "Compute", exact: true }).click();
+  await expect(page.getByText("Route ready", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export your route" }).click();
+  const gpx = readFileSync((await (await download).path())!, "utf8").replace(
+    /<trk><name>[^<]*<\/name>/,
+    "<trk><name>Arve again</name>",
+  );
+
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await page.getByLabel("Import tracks").setInputFiles({
+    name: "arve-again.gpx",
+    mimeType: "application/gpx+xml",
+    buffer: Buffer.from(gpx),
+  });
+
+  // Not a reference: the same waypoints, routed again on the data installed here.
+  const card = page.locator(".track-card", { hasText: "Arve again" });
+  await expect(card).not.toContainText("Reference");
+  await expect(card).toContainText("Ready");
+  await card.getByRole("button", { name: "Edit Arve again" }).click();
+  await expect(page.locator(".waypoint")).toHaveCount(waypoints);
 });

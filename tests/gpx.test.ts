@@ -99,4 +99,43 @@ describe("GPX round trip", () => {
     expect(back.elevationProfile.map((e) => e[1])).toEqual([400, 450, 420]);
     expect(back.distanceM).toBeCloseTo(source.distanceM, 6);
   });
+
+  const exported = async (plan?: {
+    waypoints: [number, number][];
+    profileId: string;
+  }) => {
+    const { exportGPX } = await import("../src/gpx");
+    const source = parseGPX(gpx(pt(6.1, 46.2, 400) + pt(6.12, 46.205, 420)));
+    return exportGPX(
+      {
+        geometry: source.geometry,
+        elevationProfile: source.elevationProfile,
+      } as never,
+      "Planned",
+      [{ id: "n", kind: "manual", point: [6.11, 46.2], text: "Café" }],
+      plan,
+    );
+  };
+
+  it("brings back the waypoints and profile a planned track was drawn through", async () => {
+    // Waypoints need not lie on the line: they are where the rider clicked.
+    const waypoints: [number, number][] = [
+      [6.1, 46.2],
+      [6.1101, 46.2003],
+      [6.12, 46.205],
+    ];
+    const xml = await exported({ waypoints, profileId: "a&b" });
+    // Kept where a device does not look, so it shows no extra places along the course.
+    expect(xml.match(/<wpt\b/g)).toHaveLength(1);
+    expect(xml).toMatch(/<\/trk><extensions><ibex:plan/);
+    expect(parseGPX(xml).plan).toEqual({ waypoints, profileId: "a&b" });
+  });
+
+  it("says nothing of a plan it was not given, or one with no route in it", async () => {
+    const plain = await exported();
+    expect(plain).not.toContain("extensions");
+    expect(parseGPX(plain).plan).toBeUndefined();
+    const single = await exported({ waypoints: [[6.1, 46.2]], profileId: "x" });
+    expect(parseGPX(single).plan).toBeUndefined();
+  });
 });

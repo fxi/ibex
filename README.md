@@ -6,7 +6,7 @@ Ibex is an offline-capable cycling route planner that runs entirely in the brows
 
 Live at **https://fxi.io/ibex/**.
 
-- **Tracks:** create, duplicate and hide tracks, each with its own routing profile. Edit numbered waypoints on the map, undo edits, and export GPX. Imported GPX rides become reference tracks.
+- **Tracks:** create, duplicate and hide tracks, each with its own routing profile. Edit numbered waypoints on the map, undo edits, and export GPX. An Ibex export imports again as the planned track it was, waypoints and profile included; any other GPX ride becomes a reference track.
 - **Data:** the whole world on a zoom-9 grid. Cells that exist are offered with their size; ones nobody has built yet are greyed out. Downloads resume, refresh and remove, and routes cross freely between installed neighbours.
 - **Notes:** your own notes along a track, and drinking water, bakeries and supermarkets found beside it, about one per kilometre, the closest to the route winning, with water kept at most 10 km apart. Search the whole route or a circle of up to 10 km; the searched stretch is sent to the public [Overpass API](https://overpass-api.de), and what is found is saved with the track and exported as GPX waypoints.
 - **Tools:** compute the active track explicitly; editing marks the previous result stale.

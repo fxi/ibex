@@ -230,6 +230,24 @@ export function convertedTrack(
 }
 
 /**
+ * A planned track read back from an Ibex export: its waypoints and, when the reader has
+ * it, its profile. It is routed again on the reader's data, so the file's line is where
+ * it came from, not what it is.
+ */
+export function plannedTrack(
+  index: number,
+  name: string,
+  anchors: Point[],
+  profile: Profile,
+): Track {
+  return {
+    ...newTrack(index, profile),
+    name,
+    anchors: structuredClone(anchors),
+  };
+}
+
+/**
  * The track's result, but only while it still describes the track as it stands now. A
  * result outlives the edit that invalidated it so the map can keep drawing it greyed out,
  * which makes "is this current" the question every reader actually has — it was written
@@ -249,7 +267,14 @@ export function exportTrack(track: Track) {
   if (result)
     download(
       `${track.name.replace(/[^a-z0-9_-]/gi, "-")}.gpx`,
-      exportGPX(result, track.name, track.notes),
+      exportGPX(
+        result,
+        track.name,
+        track.notes,
+        track.kind === "planned"
+          ? { waypoints: track.anchors, profileId: track.profile.id }
+          : undefined,
+      ),
       "application/gpx+xml",
     );
 }
