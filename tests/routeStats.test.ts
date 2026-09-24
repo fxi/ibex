@@ -12,8 +12,15 @@ import {
   routeWarnings,
   windowRange,
   severityOf,
+  steepComposition,
   steepLaneBands,
+  steepLevel,
+  steepSteps,
+  smoothLevels,
   stressLaneBands,
+  trafficComposition,
+  trafficLevel,
+  TRAFFIC_MIN_M,
   vertexAtM,
   WARNING_GAP_M,
   WARNING_MIN_M,
@@ -833,6 +840,142 @@ describe("route warnings", () => {
     }).result!;
     expect(imported.segments).toEqual([]);
     expect(routeWarnings(imported, ROAD_CAPABILITY)).toEqual([]);
+  });
+});
+
+describe("lenses", () => {
+  it("names steepness levels by this rider's own gradients", () => {
+    // A 20% ramp on a pro's compact is not a 6% drag on a loaded fixed gear: the steps
+    // are the profile's, so two riders read the same climb differently.
+    const road = steepSteps(ROAD_CAPABILITY.uphill_grade);
+    const trail = steepSteps(TRAIL_CAPABILITY.uphill_grade);
+    expect(road[0]).toBeLessThan(road[1]);
+    expect(road[1]).toBeLessThan(road[2]);
+    expect(road).not.toEqual(trail);
+    const t = ROAD_CAPABILITY.uphill_grade;
+    expect(steepLevel(t.comfortable_until, t)).toBe(0);
+    expect(steepLevel(road[1] - 0.001, t)).toBe(1);
+    expect(steepLevel(road[1] + 0.001, t)).toBe(2);
+    // Level 3 is exactly where the capability model stops the pedals.
+    expect(steepLevel(t.high_cost_at, t)).toBe(3);
+  });
+
+  it("shares a climb out by level, and counts what has no terrain apart", () => {
+    const t = ROAD_CAPABILITY.uphill_grade;
+    const entries = steepComposition(
+      result([segment(0, 10, "paved")], 1000, [
+        [0, 100],
+        [400, 100],
+        [800, 100 + t.high_cost_at * 1.05 * 400],
+        [900, null],
+        [1000, null],
+      ]),
+      ROAD_CAPABILITY,
+    );
+    const byLevel = Object.fromEntries(entries.map((e) => [e.level, e]));
+    expect(byLevel[0].meters).toBeCloseTo(400);
+    expect(byLevel[3].meters).toBeCloseTo(400);
+    expect(byLevel[3].label).toContain("push");
+    expect(byLevel.unknown.meters).toBeCloseTo(200);
+    expect(entries.reduce((sum, e) => sum + e.share, 0)).toBeCloseTo(1);
+  });
+
+  it("draws a steady climb as one stretch, not a string of dashes", () => {
+    const run = (startM: number, endM: number, level: 0 | 1 | 2 | 3) => ({
+      startM,
+      endM,
+      level,
+    });
+    expect(
+      smoothLevels([
+        run(0, 200, 1),
+        run(200, 220, 0), // a 20 m breather inside the climb
+        run(220, 500, 1),
+        run(500, 510, 3), // a 10 m spike
+        run(510, 800, 1),
+        run(800, 1000, 0),
+      ]),
+    ).toEqual([run(0, 800, 1), run(800, 1000, 0)]);
+    // A long enough flat stays flat.
+    expect(
+      smoothLevels([run(0, 200, 1), run(200, 300, 0), run(300, 500, 1)]),
+    ).toHaveLength(3);
+  });
+
+  it("leaves traffic calm up to the engine's own threshold, then steps by road class", () => {
+    expect(trafficLevel(ENGINE.traffic_from)).toBe(0);
+    expect(trafficLevel(0.2)).toBe(0);
+    // A signed primary, calmed by the network.
+    expect(trafficLevel(0.95 * ENGINE.network_calming)).toBe(1);
+    expect(trafficLevel(0.8)).toBe(2);
+    expect(trafficLevel(0.95)).toBe(3);
+    expect(trafficLevel(NaN)).toBe(0);
+    const entries = trafficComposition(
+      result(
+        [
+          segment(0, 6, "paved", "asphalt", "residential", 0.2),
+          segment(6, 10, "paved", "asphalt", "primary", 0.95),
+        ],
+        1000,
+      ),
+    );
+    expect(entries.map((e) => [e.level, Math.round(e.meters)])).toEqual([
+      [0, 600],
+      [3, 400],
+    ]);
+  });
+
+  it("files a push under what forced it: gradient or ground", () => {
+    const t = ROAD_CAPABILITY.uphill_grade;
+    const [steep] = routeWarnings(
+      result([segment(0, 4, "walk", "asphalt", "path")], 400, [
+        [0, 100],
+        [400, 100 + t.high_cost_at * 1.2 * 400],
+      ]),
+      ROAD_CAPABILITY,
+    ).filter((w) => w.kind === "walk");
+    expect(steep.lens).toBe("steep");
+    const [ground] = routeWarnings(
+      result([segment(0, 4, "walk", "rock", "path")], 400, ramp(0)),
+      ROAD_CAPABILITY,
+    ).filter((w) => w.kind === "walk");
+    expect(ground.lens).toBe("surface");
+    // Steps are carried whatever the gradient says.
+    const [steps] = routeWarnings(
+      result([segment(0, 4, "walk", "paved", "steps")], 400, [
+        [0, 100],
+        [400, 100 + t.high_cost_at * 1.2 * 400],
+      ]),
+      ROAD_CAPABILITY,
+    ).filter((w) => w.kind === "walk");
+    expect(steps.lens).toBe("surface");
+    expect(steps.detail).toContain("steps");
+  });
+
+  it("warns of a busy road ridden along, not of one crossed", () => {
+    const along = routeWarnings(
+      result(
+        [
+          segment(0, 2, "paved", "asphalt", "residential", 0.2),
+          segment(2, 12, "paved", "asphalt", "secondary", 0.8),
+        ],
+        1200,
+      ),
+      ROAD_CAPABILITY,
+    ).filter((w) => w.lens === "traffic");
+    expect(along).toHaveLength(1);
+    expect(along[0].headline).toBe("Busy road");
+    expect(along[0].detail).toContain("secondary");
+    const crossed = (TRAFFIC_MIN_M - 100) / 100;
+    expect(
+      routeWarnings(
+        result(
+          [segment(0, crossed, "paved", "asphalt", "primary", 0.95)],
+          TRAFFIC_MIN_M - 100,
+        ),
+        ROAD_CAPABILITY,
+      ).filter((w) => w.lens === "traffic"),
+    ).toEqual([]);
   });
 });
 

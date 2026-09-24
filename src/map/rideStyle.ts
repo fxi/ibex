@@ -96,6 +96,30 @@ export const FALLBACK_COLOR = "#8fa3b8";
  */
 export const WARM_RAMP = ["#e8c35a", "#f0a43c", "#ff7043", "#e0463a"] as const;
 
+/**
+ * What the route is read for: what it is made of, how steep it is, or how busy. The map's
+ * centre line, the chart's fill, the composition bar and the warnings all follow one lens.
+ */
+export type Lens = "surface" | "steep" | "traffic";
+export const LENSES: { lens: Lens; label: string }[] = [
+  { lens: "surface", label: "Surface" },
+  { lens: "steep", label: "Steepness" },
+  { lens: "traffic", label: "Traffic" },
+];
+
+/**
+ * How much a stretch asks of the rider under the steepness or traffic lens: 0 is nothing
+ * worth drawing, 3 as bad as the scale goes. Three steps rather than a continuous ramp, so
+ * a colour on the map can be matched to a line of the legend.
+ */
+export type Level = 0 | 1 | 2 | 3;
+/** Yellow, orange, red: the ramp's ends and hike-a-bike's orange between them. */
+export const LEVEL_COLORS: Record<Exclude<Level, 0>, string> = {
+  1: WARM_RAMP[0],
+  2: WARM_RAMP[2],
+  3: WARM_RAMP[3],
+};
+
 const channel = (hex: string, at: number) =>
   parseInt(hex.slice(at, at + 2), 16);
 

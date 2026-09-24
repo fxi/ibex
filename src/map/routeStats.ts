@@ -2,15 +2,18 @@ import {
   exceedance,
   tractionGrade,
   type CapabilityProfile,
+  type Threshold,
 } from "../routing/capability";
 import { surfaceRoughness } from "../routing/signals";
 import { ENGINE } from "../routing/vocabulary";
 import type { RideClass, RouteResult, RouteSegment } from "../routing/types";
 import {
+  LEVEL_COLORS,
   SURFACE_STYLE,
   rideTotals,
   segmentSpans,
-  warmColor,
+  type Lens,
+  type Level,
   type Span,
   type SegmentSpan,
 } from "./rideStyle";
@@ -222,38 +225,60 @@ export function profileGeometry(
 export type LaneBand = Span & { color: string; label: string };
 
 /**
- * Where the route is steeper than this rider is comfortable with, warm where it is worse.
+ * Where a gradient sits between comfortable and pushing, in the rider's own terms.
+ *
+ * Level 1 is past comfortable, 2 the upper half of the way to the grade where the
+ * capability model stops the pedals, and 3 that grade and beyond: the router would have
+ * the rider walking. Linear in the grade rather than in `exceedance`, whose fourth power
+ * would put nearly every band in the last step, so the legend can print plain percentages.
+ */
+export function steepLevel(value: number, t: Threshold): Level {
+  if (value <= t.comfortable_until) return 0;
+  const over =
+    (value - t.comfortable_until) /
+    Math.max(1e-6, t.high_cost_at - t.comfortable_until);
+  return over >= 1 ? 3 : over > 0.5 ? 2 : 1;
+}
+
+/** The grade at which each steepness level starts, on ordinary ground. */
+export function steepSteps(t: Threshold): [number, number, number] {
+  return [
+    t.comfortable_until,
+    (t.comfortable_until + t.high_cost_at) / 2,
+    t.high_cost_at,
+  ];
+}
+
+export type SteepRun = GradeRun & { level: Level; uphill: boolean };
+
+/**
+ * Every grade run with how hard it is for this rider, the ground under it included.
  *
  * Read from the grade runs rather than the segments, so a short ramp inside a long segment
- * still shows. Nothing is painted below `comfortable_until`: an empty lane means the route
- * is within the rider's range, which is a more useful thing to see than a wash of colour.
- * The ramp saturates at an exceedance of 2 — the same place `severityOf` calls a section
- * severe — so the darkest red always means the same thing.
+ * still shows. The router charges a climb against the ground under it, so this has to as
+ * well or the chart quietly disagrees with the line it is drawing: `elevationProfile` is
+ * metres and height and knows nothing about surfaces, so the roughness comes from the
+ * segment the run sits in. With no segments — a synthetic profile, or a route stored
+ * before segments carried roughness — this falls back to the untouched threshold.
  */
-export function steepLaneBands(
+export function steepRuns(
   profile: [number, number | null][],
   capability: CapabilityProfile,
   segments: RouteSegment[] = [],
   distanceM = 0,
-): LaneBand[] {
-  // The router charges a climb against the ground under it, so the lane has to as well or
-  // the chart quietly disagrees with the line it is drawing. `elevationProfile` is metres
-  // and height and knows nothing about surfaces, so the roughness comes from the segment
-  // the run sits in. With no segments — a synthetic profile, or a route stored before
-  // segments carried roughness — this falls back to the untouched threshold.
+): SteepRun[] {
   const spans = segmentSpans(segments, distanceM);
   const roughnessAt = (startM: number, endM: number) => {
     const middle = (startM + endM) / 2;
     const span = spans.find((s) => middle >= s.startM && middle <= s.endM);
     return span?.segment.roughness;
   };
-  const bands: LaneBand[] = [];
-  for (const run of gradeRuns(profile)) {
+  return gradeRuns(profile).map((run) => {
     const uphill = run.grade > 0;
-    const value = uphill ? run.grade : -run.grade;
     const roughness = roughnessAt(run.startM, run.endM);
-    const climbing =
-      roughness === undefined || !Number.isFinite(roughness)
+    const threshold = !uphill
+      ? capability.downhill_grade
+      : roughness === undefined || !Number.isFinite(roughness)
         ? capability.uphill_grade
         : tractionGrade(
             capability.uphill_grade,
@@ -261,48 +286,214 @@ export function steepLaneBands(
             true,
             capability.surface_roughness,
           );
-    const over = exceedance(
-      value,
-      uphill ? climbing : capability.downhill_grade,
-    );
-    if (over <= 0) continue;
+    return {
+      ...run,
+      uphill,
+      level: steepLevel(uphill ? run.grade : -run.grade, threshold),
+    };
+  });
+}
+
+/** Shorter than this, a change of steepness level is texture, not something to draw. */
+export const LEVEL_MIN_M = 50;
+
+/**
+ * Level stretches as they are worth drawing: a calm gap shorter than `minM` between two
+ * steeper stretches takes the milder of them, an isolated steep blip that short takes the
+ * steeper of its neighbours, and what is left is joined. The DEM's runs are a few metres
+ * long, so drawn raw a steady climb is a string of dashes; the kilometres in the
+ * composition are counted from the raw runs, never from this.
+ */
+export function smoothLevels<T extends Span & { level: Level }>(
+  runs: T[],
+  minM = LEVEL_MIN_M,
+): (Span & { level: Level })[] {
+  const spans = runs.map((r) => ({
+    startM: r.startM,
+    endM: r.endM,
+    level: r.level,
+  }));
+  for (let i = 1; i + 1 < spans.length; i++) {
+    const [before, span, after] = [spans[i - 1], spans[i], spans[i + 1]];
+    if (span.endM - span.startM >= minM) continue;
+    if (before.level > span.level && after.level > span.level)
+      span.level = Math.min(before.level, after.level) as Level;
+    else if (before.level < span.level && after.level < span.level)
+      span.level = Math.max(before.level, after.level) as Level;
+  }
+  const joined: (Span & { level: Level })[] = [];
+  for (const span of spans) {
+    const last = joined.at(-1);
+    if (last && last.level === span.level && span.startM - last.endM < minM)
+      last.endM = span.endM;
+    else joined.push(span);
+  }
+  return joined;
+}
+
+/**
+ * Where the route is steeper than this rider is comfortable with, warm where it is worse.
+ *
+ * Nothing is painted below `comfortable_until`: an empty lane means the route is within
+ * the rider's range, which is a more useful thing to see than a wash of colour.
+ */
+export function steepLaneBands(
+  profile: [number, number | null][],
+  capability: CapabilityProfile,
+  segments: RouteSegment[] = [],
+  distanceM = 0,
+): LaneBand[] {
+  const runs = steepRuns(profile, capability, segments, distanceM);
+  // The label names the steepest grade inside each drawn stretch.
+  const steepestIn = (span: Span) => {
+    let worst = runs[0];
+    for (const run of runs)
+      if (
+        run.endM > span.startM &&
+        run.startM < span.endM &&
+        run.level > 0 &&
+        (!worst || Math.abs(run.grade) > Math.abs(worst.grade))
+      )
+        worst = run;
+    return worst;
+  };
+  return smoothLevels(runs)
+    .filter((span) => span.level > 0)
+    .map((span) => {
+      const worst = steepestIn(span);
+      return {
+        startM: span.startM,
+        endM: span.endM,
+        color: LEVEL_COLORS[span.level as 1 | 2 | 3],
+        label: `${Math.round(Math.abs(worst.grade) * 100)}% ${worst.uphill ? "climb" : "descent"}`,
+      };
+    });
+}
+
+/**
+ * How busy a road is, from the engine's traffic stress.
+ *
+ * Nothing at or below `ENGINE.traffic_from` — the tertiary-level stress below which the
+ * cost model leaves traffic to preference alone — so a clean line means genuinely calm
+ * rather than merely below some house threshold. Above it, stress is read off road class
+ * (`STRESS_BY_HIGHWAY` in `src/build/graph.ts`: secondary 0.8, primary 0.95), so the steps
+ * fall between the classes: a signed primary is moderate, a secondary busy, a primary very
+ * busy. `Number.isFinite` guards a route computed before segments carried stress.
+ */
+export function trafficLevel(stress: number): Level {
+  if (!Number.isFinite(stress) || stress <= ENGINE.traffic_from) return 0;
+  return stress >= 0.9 ? 3 : stress >= 0.7 ? 2 : 1;
+}
+export const TRAFFIC_LABELS: Record<Level, string> = {
+  0: "Calm",
+  1: "Moderate",
+  2: "Busy",
+  3: "Very busy",
+};
+
+/** Where the route runs busier than a quiet departmental road, warm where it is worse. */
+export function stressLaneBands(
+  segments: RouteSegment[],
+  distanceM: number,
+): LaneBand[] {
+  const bands: LaneBand[] = [];
+  for (const { segment, startM, endM } of segmentSpans(segments, distanceM)) {
+    const level = trafficLevel(segment.stress);
+    if (!level) continue;
     bands.push({
-      startM: run.startM,
-      endM: run.endM,
-      color: warmColor(Math.min(1, over / 2)),
-      label: `${Math.round(value * 100)}% ${uphill ? "climb" : "descent"}`,
+      startM,
+      endM,
+      color: LEVEL_COLORS[level],
+      label: `${Math.round(segment.stress * 100)}% traffic stress`,
     });
   }
   return bands;
 }
 
-/**
- * Where the route runs busier than a quiet departmental road, warm where it is worse.
- *
- * Anchored at `ENGINE.traffic_from` — the tertiary-level stress below which the cost model
- * leaves traffic to preference alone — so an empty lane means genuinely calm rather than
- * merely below some house threshold, and the scale is the engine's own. `Number.isFinite`
- * guards a route computed before segments carried stress: the field is required now, but a
- * result persisted earlier has no value to paint.
- */
-export function stressLaneBands(
-  segments: RouteSegment[],
+/** One line of a lens's composition: a level, what it is called, and how much of the ride. */
+export type LensEntry = {
+  level: Level | "unknown";
+  label: string;
+  meters: number;
+  share: number;
+};
+
+const shares = (
+  totals: Map<Level | "unknown", number>,
+  labels: Record<Level | "unknown", string>,
   distanceM: number,
-): LaneBand[] {
-  const from = ENGINE.traffic_from;
-  const bands: LaneBand[] = [];
-  for (const { segment, startM, endM } of segmentSpans(segments, distanceM)) {
-    if (!Number.isFinite(segment.stress)) continue;
-    const over = (segment.stress - from) / (1 - from);
-    if (over <= 0) continue;
-    bands.push({
-      startM,
-      endM,
-      color: warmColor(Math.min(1, over)),
-      label: `${Math.round(segment.stress * 100)}% traffic stress`,
+): LensEntry[] => {
+  const total = [...totals.values()].reduce((sum, m) => sum + m, 0);
+  if (!total || !distanceM) return [];
+  const scale = distanceM / total;
+  return ([0, 1, 2, 3, "unknown"] as const)
+    .filter((level) => (totals.get(level) ?? 0) > 0)
+    .map((level) => {
+      const meters = (totals.get(level) ?? 0) * scale;
+      return {
+        level,
+        label: labels[level],
+        meters,
+        share: meters / distanceM,
+      };
     });
+};
+
+const pct = (grade: number) => `${Math.round(grade * 100)}`;
+
+/**
+ * How much of the route climbs within each steepness level, with the levels named by this
+ * rider's own gradients: "≤ 6%" on a loaded tourer is "≤ 11%" on a light climber. The
+ * percentages are the ordinary-ground ones; loose ground lowers them, as it lowers what the
+ * router lets the rider ride. Stretches with no terrain data are counted apart.
+ */
+export function steepComposition(
+  route: RouteResult,
+  capability: CapabilityProfile,
+): LensEntry[] {
+  const totals = new Map<Level | "unknown", number>();
+  let measured = 0;
+  for (const run of steepRuns(
+    route.elevationProfile,
+    capability,
+    route.segments,
+    route.distanceM,
+  )) {
+    const length = run.endM - run.startM;
+    measured += length;
+    totals.set(run.level, (totals.get(run.level) ?? 0) + length);
   }
-  return bands;
+  // Seams between edges are skipped as runs; only a real hole in the DEM is worth a line.
+  if (route.distanceM - measured > 100)
+    totals.set("unknown", route.distanceM - measured);
+  const [c, m, h] = steepSteps(capability.uphill_grade);
+  return shares(
+    totals,
+    {
+      0: `≤ ${pct(c)}%`,
+      1: `${pct(c)}–${pct(m)}%`,
+      2: `${pct(m)}–${pct(h)}%`,
+      3: `≥ ${pct(h)}% · push`,
+      unknown: "No terrain data",
+    },
+    route.distanceM,
+  );
+}
+
+/** How much of the route runs on roads of each traffic level. */
+export function trafficComposition(route: RouteResult): LensEntry[] {
+  const totals = new Map<Level | "unknown", number>();
+  for (const s of route.segments) {
+    const level = Number.isFinite(s.stress)
+      ? trafficLevel(s.stress)
+      : "unknown";
+    totals.set(level, (totals.get(level) ?? 0) + s.lengthM);
+  }
+  return shares(
+    totals,
+    { ...TRAFFIC_LABELS, unknown: "Traffic unknown" },
+    route.distanceM,
+  );
 }
 
 /**
@@ -447,6 +638,8 @@ const worseOf = (a: Severity, b: Severity): Severity =>
  */
 export const WARNING_MIN_M = 120;
 export const WARNING_GAP_M = 200;
+/** A crossing or a short link is not a traffic warning; a stretch ridden along one is. */
+export const TRAFFIC_MIN_M = 500;
 
 /**
  * Join spans separated by less than `gapM` into one, keeping what they were made of.
@@ -468,9 +661,11 @@ export function mergeSpans<T extends Span>(
   return merged;
 }
 
-export type WarningKind = "walk" | "rough" | "steep";
+export type WarningKind = "walk" | "rough" | "steep" | "traffic";
 export type Warning = Span & {
   kind: WarningKind;
+  /** The lens the warning belongs to, so each lens lists what it draws. */
+  lens: Lens;
   severity: Severity;
   headline: string;
   detail: string;
@@ -493,10 +688,15 @@ function steepestIn(runs: GradeRun[], span: Span, uphill: boolean): number {
 /**
  * The sections of this route worth warning a rider about, worst first.
  *
- * Three kinds only. `unknown` surface is left out because it is a confidence rather than a
- * hazard — the route's uncertain share says that better — and a ferry is left out because
- * with no duration model anywhere in the app, "check the timetable" is the only honest
- * thing to say about one, and that is not a warning.
+ * Hike-a-bike is filed under what caused it: a push the gradient forces is a steepness
+ * warning, steps or ground past the rider's handling a surface one. The segment does not
+ * record why the router got off, so the cause is read back the same way it decided: a
+ * section with a grade at or past the rider's walking grade was pushed for the slope.
+ *
+ * Otherwise four kinds only. `unknown` surface is left out because it is a confidence
+ * rather than a hazard — the route's uncertain share says that better — and a ferry is
+ * left out because with no duration model anywhere in the app, "check the timetable" is
+ * the only honest thing to say about one, and that is not a warning.
  */
 export function routeWarnings(
   route: RouteResult,
@@ -518,6 +718,12 @@ export function routeWarnings(
     spans.filter((s) => s.segment.ride === "walk"),
   )) {
     const up = steepestIn(runs, section, true);
+    const down = steepestIn(runs, section, false);
+    const steps = section.parts.some((p) => p.segment.highway === "steps");
+    const slope =
+      !steps &&
+      (exceedance(up, capability.uphill_grade) >= 1 ||
+        exceedance(down, capability.downhill_grade) >= 1);
     const severity = worseOf(
       "hard",
       severityOf(exceedance(up, capability.uphill_grade)),
@@ -526,11 +732,16 @@ export function routeWarnings(
       startM: section.startM,
       endM: section.endM,
       kind: "walk",
+      lens: slope ? "steep" : "surface",
       severity,
       headline: "Hike-a-bike",
       detail:
         `${km(section.endM - section.startM)} km pushing` +
-        (up > 0 ? ` · up to ${percent(up)}` : ""),
+        (steps
+          ? " · steps"
+          : slope
+            ? ` · up to ${percent(up >= down ? up : down)}`
+            : " · ground past your handling"),
     });
   }
 
@@ -558,6 +769,7 @@ export function routeWarnings(
       startM: section.startM,
       endM: section.endM,
       kind: "rough",
+      lens: "surface",
       severity: severityOf(exceedance(worst, capability.surface_roughness)),
       headline: "Rough surface",
       detail: `${km(section.endM - section.startM)} km of broken ground`,
@@ -583,11 +795,35 @@ export function routeWarnings(
         startM: section.startM,
         endM: section.endM,
         kind: "steep",
+        lens: "steep",
         severity: severityOf(exceedance(worst, threshold)),
         headline: uphill ? "Steep climb" : "Steep descent",
         detail: `${km(section.endM - section.startM)} km · up to ${percent(worst)}`,
       });
     }
+  }
+
+  // Busy roads. Busy is a caution and very busy hard: traffic is a preference the router
+  // weighs, not a limit the rider meets, so it never reaches severe.
+  const busy = spans.filter((s) => trafficLevel(s.segment.stress) >= 2);
+  for (const section of mergeSpans(busy, WARNING_GAP_M).filter(
+    (s) => s.endM - s.startM >= TRAFFIC_MIN_M,
+  )) {
+    const worst = Math.max(
+      ...section.parts.map((p) => trafficLevel(p.segment.stress)),
+    );
+    const roads = [...new Set(section.parts.map((p) => p.segment.highway))]
+      .map((h) => h.replace("_link", ""))
+      .filter((h, i, all) => all.indexOf(h) === i);
+    warnings.push({
+      startM: section.startM,
+      endM: section.endM,
+      kind: "traffic",
+      lens: "traffic",
+      severity: worst >= 3 ? "hard" : "caution",
+      headline: worst >= 3 ? "Very busy road" : "Busy road",
+      detail: `${km(section.endM - section.startM)} km on ${roads.join(", ")} roads`,
+    });
   }
 
   return warnings.sort(
