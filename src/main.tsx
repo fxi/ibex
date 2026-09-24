@@ -310,14 +310,17 @@ function App() {
         <span>ibex</span>
       </header>
       <div className="map-actions">
-        <button
-          className="glow"
-          aria-label="Compute active track"
-          disabled={!canCompute}
-          onClick={routing.compute}
-        >
-          <RefreshCw className={routing.busy ? "spin" : ""} />
-        </button>
+        {/* Routing is part of planning: outside Edit the map is for reading tracks. */}
+        {editing && (
+          <button
+            className="glow"
+            aria-label="Compute active track"
+            disabled={!canCompute}
+            onClick={routing.compute}
+          >
+            <RefreshCw className={routing.busy ? "spin" : ""} />
+          </button>
+        )}
         {/* Map edits add pinch waypoints and are easy to overdo, so each step can be
             taken back, route and all. On the map rather than the panel, so it stays in
             reach while the panel is folded down. */}

@@ -115,10 +115,14 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
   expect((await download).suggestedFilename()).toBe("Track-1.gpx");
   await page.getByRole("tab", { name: "Configure", exact: true }).click();
   await page.getByRole("button", { name: "Road", exact: true }).first().click();
+  // Changing the model does not route again, so the line on the map is the old one.
+  await expect(
+    page.getByText(/The route on the map is out of date/),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
-  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Export your route" }),
   ).toBeVisible({ timeout: 90000 });

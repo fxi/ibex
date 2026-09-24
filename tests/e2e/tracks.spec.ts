@@ -38,9 +38,11 @@ test("independent tracks persist, require explicit computation, and export only 
     page.getByRole("menuitem", { name: "Export GPX" }),
   ).toHaveAttribute("data-disabled", "");
   await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
   await page
     .getByRole("button", { name: "Compute active track", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
   await expect(page.locator(".track-card").nth(1)).toContainText("Ready");
   await tracksSaved(page);
   await page.reload();
