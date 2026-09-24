@@ -2,7 +2,7 @@
   "format_version": 3,
   "id": "02aae4ad-e71c-4cd4-b24a-da1e9f145ab2",
   "name": "Gravel",
-  "description": "Climb on good gravel roads, enjoy the view, come down on quiet smooth roads. No MTB nonsense.",
+  "description": "Climb on good gravel roads",
   "setup": {
     "preset": "custom",
     "bike": {
@@ -16,7 +16,7 @@
       "mass_kg": 80,
       "sustained_w_per_kg": 3.2,
       "tech_skill": 0.8,
-      "descend_confidence": 0.9
+      "descend_confidence": 0.7
     }
   },
   "settings": {
@@ -34,8 +34,15 @@
       "cycle_infrastructure": "neutral",
       "steepness": "neutral"
     },
-    "uphill": {},
-    "downhill": {}
+    "uphill": {
+      "unpaved": "strongly_prefer",
+      "surface_difficulty": "strongly_avoid",
+      "steepness": "strongly_avoid"
+    },
+    "downhill": {
+      "surface_difficulty": "strongly_avoid",
+      "steepness": "strongly_avoid"
+    }
   },
   "permissions": {
     "ferry": true,

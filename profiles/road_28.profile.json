@@ -15,8 +15,8 @@
     "rider": {
       "mass_kg": 80,
       "sustained_w_per_kg": 3.2,
-      "tech_skill": 0.7,
-      "descend_confidence": 0.7
+      "tech_skill": 0.2,
+      "descend_confidence": 0.85
     }
   },
   "settings": {
@@ -26,16 +26,21 @@
   },
   "preferences": {
     "base": {
-      "traffic_stress": "strongly_avoid",
+      "traffic_stress": "avoid",
       "unpaved": "strongly_avoid",
       "surface_difficulty": "strongly_avoid",
       "scenic": "strongly_prefer",
       "urbanity": "avoid",
-      "cycle_infrastructure": "strongly_prefer",
-      "steepness": "neutral"
+      "cycle_infrastructure": "prefer",
+      "steepness": "avoid"
     },
-    "uphill": {},
-    "downhill": {}
+    "uphill": {
+      "traffic_stress": "strongly_avoid",
+      "cycle_infrastructure": "strongly_prefer"
+    },
+    "downhill": {
+      "traffic_stress": "neutral"
+    }
   },
   "permissions": {
     "ferry": true,

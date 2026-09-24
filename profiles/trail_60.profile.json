@@ -1,26 +1,26 @@
 {
   "format_version": 3,
   "id": "cb933404-5d12-85ed-bdb2-0591c694de3f",
-  "name": "MTB",
+  "name": "MTB copy",
   "description": "Climb like gravel, on quiet easy tracks; come down on singletrack.",
   "setup": {
-    "preset": "mtb_60 / expert",
+    "preset": "custom",
     "bike": {
       "tire_mm": 60,
       "mass_kg": 13.5,
       "lowest_gear_ratio": 0.52,
-      "suspension": "front",
+      "suspension": "full",
       "load_kg": 2
     },
     "rider": {
       "mass_kg": 75,
       "sustained_w_per_kg": 3.2,
-      "tech_skill": 0.7,
-      "descend_confidence": 0.7
+      "tech_skill": 0.85,
+      "descend_confidence": 0.95
     }
   },
   "settings": {
-    "detour": "prefer",
+    "detour": "strongly_prefer",
     "climbing": "neutral",
     "direction_changes": "neutral"
   },
@@ -28,19 +28,22 @@
     "base": {
       "traffic_stress": "strongly_avoid",
       "unpaved": "strongly_prefer",
-      "surface_difficulty": "avoid",
-      "scenic": "prefer",
+      "surface_difficulty": "neutral",
+      "scenic": "strongly_prefer",
       "urbanity": "strongly_avoid",
       "cycle_infrastructure": "neutral",
       "steepness": "neutral"
     },
-    "uphill": {},
+    "uphill": {
+      "unpaved": "prefer"
+    },
     "downhill": {
-      "surface_difficulty": "strongly_prefer"
+      "surface_difficulty": "prefer",
+      "steepness": "prefer"
     }
   },
   "permissions": {
-    "ferry": true,
+    "ferry": false,
     "stairs": true,
     "push": true
   }

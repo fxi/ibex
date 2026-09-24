@@ -26,21 +26,21 @@
   },
   "preferences": {
     "base": {
-      "traffic_stress": "avoid",
-      "unpaved": "neutral",
-      "surface_difficulty": "strongly_avoid",
+      "traffic_stress": "strongly_avoid",
+      "unpaved": "prefer",
+      "surface_difficulty": "avoid",
       "scenic": "strongly_prefer",
       "urbanity": "avoid",
-      "cycle_infrastructure": "prefer",
-      "steepness": "avoid"
+      "cycle_infrastructure": "neutral",
+      "steepness": "strongly_avoid"
     },
     "uphill": {
-      "traffic_stress": "strongly_avoid"
+      "unpaved": "strongly_prefer"
     },
     "downhill": {
-      "traffic_stress": "neutral",
-      "unpaved": "strongly_avoid",
-      "cycle_infrastructure": "strongly_prefer"
+      "traffic_stress": "avoid",
+      "surface_difficulty": "strongly_avoid",
+      "unpaved": "strongly_avoid"
     }
   },
   "permissions": {
