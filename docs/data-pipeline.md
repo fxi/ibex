@@ -131,7 +131,7 @@ whether they got better.
 ```sh
 node --import tsx scripts/build_parity.ts <before> <after>   # expects IDENTICAL
 node --import tsx scripts/route_golden.ts --check            # exits 1 on any difference
-node --import tsx scripts/gold_route.ts audit voirons-tour intent .cache/cells
+node --import tsx scripts/gold_route.ts audit voirons-gravel intent .cache/cells
 ```
 
 Capture the golden baseline **before** editing: `route_golden.ts` overwrites it by default.

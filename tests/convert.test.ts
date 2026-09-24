@@ -157,8 +157,8 @@ describe("convertedTrack", () => {
 });
 
 describe("converting a recorded tour", () => {
-  const gold = loadGold(goldPath("voirons-tour"));
-  const graph = loadGoldGraph("voirons-tour");
+  const gold = loadGold(goldPath("voirons-gravel"));
+  const graph = loadGoldGraph("voirons-gravel");
   const recording = gold.line;
 
   /** What the app does (`useConvert`): route, pin where the route parts, route again. */
@@ -184,19 +184,20 @@ describe("converting a recorded tour", () => {
     }
   };
 
-  // Measured 2026-09-23: 19 waypoints, 0.989 shared, nothing left parting from the line.
+  // Frozen at what was measured on voirons-gravel on 2026-09-24: 13 waypoints, 0.999
+  // shared, nothing left parting from the line. A ratchet: tighten it, never loosen it.
   it("follows it with the profile it was ridden with", () => {
     const { shared, indices, deviating } = convert(loadProfile(gold.profile));
-    expect(shared).toBeGreaterThan(0.98);
+    expect(shared).toBeGreaterThan(0.99);
     expect(deviating).toBe(0);
-    expect(indices.length).toBeLessThan(25);
+    expect(indices.length).toBeLessThanOrEqual(13);
   }, 120_000);
 
-  // Measured 2026-09-23: 35 waypoints, 0.981 shared. Road disagrees with a gravel tour the
-  // most, so this is where the pinning has to do its work.
+  // Frozen at 2026-09-24: 47 waypoints, 0.996 shared. Road disagrees with a gravel tour
+  // the most, so this is where the pinning has to do its work. A ratchet, like the above.
   it("follows it with a profile that would ride elsewhere", () => {
     const { shared, indices } = convert(loadProfile("road_28"));
-    expect(shared).toBeGreaterThan(0.97);
-    expect(indices.length).toBeLessThan(45);
+    expect(shared).toBeGreaterThan(0.99);
+    expect(indices.length).toBeLessThanOrEqual(47);
   }, 120_000);
 });
