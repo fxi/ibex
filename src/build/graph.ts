@@ -23,6 +23,7 @@ import { roundTo } from "./round";
 import { riddenStress, roadStress } from "./stress";
 import { isMajorRoad, majorRoadProximity } from "./proximity";
 import { militaryClosure } from "./military";
+import { wayVolume } from "./flow";
 import { sliceProfile, structureGrade, wayProfile, type Grade } from "./terrain";
 import { directions, edgeQuality, permitted, PAVED } from "./tags";
 import type { CellSource } from "./osm/source";
@@ -105,6 +106,8 @@ export type BuildOptions = {
   metresPerPixel?: number;
   /** The ISO country at a point, for the legal speed of an untagged road. */
   country?: (lon: number, lat: number) => string | undefined;
+  /** Estimated trips per OSM way id (`flow.ts`); without it stress reads no volume. */
+  flow?: ReadonlyMap<number, number>;
 };
 
 export type BuildResult = { graph: Graph; counts: Record<string, number> };
@@ -306,6 +309,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
         urban: urbanShare,
         country: options.country?.(mid[0], mid[1]),
         beside: isMajorRoad(tags) ? 0 : beside(coords),
+        volume: wayVolume(options.flow, way.id, tags),
       });
       const stress = riddenStress(traffic, undefined);
       // A signed route calms the road for the direction it is signed in, never below the

@@ -62,6 +62,11 @@ const SOME = 0.6;
 const BUSY = 0.8;
 const HARD = 0.92;
 
+/** log10(1 + trips): below it a road is nearly unused (`flow.ts`). */
+const QUIET_VOLUME = 1;
+/** What a nearly unused road keeps of its stress. */
+const VOLUME_CALMING = 0.6;
+
 /** Anything this far into a built-up area is ridden at town speed. */
 const URBAN_FROM = 0.5;
 /** Where neither the tags nor the table say, the commonest European defaults. */
@@ -79,6 +84,8 @@ export type StressContext = {
   country?: string;
   /** Share of the way right beside a motorway or four-lane road, 0..1 (`proximity.ts`). */
   beside?: number;
+  /** Estimated motor traffic, log10(1 + trips) (`flow.ts`); absent where none was made. */
+  volume?: number;
 };
 
 export type SpeedSource = "tagged" | "zone" | "legal";
@@ -219,6 +226,21 @@ export function roadStress(highway: string, tags: OsmTags, ctx: StressContext): 
   // 2026-10): the fumes are the hazard. A cycle track beside one is the separated
   // infrastructure LTS rates calmest, and a traffic-shy rider is not to be sent off it into
   // the back streets.
+  // What the road carries, from routing trips on the car network (`flow.ts`). Class and
+  // speed alone read a quiet 80 km/h departmental road in the hills as busy — one of the
+  // two errors 670 km of riding found most (2026-10, `tests/fixtures/traffic-truth.json`).
+  // A road almost no trip uses is calmed, floor and all, unless it is fast enough to be
+  // hard whatever it carries. On that ground truth this lifts the rank correlation of
+  // stress with the rider's verdicts from 0.44 to 0.48.
+  //
+  // The other half — a road many trips use is busy whatever its speed — reached 0.49, but
+  // read signed route 23 at Juvigny as busy and sent the Saxel release case onto 1.6 km of
+  // track. The estimate is not trusted that far yet: it calms, it does not condemn.
+  if (ctx.volume !== undefined && MOTOR_ROADS.has(highway) && ctx.volume < QUIET_VOLUME) {
+    base *= VOLUME_CALMING;
+    if (floor < HARD) floor *= VOLUME_CALMING;
+    why.push("volume=low");
+  }
   if (ctx.beside && highway !== "cycleway") {
     floor = Math.max(floor, BUSY * ctx.beside);
     if (ctx.beside >= 0.25) why.push(`beside=${Math.round(ctx.beside * 100)}`);

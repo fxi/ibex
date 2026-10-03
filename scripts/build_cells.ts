@@ -26,6 +26,7 @@
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { buildGraph, sourceBBox } from "../src/build/graph";
+import { carNetwork, flowBox, trafficFlow } from "../src/build/flow";
 import { inflate } from "../src/build/platform/node";
 import { pruneCache, sampleTerrain } from "../src/build/platform/terrainCache";
 import {
@@ -66,6 +67,7 @@ const terrainCache = option("terrain-cache") ?? ".cache/terrain";
 const zoom = Number(option("zoom") ?? 9);
 const dryRun = flag("dry-run");
 const withTerrain = !flag("no-terrain");
+const withFlow = !flag("no-flow");
 const limit = Number(option("limit") ?? Infinity);
 const keepExtracts = flag("keep-extracts");
 const publishing = flag("publish");
@@ -83,6 +85,7 @@ usage: build_cells.ts (--bbox W,S,E,N | --regions id,id,… | --cells id,id,…)
   --zoom <n>             grid zoom                    (default 9)
   --dry-run              print the plan and stop
   --no-terrain           skip the DEM
+  --no-flow              skip the traffic estimate (stress then reads class and speed only)
   --keep-extracts        do not delete a download once its cells are built
   --limit <n>            build at most n cells
   --publish              send each cell to the bucket as it is built
@@ -194,6 +197,8 @@ type Pending = {
   /** Ids of the downloads this cell needs; it is buildable when every one has been read. */
   needs: Set<string>;
   parts: CellSource[];
+  /** The car network over the wider box its traffic is estimated on (`flow.ts`). */
+  flowParts: CellSource[];
 };
 
 async function main() {
@@ -218,7 +223,12 @@ async function main() {
       resumed++;
       continue;
     }
-    pending.set(id, { cell, needs: new Set(extracts.map((e) => e.id)), parts: [] });
+    pending.set(id, {
+      cell,
+      needs: new Set(extracts.map((e) => e.id)),
+      parts: [],
+      flowParts: [],
+    });
     for (const extract of extracts) {
       const entry = serves.get(extract.id);
       if (entry) entry.cells.push(id);
@@ -260,11 +270,18 @@ async function main() {
       `\n${extract.id}: ${source.ways.length} ways, ${source.positions.size} nodes ` +
         `in ${((Date.now() - started) / 1000).toFixed(0)} s — ${live.length} cell(s)`,
     );
+    // Traffic is routed over a wider box than the cell is built from, but only on the car
+    // network, and only from the downloads the cell needs anyway: near a border the other
+    // side's trips are missing, which reads its roads a little quieter than they are.
+    const cars = withFlow ? carNetwork(source) : undefined;
+    const carBounds = cars ? WayBounds.of(cars) : undefined;
     const ready: Pending[] = [];
     for (const id of live) {
       const entry = pending.get(id)!;
       const slice = subsetSource(source, sourceBBox(entry.cell), bounds);
       if (slice.ways.length) entry.parts.push(slice);
+      if (cars)
+        entry.flowParts.push(subsetSource(cars, flowBox(cellBBox(entry.cell)), carBounds));
       entry.needs.delete(extract.id);
       if (!entry.needs.size) ready.push(entry);
     }
@@ -278,8 +295,16 @@ async function main() {
         skipped++;
         continue;
       }
-      const result = await buildOne(entry.cell, mergeSources(entry.parts), index, bucket);
+      const flowSource = entry.flowParts.length ? mergeSources(entry.flowParts) : undefined;
+      const result = await buildOne(
+        entry.cell,
+        mergeSources(entry.parts),
+        index,
+        bucket,
+        flowSource,
+      );
       entry.parts.length = 0;
+      entry.flowParts.length = 0;
       if (!result) {
         skipped++;
         continue;
@@ -325,6 +350,7 @@ async function buildOne(
   source: CellSource,
   index: readonly Extract[],
   bucket?: Bucket,
+  cars?: CellSource,
 ): Promise<Built | undefined> {
   const id = cellId(cell);
   let elevations = new Map<number, number>();
@@ -344,7 +370,13 @@ async function buildOne(
   }
 
   const country = countryLookup(index, sourceBBox(cell));
-  const { graph } = buildGraph(source, { cell, elevations, country });
+  const flow = cars ? trafficFlow(cars, flowBox(cellBBox(cell))) : undefined;
+  if (flow)
+    console.log(
+      `  ${id}: traffic from ${flow.counts.origins} origins over ${flow.counts.arcs} arcs ` +
+        `in ${(flow.counts.ms / 1000).toFixed(1)} s`,
+    );
+  const { graph } = buildGraph(source, { cell, elevations, country, flow: flow?.byWay });
   if (graph.edges.length < MIN_EDGES) return undefined;
 
   // What OpenStreetMap said, from the download's own header — not when this ran, so a

@@ -130,9 +130,16 @@ A port of BRouter's `estimated_traffic_class` (population nearby, divided by dis
 squared, adjusted for motorway density and slip roads) was tried and dropped: it put
 Juvigny in class 4–5 for being near Annemasse and the D907 in class 3. It sent the Saxel
 release case onto 4.5 km of the D907.
-**Blocks:** trust in the traffic lens on untagged roads, and routing that avoids busy
-valley roads.
-**Shape of the fix:** estimate flow by routing trips on the car network (towns weighted by
-population, pop × pop / distance²) and summing per way, so that a valley's only road and a
-quiet road beside an arterial come out right. Check it first against Juvigny, the D907 and
-the Saxel test in `tests/release.test.ts`.
+**Partly fixed (2026-10):** `src/build/flow.ts` now does that — gravity in driving time,
+fastest paths, places spread over their built-up area, through traffic at the edge of a
+40 km box — and `stress.ts` uses it to calm roads almost no trip uses. Against the 49
+stretches of `tests/fixtures/traffic-truth.json` that lifts Spearman from 0.44 to 0.48, and
+the quiet departmental roads of the Drôme and the Var stop reading busy. It does not yet
+make anything busier: doing so reached 0.49 but read the western Route de Juvigny as busy
+(over 1,000 relative trips, Annemasse ↔ Juvigny/Machilly) and sent the Saxel case onto
+1.6 km of track. Juvigny itself still reads 0.67, now mostly for running beside the Route
+de Thonon. Town streets at 50 that carry a lot (Digne, Draguignan, Fréjus) still read calm.
+**Blocks:** routing that avoids busy town and valley roads.
+**Shape of the rest:** find out which stretch of the Route de Juvigny the verdict was about;
+then either the estimate is wrong there (missing junction delays on the arterial would send
+it too much) or the verdict covers only part of the road. Only then let volume raise stress.
