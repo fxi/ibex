@@ -637,6 +637,14 @@ export function MapView({
       cancelPress();
       longPressed = false;
       if (e.points.length !== 1) return;
+      // Markers sit inside the canvas container, so maplibre sees a touch on a waypoint
+      // as a map touch too: without this, a long-press opens both menus at once.
+      if (
+        (e.originalEvent.target as Element | null)?.closest?.(
+          ".anchor-marker-wrap",
+        )
+      )
+        return;
       pressPoint = e.point;
       pressTimer = setTimeout(() => {
         longPressed = true;

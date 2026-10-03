@@ -69,8 +69,14 @@ function create(
     dragTimer = setTimeout(() => (draggedRecently = false), 100);
   });
 
+  // Android also fires a native contextmenu on a long-press, sometimes before the press
+  // timer and sometimes after it: whichever comes first opens the menu, the other is
+  // dropped.
+  let menuAt = 0;
   const openMenu = (x: number, y: number) => {
-    if (draggedRecently) return;
+    clearTimeout(pressTimer);
+    if (draggedRecently || Date.now() - menuAt < 800) return;
+    menuAt = Date.now();
     callbacks.current.onMenu(indexOf(), x, y);
   };
   const onContextMenu = (e: MouseEvent) => {

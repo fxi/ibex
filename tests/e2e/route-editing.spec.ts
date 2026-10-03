@@ -452,3 +452,46 @@ test("the base map control switches and remembers the base map", async ({
     page.getByRole("radio", { name: "Hybrid", exact: true }),
   ).toHaveAttribute("aria-checked", "true");
 });
+
+test("a long-press on a waypoint opens its menu and nothing else", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await saveMapData(page);
+  await planArve(page);
+  const marker = page.locator(".anchor-marker-wrap").first();
+  await expect(marker).toBeVisible();
+  const box = (await marker.boundingBox())!;
+  const touched = await marker.evaluate(
+    (element, [x, y]) => {
+      let touch: Touch;
+      try {
+        touch = new Touch({
+          identifier: 1,
+          target: element,
+          clientX: x,
+          clientY: y,
+        });
+      } catch {
+        // WebKit has the type but no public constructor.
+        return false;
+      }
+      element.dispatchEvent(
+        new TouchEvent("touchstart", {
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      return true;
+    },
+    [box.x + box.width / 2, box.y + box.height / 2],
+  );
+  test.skip(!touched, "no Touch constructor in this browser");
+  await expect(page.getByRole("menu", { name: "Waypoint 1" })).toBeVisible();
+  // Past the map's own long-press delay: its menu must not have opened too.
+  await page.waitForTimeout(800);
+  await expect(page.locator(".map-context-menu")).toHaveCount(0);
+});
