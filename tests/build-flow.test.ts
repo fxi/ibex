@@ -77,11 +77,12 @@ describe("stress with volume", () => {
     expect(level("primary", { maxspeed: "90" }, 0.5)).toBe(3);
   });
 
-  it("does not make a road busy for carrying many trips", () => {
-    expect(level("tertiary", { maxspeed: "50" }, 3.5)).toBe(0);
+  it("makes a town street busy only when very many trips use it", () => {
+    expect(level("tertiary", { maxspeed: "50" }, 3)).toBe(0);
+    expect(level("tertiary", { maxspeed: "50" }, 3.6)).toBe(2);
   });
 
-  it("changes nothing above the threshold, or off the car network", () => {
+  it("changes nothing between the thresholds, or off the car network", () => {
     expect(level("secondary", { maxspeed: "80" }, 2)).toBe(2);
     expect(level("cycleway", {}, 4)).toBe(0);
   });

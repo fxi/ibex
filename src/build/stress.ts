@@ -62,8 +62,9 @@ const SOME = 0.6;
 const BUSY = 0.8;
 const HARD = 0.92;
 
-/** log10(1 + trips): below it a road is nearly unused (`flow.ts`). */
+/** log10(1 + trips): below it a road is nearly unused, at or above it busy (`flow.ts`). */
 const QUIET_VOLUME = 1;
+const BUSY_VOLUME = 3.5;
 /** What a nearly unused road keeps of its stress. */
 const VOLUME_CALMING = 0.6;
 
@@ -230,16 +231,21 @@ export function roadStress(highway: string, tags: OsmTags, ctx: StressContext): 
   // speed alone read a quiet 80 km/h departmental road in the hills as busy — one of the
   // two errors 670 km of riding found most (2026-10, `tests/fixtures/traffic-truth.json`).
   // A road almost no trip uses is calmed, floor and all, unless it is fast enough to be
-  // hard whatever it carries. On that ground truth this lifts the rank correlation of
-  // stress with the rider's verdicts from 0.44 to 0.48.
-  //
-  // The other half — a road many trips use is busy whatever its speed — reached 0.49, but
-  // read signed route 23 at Juvigny as busy and sent the Saxel release case onto 1.6 km of
-  // track. The estimate is not trusted that far yet: it calms, it does not condemn.
-  if (ctx.volume !== undefined && MOTOR_ROADS.has(highway) && ctx.volume < QUIET_VOLUME) {
-    base *= VOLUME_CALMING;
-    if (floor < HARD) floor *= VOLUME_CALMING;
-    why.push("volume=low");
+  // hard whatever it carries; one that very many use is busy whatever its speed. On that
+  // ground truth this lifts the rank correlation of stress with the rider's verdicts from
+  // 0.44 to 0.51. The busy threshold is high on purpose: at 3 it caught signed route 23
+  // at Juvigny (2.3–3.0, quiet by the rider's account) and sent the Saxel release case
+  // onto 1.6 km of track, while the Route du Pays de la Côte beside it, which is busy,
+  // reads 4.
+  if (ctx.volume !== undefined && MOTOR_ROADS.has(highway)) {
+    if (ctx.volume < QUIET_VOLUME) {
+      base *= VOLUME_CALMING;
+      if (floor < HARD) floor *= VOLUME_CALMING;
+      why.push("volume=low");
+    } else if (ctx.volume >= BUSY_VOLUME) {
+      floor = Math.max(floor, BUSY);
+      why.push("volume=high");
+    }
   }
   if (ctx.beside && highway !== "cycleway") {
     floor = Math.max(floor, BUSY * ctx.beside);

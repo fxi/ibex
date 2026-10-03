@@ -1,4 +1,18 @@
-# Known issues
+**Partly fixed (2026-10):** `src/build/flow.ts` now does that — gravity in driving time,
+fastest paths, places spread over their built-up area, through traffic at the edge of a
+40 km box — and `stress.ts` calms roads almost no trip uses and makes busy those very many
+use. Against the 49 stretches of `tests/fixtures/traffic-truth.json` that lifts Spearman
+from 0.44 to 0.51; the quiet departmental roads of the Drôme and the Var stop reading busy,
+and the D907 and the roads into Fréjus read busy. The busy threshold (3.5) sits above the
+Route de Juvigny (2.3–3.0), which the rider finds quiet from the Cara customs post to
+Couty, and below the Route du Pays de la Côte (4.0), which is busy. At 3 it sent the Saxel
+case onto 1.6 km of track. Two things remain. The Avenue des Fully (2.9, to be avoided)
+and the Route de Juvigny (2.7) are too close for the estimate to tell apart. Town streets
+at 50 that are busy without being through routes (Digne, Draguignan) still read calm.
+**Blocks:** routing that avoids busy town streets, and telling a rat run from a quiet road.
+**Shape of the rest:** junction delays on the arterials (roundabouts, lights), which the
+estimate ignores and which push real traffic onto the minor roads beside them; and trips
+within a town, not only between places.# Known issues
 
 Defects found by review, each re-checked against the code and, where it was measurable,
 against a real build. Nothing here blocks building on the product; what each one blocks is
