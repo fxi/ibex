@@ -420,9 +420,14 @@ main,
   inset: -8px;
   border-radius: 50%;
 }
+/* On a phone the pin itself grows too: the ring alone left it hard to grab with a finger
+   (field report, 2026-10). The lift scales with the artwork so the tip stays on the point. */
 @media (pointer: coarse) {
+  .anchor-marker-wrap {
+    translate: 0 -13px;
+  }
   .anchor-marker-wrap::before {
-    inset: -16px;
+    inset: -14px;
   }
 }
 .anchor-marker {
@@ -434,6 +439,12 @@ main,
   transition: transform 0.12s ease;
   /* Grows from the pin tip (y 16.7 of the 20-unit viewBox), so the tip stays on the point. */
   transform-origin: 50% 84%;
+}
+@media (pointer: coarse) {
+  .anchor-marker {
+    width: 52px;
+    height: 52px;
+  }
 }
 .anchor-marker-wrap:hover .anchor-marker,
 .anchor-marker-wrap:focus-visible .anchor-marker {
