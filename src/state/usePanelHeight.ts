@@ -11,12 +11,30 @@ const SLOP = 4;
  * does not become the height the handle expands back to.
  */
 const MIN_EXPANDED = 160;
+/** A release this close to fully folded or fully open lands there. */
+const MAGNET = 48;
+/** px/ms: a release faster than this is a flick, and goes all the way that way. */
+const FLICK = 0.6;
 
 const clamp = (px: number) =>
   Math.max(0, Math.min(px, Math.max(0, window.innerHeight - TOP_GUTTER)));
 
 /** A sensible first height when nothing is stored, scaled to the viewport. */
 const initial = () => clamp(Math.round(window.innerHeight * 0.42));
+const full = () => clamp(Number.POSITIVE_INFINITY);
+
+/**
+ * Where a drag released at `px` comes to rest. On a phone the finger rarely means an
+ * exact height: it means folded, open, or about here, so the two ends attract and a flick
+ * goes all the way.
+ */
+function settle(px: number, velocity: number) {
+  if (velocity > FLICK) return 0;
+  if (velocity < -FLICK) return full();
+  if (px < MIN_EXPANDED) return 0;
+  if (full() - px < MAGNET) return full();
+  return px;
+}
 
 export type PanelHeight = ReturnType<typeof usePanelHeight>;
 
@@ -29,7 +47,9 @@ export type PanelHeight = ReturnType<typeof usePanelHeight>;
  *
  * The panel never closes. Reduced is the content at zero, so the tabs stay on screen and
  * are still the way back; the handle expands it again. Whatever height the user drags to
- * becomes the one a tap returns to, and that is what is remembered across reloads.
+ * becomes the one a tap returns to, and that is what is remembered across reloads. Fold
+ * and expand are buttons beside the grab bar, because on a phone showing or hiding the
+ * panel is the common case and a 20px bar was missed most of the time.
  */
 export function usePanelHeight() {
   const [height, setHeight] = useState(initial);
@@ -92,13 +112,29 @@ export function usePanelHeight() {
     setHeight((h) => (h > 0 ? 0 : clamp(expanded)));
   }
 
+  /** Fold to the tabs alone. */
+  function fold() {
+    setHeight(0);
+  }
+
+  /** Open fully, or back to the chosen height when already fully open. */
+  function expand() {
+    setHeight((h) => (h >= full() ? clamp(expanded) : full()));
+  }
+
   function startResize(event: React.PointerEvent<HTMLElement>) {
     const target = event.currentTarget;
     const startY = event.clientY;
     const startHeight = height;
     let latest = startHeight;
+    // The last two samples, for the release velocity.
+    let sample = { y: startY, t: event.timeStamp };
+    let velocity = 0;
     target.setPointerCapture(event.pointerId);
     const move = (e: PointerEvent) => {
+      const dt = e.timeStamp - sample.t;
+      if (dt > 0) velocity = (e.clientY - sample.y) / dt;
+      sample = { y: e.clientY, t: e.timeStamp };
       if (!dragged.current) {
         if (Math.abs(e.clientY - startY) <= SLOP) return;
         dragged.current = true;
@@ -110,7 +146,14 @@ export function usePanelHeight() {
     };
     const stop = (e: PointerEvent) => {
       setResizing(false);
-      if (dragged.current && latest >= MIN_EXPANDED) setExpanded(latest);
+      if (dragged.current) {
+        // A pause before lifting the finger is not a flick.
+        if (e.timeStamp - sample.t > 80) velocity = 0;
+        const rest = settle(latest, velocity);
+        setHeight(rest);
+        // Fully open is a place to visit, not the size to come back to.
+        if (rest >= MIN_EXPANDED && rest < full()) setExpanded(rest);
+      }
       // A cancelled gesture is followed by no click, so the flag that suppresses that
       // click has to be cleared here or it would swallow the next tap instead.
       if (e.type === "pointercancel") dragged.current = false;
@@ -124,5 +167,14 @@ export function usePanelHeight() {
     target.addEventListener("pointercancel", stop);
   }
 
-  return { height, reduced: height <= 0, toggle, startResize, resizing };
+  return {
+    height,
+    reduced: height <= 0,
+    open: height >= full(),
+    toggle,
+    fold,
+    expand,
+    startResize,
+    resizing,
+  };
 }

@@ -7,6 +7,9 @@ import {
   Settings,
   RefreshCw,
   SquarePen,
+  ChevronDown,
+  ChevronUp,
+  Minimize2,
 } from "lucide-react";
 import { TracksPanel } from "./TracksPanel";
 import { DataPanel } from "./DataPanel";
@@ -38,7 +41,8 @@ export function Panel({
   panel: PanelHeight;
 }) {
   const { tracks, routing, status, setError, setStatus, setTab } = ctx;
-  const { height, reduced, toggle, startResize, resizing } = panel;
+  const { height, reduced, open, toggle, fold, expand, startResize, resizing } =
+    panel;
 
   return (
     <section
@@ -47,17 +51,36 @@ export function Panel({
       // Saving is quick and silent; the attribute lets tests wait for it before reloading.
       data-saving={tracks.saving}
     >
-      {/* The grab bar is the whole control: drag it for any height, tap it to swing
-          between the tabs alone and the last height chosen. */}
-      <button
-        className="panel-handle"
-        onPointerDown={startResize}
-        onClick={toggle}
-        aria-label="Resize panel"
-        aria-expanded={!reduced}
-      >
-        <span className="grab" />
-      </button>
+      {/* Drag the grab bar for any height, or tap it to swing between the tabs alone
+          and the last height chosen; the buttons either side fold and open outright. */}
+      <div className="panel-header">
+        <button
+          className="panel-fold"
+          onClick={fold}
+          disabled={reduced}
+          aria-label="Fold panel"
+          title="Fold panel"
+        >
+          <ChevronDown size={20} />
+        </button>
+        <button
+          className="panel-handle"
+          onPointerDown={startResize}
+          onClick={toggle}
+          aria-label="Resize panel"
+          aria-expanded={!reduced}
+        >
+          <span className="grab" />
+        </button>
+        <button
+          className="panel-expand"
+          onClick={expand}
+          aria-label={open ? "Restore panel" : "Expand panel"}
+          title={open ? "Restore panel" : "Expand panel"}
+        >
+          {open ? <Minimize2 size={18} /> : <ChevronUp size={20} />}
+        </button>
+      </div>
       <Tabs.Root value={tab} onValueChange={setTab}>
         <Tabs.List className="tabs" aria-label="Planner tabs">
           {tabs.map(([id, label, Icon]) => (

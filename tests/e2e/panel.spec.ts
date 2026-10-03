@@ -31,11 +31,12 @@ test("panel geometry is stable across tabs and survives a tap on the handle", as
   // still there to switch with and a second tap restores the chosen height.
   const handle = page.getByRole("button", { name: "Resize panel" });
   const tabs = (await page.locator(".tabs").boundingBox())!;
+  const header = (await page.locator(".panel-header").boundingBox())!;
   await handle.click();
-  // The grab bar, the tabs, and nothing else: no content row is left over.
+  // The header, the tabs, and nothing else: no content row is left over.
   await expect
     .poll(async () => (await boxOf(page)).height)
-    .toBeLessThan(tabs.height + 24);
+    .toBeLessThan(tabs.height + header.height + 4);
   await expect(
     page.getByRole("tab", { name: "Tracks", exact: true }),
   ).toBeVisible();
@@ -61,6 +62,9 @@ test("dragging the handle resizes the panel and the size is remembered", async (
   await page.mouse.move(handle.x + handle.width / 2, handle.y - 120, {
     steps: 10,
   });
+  // Held still before lifting: released while moving, the drag would be a flick and
+  // open the panel fully, which is not a height that is remembered.
+  await page.waitForTimeout(150);
   await page.mouse.up();
 
   await expect
@@ -96,4 +100,58 @@ test("dragging the handle resizes the panel and the size is remembered", async (
   await expect
     .poll(async () => (await boxOf(page)).height, { timeout: 15000 })
     .toBeGreaterThan(start.height + 60);
+});
+
+test("fold and expand buttons fold, open fully and restore the panel", async ({
+  page,
+}) => {
+  await page.goto("./");
+  await expect(
+    page.getByRole("heading", { name: "Your tracks" }),
+  ).toBeVisible();
+  const start = await boxOf(page);
+  const tabs = (await page.locator(".tabs").boundingBox())!;
+  const header = (await page.locator(".panel-header").boundingBox())!;
+
+  await page.getByRole("button", { name: "Fold panel" }).click();
+  await expect
+    .poll(async () => (await boxOf(page)).height)
+    .toBeLessThan(tabs.height + header.height + 4);
+  await expect(page.getByRole("button", { name: "Fold panel" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Expand panel" }).click();
+  await expect
+    .poll(async () => (await boxOf(page)).height)
+    .toBeGreaterThan(start.height + 40);
+
+  // Fully open, the same button takes the panel back to the height it had.
+  await page.getByRole("button", { name: "Restore panel" }).click();
+  await expect
+    .poll(async () => Math.round((await boxOf(page)).height))
+    .toBe(Math.round(start.height));
+});
+
+test("a drag released near the bottom folds the panel", async ({ page }) => {
+  await page.goto("./");
+  await expect(
+    page.getByRole("heading", { name: "Your tracks" }),
+  ).toBeVisible();
+  const start = await boxOf(page);
+  const tabs = (await page.locator(".tabs").boundingBox())!;
+  const header = (await page.locator(".panel-header").boundingBox())!;
+  const handle = (await page.locator(".panel-handle").boundingBox())!;
+
+  // Down to just above folded, slowly so it is not a flick: the bottom attracts.
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + start.height - tabs.height - header.height - 100,
+    { steps: 20 },
+  );
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await boxOf(page)).height)
+    .toBeLessThan(tabs.height + header.height + 4);
 });

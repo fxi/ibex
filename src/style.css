@@ -615,9 +615,39 @@ main,
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
+.panel-header {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+}
+.panel-fold,
+.panel-expand {
+  flex: 0 0 auto;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.panel-fold:disabled {
+  opacity: 0.3;
+}
+/* A finger needs about 44px; the old 20px bar was missed most of the time. */
+@media (pointer: coarse) {
+  .panel-header {
+    height: 44px;
+  }
+  .panel-fold,
+  .panel-expand {
+    width: 56px;
+  }
+}
 .panel-handle {
-  width: 100%;
-  height: 20px;
+  flex: 1 1 auto;
+  height: 100%;
   padding: 0;
   border: 0;
   background: none;
