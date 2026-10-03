@@ -27,6 +27,11 @@ const AMENITIES = new Set(["bench", "drinking_water", "fountain", "shelter", "wa
 const TOURISM = new Set(["viewpoint", "picnic_site", "information"]);
 const NATURAL_POINTS = new Set(["peak", "saddle"]);
 const CYCLING_ROUTES = new Set(["bicycle", "mtb"]);
+const MILITARY = new Set(["danger_area", "range", "training_area"]);
+
+/** Ground the army holds, which closes the minor ways inside it (`src/build/military.ts`). */
+export const isMilitary = (tags: OsmTags) =>
+  tags.landuse === "military" || (tags.military !== undefined && MILITARY.has(tags.military));
 
 /** The road network, ferries, water, and the land use the cost surfaces are painted from. */
 export function keepWay(tags: OsmTags): boolean {
@@ -34,6 +39,7 @@ export function keepWay(tags: OsmTags): boolean {
   if (tags.route === "ferry") return true;
   if (tags.natural === "water" || tags.natural === "wood") return true;
   if ("waterway" in tags) return true;
+  if (isMilitary(tags)) return true;
   return tags.landuse !== undefined && LANDUSE.has(tags.landuse);
 }
 
@@ -44,6 +50,7 @@ export function keepRelation(tags: OsmTags): boolean {
   if (tags.type === "route" && tags.route !== undefined && CYCLING_ROUTES.has(tags.route))
     return true;
   if (tags.natural === "water" || tags.natural === "wood") return true;
+  if (isMilitary(tags)) return true;
   return tags.landuse !== undefined && LANDUSE.has(tags.landuse);
 }
 

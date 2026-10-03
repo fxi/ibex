@@ -22,6 +22,7 @@ import { cyclingMemberships, ferryWays, onCyclingNetwork } from "./relations";
 import { roundTo } from "./round";
 import { riddenStress, roadStress } from "./stress";
 import { isMajorRoad, majorRoadProximity } from "./proximity";
+import { militaryClosure } from "./military";
 import { sliceProfile, structureGrade, wayProfile, type Grade } from "./terrain";
 import { directions, edgeQuality, permitted, PAVED } from "./tags";
 import type { CellSource } from "./osm/source";
@@ -138,6 +139,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
     waysMissingPositions: 0,
     stepsSegments: 0,
     ferrySegments: 0,
+    militarySegments: 0,
     restrictionsOutsideGraph: 0,
     restrictionsUnreachable: 0,
   };
@@ -195,6 +197,7 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
   const attraction = attractionSurface(clusters, surfaceBox, options.metresPerPixel);
 
   const beside = majorRoadProximity(source);
+  const military = militaryClosure(source);
 
   const barriers = new Map<number, OsmTags>();
   for (const node of source.nodes) if ("barrier" in node.tags) barriers.set(node.id, node.tags);
@@ -282,6 +285,10 @@ export function buildGraph(source: CellSource, options: BuildOptions = {}): Buil
       let length = 0;
       for (let k = 0; k + 1 < coords.length; k++) length += distance(coords[k], coords[k + 1]);
       if (length < 0.1) continue;
+      if (military(highway, tags, coords)) {
+        counts.militarySegments++;
+        continue;
+      }
 
       const gradeSamples: Grade[] | null =
         highway === "ferry"
