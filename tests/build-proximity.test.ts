@@ -44,15 +44,20 @@ describe("majorRoadProximity", () => {
     expect(beside(lane)).toBe(1);
   });
 
-  it("reads a lane a field away as not beside it", () => {
-    expect(beside([[6.02, north(200)], [6.06, north(200)]])).toBe(0);
+  it("fades with distance, to nothing past 250 m", () => {
+    const at = (m: number) => beside([[6.02, north(m)], [6.06, north(m)]]);
+    expect(at(100)).toBeLessThan(1);
+    expect(at(200)).toBeLessThan(at(100));
+    expect(at(200)).toBeGreaterThan(0);
+    expect(at(300)).toBe(0);
   });
 
   it("reads a road crossing over it by the share that is close", () => {
     const crossing: Point[] = [[6.05, north(-500)], [6.05, north(500)]];
     const share = beside(crossing);
-    expect(share).toBeGreaterThan(0.05);
-    expect(share).toBeLessThan(0.1);
+    // 80 m of the kilometre is right beside it, and the approaches fade in.
+    expect(share).toBeGreaterThan(0.08);
+    expect(share).toBeLessThan(0.3);
   });
 
   it("finds nothing where there is no major road", () => {
@@ -65,10 +70,10 @@ describe("stress beside a major road", () => {
   const level = (highway: string, share: number) =>
     trafficLevel(riddenStress(roadStress(highway, {}, { urban: 0, country: "FR", beside: share }), undefined));
 
-  it("lifts a frontage lane to some traffic, and no further", () => {
+  it("lifts a frontage lane to busy, but not a cycle track", () => {
     expect(level("residential", 0)).toBe(0);
-    expect(level("residential", 1)).toBe(1);
-    expect(level("unclassified", 0.5)).toBe(0);
+    expect(level("residential", 1)).toBe(2);
+    expect(level("unclassified", 0.25)).toBe(0);
     expect(level("cycleway", 1)).toBe(0);
   });
 });

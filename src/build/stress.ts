@@ -213,12 +213,14 @@ export function roadStress(highway: string, tags: OsmTags, ctx: StressContext): 
     floor = Math.max(floor, BUSY);
     why.push("hgv");
   }
-  // A quiet lane along a dual carriageway is not quiet to ride: as much of "some traffic"
-  // as the share of it that runs alongside. Its noise is not a hazard, so no further. A
-  // cycle track beside one is the separated infrastructure LTS rates calmest, and a
-  // traffic-shy rider is not to be sent off it into the back streets.
+  // A quiet lane along a dual carriageway is not quiet to ride: as much of "busy" as it is
+  // exposed. It was capped at "some traffic", noise not being a hazard, and that sent long
+  // rides down motorway service roads rather than look further for a way (field report,
+  // 2026-10): the fumes are the hazard. A cycle track beside one is the separated
+  // infrastructure LTS rates calmest, and a traffic-shy rider is not to be sent off it into
+  // the back streets.
   if (ctx.beside && highway !== "cycleway") {
-    floor = Math.max(floor, SOME * ctx.beside);
+    floor = Math.max(floor, BUSY * ctx.beside);
     if (ctx.beside >= 0.25) why.push(`beside=${Math.round(ctx.beside * 100)}`);
   }
 
