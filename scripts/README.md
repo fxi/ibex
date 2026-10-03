@@ -21,6 +21,7 @@ Scripts that read a local build take its cells directory as an argument, default
 | | `route_golden.ts` | Golden master of routing output on real packs; `--check` fails on any change (use around engine refactors) |
 | | `build_parity.ts` | Diff two cell builds: ids and extents exactly, derived values to a tolerance (use around builder changes) |
 | | `gold_route.ts` | **lib** + CLI for gold standards (`tests/fixtures/gold/`): `import` a line drawn in Ibex (its notes become waypoints), `audit` where the router parts from it and why |
+| | `traffic_truth.ts` | Traffic ground truth (`tests/fixtures/traffic-truth.json`): `draft` turns ridden GPX whose waypoints are notes into stretches to label LTS 1–4; `eval` ranks the cells' stress against the labels (Spearman, inversions). A traffic change has to beat its baseline |
 | | `local_cells.ts` | **lib**: load a local build through `CellGraphProvider`, as the app does |
 | | `audit_route.ts`, `audit_long_route.ts`, `audit_signals.ts` | Routing audits → `.cache/derived/` |
 | Fixtures | `create_cell_fixture.ts` | `tests/fixtures/data` (synthetic published tree for CI and browser tests, with a tiny basemap; needs `tippecanoe`) |
