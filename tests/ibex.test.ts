@@ -215,6 +215,15 @@ describe("block round trip", () => {
     expect((b - a) / extraEdges).toBeLessThan(20);
     expect(b).toBeGreaterThan(a);
   });
+  it("keeps a reverse record's own stress where it differs from the forward one", () => {
+    // A cycle route signed one way calms that direction only.
+    const [forward, reverse] = pair(3000, 1, nodes[0], nodes[1], {
+      stress: 0.288,
+    });
+    const backward = { ...reverse, stress: 0.48 };
+    const { out } = roundTrip([forward, backward]);
+    expect(out.edges.map((e) => e.stress)).toEqual([0.288, 0.48]);
+  });
   it("survives deflate, which is how packs are stored", () => {
     const { bytes } = roundTrip();
     const stored = deflateRawSync(bytes, { level: 9 });
@@ -368,10 +377,19 @@ describe("cell index", () => {
     const encoded = (body: Record<string, unknown>) =>
       encodeIndex(body as unknown as Parameters<typeof encodeIndex>[0]);
     const cases: [string, Record<string, unknown>][] = [
-      ["a block offset that is not a number", { ...base, blocks: [{ ...base.blocks[0], offset: "0" }] }],
-      ["a negative block length", { ...base, blocks: [{ ...base.blocks[0], length: -1 }] }],
+      [
+        "a block offset that is not a number",
+        { ...base, blocks: [{ ...base.blocks[0], offset: "0" }] },
+      ],
+      [
+        "a negative block length",
+        { ...base, blocks: [{ ...base.blocks[0], length: -1 }] },
+      ],
       ["a string table holding a number", { ...base, strings: [1] }],
-      ["a one-way restriction", { ...base, restrictions: [{ ways: ["1"], only: false }] }],
+      [
+        "a one-way restriction",
+        { ...base, restrictions: [{ ways: ["1"], only: false }] },
+      ],
       ["a bbox that is not four numbers", { ...base, bbox: [1, 2, 3] }],
     ];
     for (const [what, body] of cases) {
@@ -390,7 +408,9 @@ describe("cell index", () => {
     expect(decoded.restrictions).toEqual([]);
     expect(decoded.meta).toEqual({});
     // An unknown additive field must not need a DATA_VERSION bump to be readable.
-    expect(() => decodeIndex(encoded({ ...base, futureField: 1 }))).not.toThrow();
+    expect(() =>
+      decodeIndex(encoded({ ...base, futureField: 1 })),
+    ).not.toThrow();
   });
   it("refuses a corrupt header and a truncated body", () => {
     const bytes = encodeIndex(base);

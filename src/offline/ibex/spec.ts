@@ -39,7 +39,11 @@ export const FLAG = {
   hasForest: 1 << 10,
 } as const;
 
-/** Only these four differ between a segment's two directions (measured, not assumed). */
+/**
+ * Stored on every record, mirrored or not: these differ between a segment's two directions
+ * (measured, not assumed). Anything else that differs, such as stress calmed only in a
+ * cycle route's signed direction, gets a full record instead of a mirror.
+ */
 export const DIRECTIONAL = ["utility", "cyclingNetwork", "junction", "reward"] as const;
 
 export type IbexErrorKind =

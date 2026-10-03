@@ -75,6 +75,29 @@ function nodeTable(nodes: Node[], edges: Edge[]): Node[] {
   return table;
 }
 
+/**
+ * Whether a reverse record can inherit everything outside `DIRECTIONAL` from its forward
+ * one. Usually it can, but not always: stress is calmed only in the direction a cycle
+ * route is signed, and a mirror would hand the reverse the forward's calmed value.
+ */
+function inheritable(forward: Edge, reverse: Edge): boolean {
+  return (
+    forward.stress === reverse.stress &&
+    forward.uncertainty === reverse.uncertainty &&
+    forward.urban === reverse.urban &&
+    forward.quality === reverse.quality &&
+    forward.forest === reverse.forest &&
+    forward.surface === reverse.surface &&
+    forward.highway === reverse.highway &&
+    forward.name === reverse.name &&
+    forward.bridge === reverse.bridge &&
+    forward.tunnel === reverse.tunnel &&
+    forward.ferryService === reverse.ferryService &&
+    forward.ferrySeconds === reverse.ferrySeconds &&
+    JSON.stringify(forward.tags) === JSON.stringify(reverse.tags)
+  );
+}
+
 export function encodeBlock(
   block: { x: number; y: number },
   nodes: Node[],
@@ -130,7 +153,8 @@ export function encodeBlock(
       edge.id === previous.id + 1 &&
       previous.id % 2 === 0 &&
       edge.from === previous.to &&
-      edge.to === previous.from;
+      edge.to === previous.from &&
+      inheritable(previous, edge);
 
     w.varint(edge.id - previousEdgeId);
     previousEdgeId = edge.id;
@@ -550,8 +574,7 @@ export function blockEdge(block: CompactBlock, i: number): Edge {
   };
   const r = new ByteReader(block.bytes);
   const source = block.source[i];
-  const previous =
-    source === -1 ? undefined : blockEdge(block, source);
+  const previous = source === -1 ? undefined : blockEdge(block, source);
   return readEdgeRecord(
     r.seek(block.offset[i]),
     ctx,
