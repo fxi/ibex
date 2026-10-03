@@ -354,7 +354,44 @@ export function spearman(x: number[], y: number[]): number {
   return num / Math.sqrt(sx * sy || 1);
 }
 
-async function evaluate(truthFile: string, cells: string) {
+/**
+ * A stretch's motor traffic from a flow estimate (`src/build/flow.ts`): the length-weighted
+ * mean of log10(1 + trips) over its ways, a way the estimate does not know counting as
+ * none. Undefined where it knows none of them, which means the stretch is outside it.
+ */
+function flowScore(m: Match, flow: Map<string, number>): number | undefined {
+  let known = false,
+    sum = 0,
+    length = 0;
+  for (const w of m.ways) {
+    const trips = flow.get(w.way);
+    if (trips !== undefined) known = true;
+    sum += w.m * Math.log10(1 + (trips ?? 0));
+    length += w.m;
+  }
+  return known && length ? sum / length : undefined;
+}
+
+/** Spearman and the pairs two or more levels apart that a score ranks the wrong way. */
+function rankAgainst(rows: { id: string; lts: number; score: number }[]) {
+  const rho = spearman(
+    rows.map((r) => r.lts),
+    rows.map((r) => r.score),
+  );
+  const inversions: string[] = [];
+  for (const a of rows)
+    for (const b of rows)
+      if (b.lts - a.lts >= 2 && a.score >= b.score)
+        inversions.push(
+          `${a.id} (LTS ${a.lts}, ${a.score.toFixed(2)}) ≥ ${b.id} (LTS ${b.lts}, ${b.score.toFixed(2)})`,
+        );
+  return { rho, inversions };
+}
+
+async function evaluate(truthFile: string, cells: string, flowFile?: string) {
+  const flow = flowFile
+    ? new Map(Object.entries(JSON.parse(fs.readFileSync(flowFile, "utf8")) as Record<string, number>))
+    : undefined;
   const provider = await openLocalProvider(cells);
   const truth = (
     JSON.parse(fs.readFileSync(truthFile, "utf8")) as TruthEntry[]
@@ -371,6 +408,7 @@ async function evaluate(truthFile: string, cells: string) {
       );
       continue;
     }
+    if (flow && flowScore(m, flow) === undefined) continue;
     rows.push({ e, m });
   }
   rows.sort((a, b) => a.e.lts! - b.e.lts! || a.m.stress - b.m.stress);
@@ -380,24 +418,20 @@ async function evaluate(truthFile: string, cells: string) {
         .slice(0, 2)
         .map((w) => `${w.highway}${w.why ? `[${w.why}]` : ""}`)
         .join(",")
-        .padEnd(36)} ${e.note.slice(0, 56)}`,
+        .padEnd(36)} ${flow ? `flow ${flowScore(m, flow)!.toFixed(2).padStart(5)}  ` : ""}${e.note.slice(0, 56)}`,
     );
-  const rho = spearman(
-    rows.map((r) => r.e.lts!),
-    rows.map((r) => r.m.stress),
-  );
-  // Each pair labelled at least two levels apart whose stress is the wrong way round.
-  const inversions: string[] = [];
-  for (const a of rows)
-    for (const b of rows)
-      if (b.e.lts! - a.e.lts! >= 2 && a.m.stress >= b.m.stress)
-        inversions.push(
-          `${a.e.id} (LTS ${a.e.lts}, ${a.m.stress.toFixed(2)}) ≥ ${b.e.id} (LTS ${b.e.lts}, ${b.m.stress.toFixed(2)})`,
-        );
-  console.log(
-    `\n${rows.length} stretches  Spearman ${rho.toFixed(3)}  inversions(≥2 levels) ${inversions.length}`,
-  );
-  for (const line of inversions) console.log(`  ${line}`);
+  // Each pair labelled at least two levels apart whose score is the wrong way round.
+  const report = (name: string, score: (m: Match) => number) => {
+    const { rho, inversions } = rankAgainst(
+      rows.map((r) => ({ id: r.e.id, lts: r.e.lts!, score: score(r.m) })),
+    );
+    console.log(
+      `\n${name}: ${rows.length} stretches  Spearman ${rho.toFixed(3)}  inversions(≥2 levels) ${inversions.length}`,
+    );
+    for (const line of inversions) console.log(`  ${line}`);
+  };
+  report("stress", (m) => m.stress);
+  if (flow) report("flow", (m) => flowScore(m, flow)!);
 }
 
 const [command, ...rest] = process.argv.slice(2);
@@ -406,7 +440,7 @@ const cells = flags.cells ?? DEFAULT_CELLS;
 if (command === "draft")
   await draft(files, cells, flags.out ?? ".cache/traffic-truth-draft.json");
 else if (command === "eval")
-  await evaluate(flags.truth ?? "tests/fixtures/traffic-truth.json", cells);
+  await evaluate(flags.truth ?? "tests/fixtures/traffic-truth.json", cells, flags.flow);
 else {
   console.error(
     "usage: traffic_truth.ts draft <gpx…> | eval [--truth <json>] [--cells <dir>]",
