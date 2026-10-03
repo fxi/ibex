@@ -280,6 +280,10 @@ function App() {
         lens={lens}
         onAddNote={notes.addNote}
         onFindAround={notes.findAround}
+        onEditTrack={(id) => {
+          tracks.select(id);
+          setTab("edit");
+        }}
         grid={tab === "data"}
         cellStates={data.cellStates}
         gridZoom={data.gridZoom}

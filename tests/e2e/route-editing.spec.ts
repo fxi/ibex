@@ -453,6 +453,47 @@ test("the base map control switches and remembers the base map", async ({
   ).toHaveAttribute("aria-checked", "true");
 });
 
+test("the map menu picks a track to edit", async ({ page }) => {
+  await arveRoute(page);
+  // Fired on the map rather than clicked, at a vertex of the drawn route: emulated on a
+  // phone, a right-click never reaches maplibre, and a real long-press is what the
+  // marker test covers.
+  const menuAt = () =>
+    page.locator(".map").evaluate(async (element) => {
+      const map = (element as HTMLElement & { _map: any })._map;
+      // The popup follows the map, so one opened mid-animation is never stable to click.
+      if (map.isMoving())
+        await new Promise((resolve) => map.once("moveend", resolve));
+      const geometry: number[][] = (
+        await map.getSource("route").getData()
+      ).features.flatMap((f: any) => f.geometry.coordinates);
+      const point = map.project(geometry[Math.floor(geometry.length / 2)]);
+      map.fire("contextmenu", {
+        point,
+        lngLat: map.unproject(point),
+        originalEvent: {},
+        preventDefault: () => {},
+      });
+    });
+  // Off the Edit tab nothing is being edited, so the route under the pointer is offered.
+  await page.getByRole("tab", { name: "Tracks", exact: true }).click();
+  await menuAt();
+  await page
+    .getByRole("button", { name: "Edit this track", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Edit", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  // Being edited now, it is not offered again.
+  await menuAt();
+  await expect(
+    page.getByRole("button", { name: "Edit in OSM", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit this track", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("a long-press on a waypoint opens its menu and nothing else", async ({
   page,
 }) => {

@@ -94,6 +94,7 @@ export function MapView({
   onInclude,
   onAddNote,
   onFindAround,
+  onEditTrack,
   notes,
   searchArea,
   lens,
@@ -136,6 +137,8 @@ export function MapView({
   onAddNote: (point: Point) => void;
   /** The map menu's "Find places around here". */
   onFindAround: (point: Point) => void;
+  /** The map menu's "Edit this track". */
+  onEditTrack: (id: string) => void;
   /** The active track's notes, drawn as dots. */
   notes: Note[];
   /** The circle a place search is limited to, if one is set. */
@@ -181,6 +184,7 @@ export function MapView({
     onInclude,
     onAddNote,
     onFindAround,
+    onEditTrack,
   });
   handlers.current = {
     onPoint,
@@ -191,6 +195,7 @@ export function MapView({
     onInclude,
     onAddNote,
     onFindAround,
+    onEditTrack,
   };
   const snapshot = useRef({
     editable,
@@ -610,6 +615,9 @@ export function MapView({
       onInclude: (index, point) => handlers.current.onInclude(index, point),
       onAddNote: (point) => handlers.current.onAddNote(point),
       onFindAround: (point) => handlers.current.onFindAround(point),
+      editing: () =>
+        snapshot.current.editable ? snapshot.current.activeId : undefined,
+      onEditTrack: (id) => handlers.current.onEditTrack(id),
       beforeOpen: () => handle.remove(),
       bottomInset: () => bottomInsetRef.current,
     });

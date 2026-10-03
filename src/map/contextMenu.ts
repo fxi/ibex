@@ -46,6 +46,10 @@ export function createContextMenu(options: {
   onAddNote: (point: Point) => void;
   /** Limit a place search to a circle around a point. */
   onFindAround: (point: Point) => void;
+  /** The track being edited, if any, read at open time. */
+  editing: () => string | undefined;
+  /** Make a track the active one and start editing it. */
+  onEditTrack: (id: string) => void;
   /** Called before opening, so the hover handle does not sit over the menu. */
   beforeOpen: () => void;
   /** Pixels at the bottom of the viewport the planner panel covers, read at open time. */
@@ -58,6 +62,8 @@ export function createContextMenu(options: {
     onInclude,
     onAddNote,
     onFindAround,
+    editing,
+    onEditTrack,
     beforeOpen,
     bottomInset,
   } = options;
@@ -102,9 +108,25 @@ export function createContextMenu(options: {
     return [q.lng, q.lat];
   };
 
+  /** Visible tracks drawn under a point, other than the one being edited. */
+  const tracksAt = (point: maplibregl.Point): Track[] => {
+    const at: Point = [point.x, point.y];
+    const current = editing();
+    return tracks().filter((t) => {
+      const result = t.visible && t.id !== current && freshResult(t);
+      if (!result) return false;
+      const line = result.geometry.map((p): Point => {
+        const q = m.project(p);
+        return [q.x, q.y];
+      });
+      return snapToLines([line], at, SNAP_PX) !== undefined;
+    });
+  };
+
   const open = (point: maplibregl.Point) => {
     const hit = locate(point);
     const street = streetPoint(point);
+    const under = tracksAt(point);
     beforeOpen();
     close();
     const location = m.unproject(point);
@@ -127,6 +149,12 @@ export function createContextMenu(options: {
     if (hit)
       action("Include in route", () =>
         onInclude(hit.index, [location.lng, location.lat]),
+      );
+    // Picking a track off the map, rather than hunting for it in the Tracks list. Where
+    // tracks overlap each gets its own entry, by name.
+    for (const t of under)
+      action(under.length === 1 ? "Edit this track" : `Edit ${t.name}`, () =>
+        onEditTrack(t.id),
       );
     // Where the rider pointed: a note or a search area need not sit on a road.
     action("Add note here", () => onAddNote([location.lng, location.lat]));
