@@ -98,7 +98,7 @@ describe("junctionSeverity", () => {
 });
 
 describe("rewardPotential", () => {
-  it("seeds from golden gravel and from forest, and decays with distance", () => {
+  it("seeds from golden gravel, and decays with distance", () => {
     const edges = chain(10);
     edges[0] = { ...edges[0], quality: 0.9 };
     const reward = rewardPotential(edges, undefined);
@@ -108,14 +108,10 @@ describe("rewardPotential", () => {
     expect(reward.get(1)!).toBeLessThanOrEqual(reward.get(0)!);
   });
 
-  it("treats deep forest as a source in its own right", () => {
+  it("does not treat forest as a source, however deep", () => {
     const edges = chain(10);
-    edges[0] = { ...edges[0], forest: 0.8 };
-    expect(rewardPotential(edges, undefined).get(0)!).toBeGreaterThan(0.4);
-    // Below the threshold it is not a source at all.
-    const shallow = chain(10);
-    shallow[0] = { ...shallow[0], forest: 0.5 };
-    expect(rewardPotential(shallow, undefined).size).toBe(0);
+    edges[0] = { ...edges[0], forest: 1 };
+    expect(rewardPotential(edges, undefined).size).toBe(0);
   });
 
   it("reaches nothing beyond the horizon", () => {

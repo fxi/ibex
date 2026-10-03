@@ -232,10 +232,10 @@ const UNPAVED_TRACKTYPES = new Set(["grade2", "grade3", "grade4", "grade5"]);
  *
  * `reward` is decayed distance to the nearest attractor ahead, which is right for
  * discounting a hard section with something good after it, and wrong on its own for
- * telling lines apart: with forest a 0.5-strength source, every road within a few hundred
- * metres of a wood reads about the same as the path through it. The way's own forest
- * cover and gravel quality say what riding *this* line is like, so the better of the
- * three is used.
+ * telling lines apart. The way's own forest cover and gravel quality say what riding
+ * *this* line is like, so the better of the three is used. Forest is the way's own and
+ * no longer pulls from afar (`rewardPotential`): the Voirons gold standards still want
+ * the wooded line itself, but a wood nearby promises nothing.
  */
 export const scenicValue = (edge: Edge): number =>
   Math.max(edge.reward ?? 0, edge.forest ?? 0, edge.quality ?? 0);

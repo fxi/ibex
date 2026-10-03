@@ -147,16 +147,19 @@ const REWARD_TAU = 600.0;
 const REWARD_FLOOR = 0.02;
 const REWARD_HORIZON = REWARD_TAU * Math.log(1 / REWARD_FLOOR);
 const QUALITY_SOURCE_THRESHOLD = 0.7;
-const FOREST_SOURCE_THRESHOLD = 0.6;
-const SOURCE_STRENGTH = { quality: 0.7, forest: 0.5 };
+const SOURCE_STRENGTH = { quality: 0.7 };
 
 /**
  * How close each node is to something worth riding to, decayed by distance.
  *
- * A reverse multi-source Dijkstra from every attractor — an amenity cluster, forest, golden
+ * A reverse multi-source Dijkstra from every attractor — an amenity cluster, golden
  * gravel — seeded at both ends of the attractor edge and propagated over the *reversed*
  * graph, so it measures riding the direction actually allowed. That is what lets the cost of
  * a hard section be discounted when the reward follows soon after.
+ *
+ * Forest is not an attractor. It was one, and 670 km of riding said it was the wrong idea
+ * (2026-10): the best lines are often open ground with a view, and some of the worst roads
+ * for fumes and lorries run through woods.
  */
 export function rewardPotential(
   edges: readonly PassEdge[],
@@ -166,8 +169,6 @@ export function rewardPotential(
     let strength = attraction ? attraction.sampleMax(edge.geometry) : 0;
     if (edge.quality >= QUALITY_SOURCE_THRESHOLD)
       strength = Math.max(strength, SOURCE_STRENGTH.quality);
-    if (edge.forest >= FOREST_SOURCE_THRESHOLD)
-      strength = Math.max(strength, SOURCE_STRENGTH.forest);
     return strength;
   };
 

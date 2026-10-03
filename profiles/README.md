@@ -192,9 +192,10 @@ coverage.
   Lacking a technical tag earns no credit — almost no way carries one, and crediting its
   absence priced a rough gravel track below "prefer" for a rider who avoids difficulty.
   What the bike and rider can physically handle stays two separate capabilities.
-- `scenic` — the better of proximity to viewpoints, peaks, forest and good ground (decayed
+- `scenic` — the better of proximity to viewpoints, peaks and good ground (decayed
   backwards along the direction of travel) and the way's own forest cover and gravel
-  quality. Proximity alone rated every road beside a wood like the path through it. It
+  quality. A wood nearby no longer pulls: it says nothing about the view, and a busy road
+  through one is still busy. It
   selects between lines; it does not invent landmarks or promise a particular detour
   length. Castles and other historic sites are not in the pack yet.
 - `urbanity` — how built-up the surroundings are, from land use and settlement density. A
