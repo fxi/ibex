@@ -373,6 +373,20 @@ export function subsetSource(source: CellSource, bbox: BBox, bounds?: WayBounds)
   for (const relation of relations)
     for (const m of relation.members) if (m.type === "node") want(m.ref);
   for (const node of nodes) want(node.id);
+  // An area's outline can run far past the box: the Canjuers firing range is larger than a
+  // cell and its halo. Without the members outside, its rings never close and the whole
+  // area silently vanishes, so they are carried for their shape alone — in `wayById`,
+  // where rings are read from, never in `ways`, where roads are.
+  for (const relation of relations) {
+    if (relation.tags.type !== "multipolygon") continue;
+    for (const m of relation.members) {
+      if (m.type !== "way" || wayById.has(m.ref)) continue;
+      const way = source.wayById.get(m.ref);
+      if (!way) continue;
+      wayById.set(way.id, way);
+      for (const ref of way.refs) want(ref);
+    }
+  }
   const ids = wanted.take();
   ids.sort();
   const lons = new Float64Array(ids.length);
@@ -407,6 +421,8 @@ export function subsetSource(source: CellSource, bbox: BBox, bounds?: WayBounds)
 export function mergeSources(parts: readonly CellSource[]): CellSource {
   if (parts.length === 1) return parts[0];
   const nodes = new Map<number, OsmNode>();
+  const ways = new Map<number, OsmWay>();
+  // Also the ways carried only to close an area's rings, which are not roads.
   const wayById = new Map<number, OsmWay>();
   const relations = new Map<number, OsmRelation>();
   const ids = new Doubles();
@@ -415,7 +431,8 @@ export function mergeSources(parts: readonly CellSource[]): CellSource {
   const seen = new Set<number>();
   for (const part of parts) {
     for (const node of part.nodes) if (!nodes.has(node.id)) nodes.set(node.id, node);
-    for (const way of part.ways) if (!wayById.has(way.id)) wayById.set(way.id, way);
+    for (const way of part.ways) if (!ways.has(way.id)) ways.set(way.id, way);
+    for (const [id, way] of part.wayById) if (!wayById.has(id)) wayById.set(id, way);
     for (const relation of part.relations)
       if (!relations.has(relation.id)) relations.set(relation.id, relation);
     for (const id of part.positions.everyId()) {
@@ -429,7 +446,7 @@ export function mergeSources(parts: readonly CellSource[]): CellSource {
   }
   return {
     nodes: [...nodes.values()],
-    ways: [...wayById.values()],
+    ways: [...ways.values()],
     relations: [...relations.values()],
     positions: NodeIndex.from([...ids.take()], [...lons.take()], [...lats.take()]),
     wayById,
