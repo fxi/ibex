@@ -24,10 +24,16 @@ npm run data:build -- --regions switzerland --publish --skip-built --terrain-bud
 npm run data:publish -- --dry-run        # what would go to the bucket
 npm run data:basemap -- --publish        # Protomaps basemap + fonts + sprite → map.json
 npm run data:cycle-routes -- --publish   # cycle/MTB route relations → map.json
+npm run data:map-cells -- --world --publish          # world pack: z0–6, fonts, sprite
+npm run data:map-cells -- --publish --skip-built     # one offline map pack per cell
+npm run test:coverage                    # unit coverage; CI publishes the README badge
+npm run release -- patch --push          # bump, tag, push: deploys, releases, cuts map packs
 ```
 
-Rerun both map scripts after the cell coverage grows: they cover the published cells'
-extent, and outside it the map has only world detail to z6 and no cycle routes.
+Rerun the map scripts after the cell coverage grows, in that order (map packs cut the
+published cycle routes): they cover the published cells' extent, and outside it the map
+has only world detail to z6 and no cycle routes. A cell without a map pack still installs
+and routes, but shows as stale and draws no map offline.
 
 A run of more than a handful of cells takes `--publish`: each one goes to the bucket as it
 is packed and leaves the disk, and `--skip-built` resumes. `--regions` takes Geofabrik
@@ -153,7 +159,9 @@ Read `docs/data-format.md` before touching `src/offline/`, `scripts/build_cells.
 - The remote is named `github`. Pushing to `main` triggers checks and the Pages deploy.
   Ask before pushing, tagging, or any S3 write (`npm run data:publish` without
   `--dry-run`, and `--setup-bucket`). Uploads are public and effectively permanent.
-- Tags `v*` must match the `package.json` version (`release.yml` checks it).
+- Release with `npm run release` only: tags `v*` must match the `package.json` version
+  (`release.yml` checks it), and the tag then runs `data.yml`, which writes map packs to
+  the bucket. Pushing a tag is therefore also an S3 write; ask first.
 
 ## Code conventions
 

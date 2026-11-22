@@ -1,5 +1,11 @@
 # Ibex
 
+[![Deploy](https://github.com/fxi/ibex/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/fxi/ibex/actions/workflows/deploy.yml)
+[![CodeQL](https://github.com/fxi/ibex/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/fxi/ibex/actions/workflows/codeql.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Ffxi.io%2Fibex%2Fbadges%2Fcoverage.json)](https://github.com/fxi/ibex/actions/workflows/deploy.yml)
+[![Release](https://img.shields.io/github/v/release/fxi/ibex?sort=semver)](https://github.com/fxi/ibex/releases)
+[![License: MIT](https://img.shields.io/github/license/fxi/ibex)](LICENCE)
+
 Choose the territory. Find your way.
 
 Ibex is an offline-capable cycling route planner that runs entirely in the browser. You download the map areas you ride in, and routing happens on your device against your own routing profile: no route or waypoint ever leaves it, unless you ask for places along it (below). The map can be browsed worldwide, and routing works wherever cells have been built.
@@ -25,6 +31,8 @@ npm run dev       # http://localhost:5173/ibex/
 `.env.example` points `VITE_DATA_URL` at the public data, so a fresh clone can download areas, route and draw the map right away. There is no map key: the basemap and cycle routes are PMTiles archives in the same bucket as the cells, relief comes from [Mapterhorn](https://mapterhorn.com), imagery from EOX Sentinel-2 cloudless, IGN and swisstopo, and place search from [Photon](https://photon.komoot.io).
 
 In **Data**, save an area; in **Tracks**, add a track and place two waypoints on the **Edit** tab; then use **Tools → Compute current track**.
+
+A downloaded area keeps its map offline as well as its routing: each cell comes with a map pack (basemap, cycle routes and relief to z14), and the first one with a small world map, fonts and icons. Outside the downloaded areas, and for place search and imagery, the app needs a connection.
 
 To test the service worker and offline mode, use a production build: `npm run build && npm run preview`. HTTPS is required to reopen the app offline on an iPhone; plain LAN HTTP still installs data and routes while the page is open.
 
@@ -95,10 +103,13 @@ bucket.
 | ------------- | ---------------------------- | ---------------------------------------------------------------------- |
 | `ci.yml`      | pull requests, branch pushes | lint, typecheck, unit and browser tests                                |
 | `deploy.yml`  | push to `main`, manual       | the checks above, then build and publish to Pages                      |
-| `release.yml` | tag `v*`                     | GitHub release with generated notes (tag must match `package.json`)    |
+| `release.yml` | tag `v*`                     | the checks, a GitHub release with generated notes, then `data.yml`     |
+| `data.yml`    | after a release, manual      | offline map packs for every published cell that lacks one             |
+| `codeql.yml`  | push, pull requests, weekly  | CodeQL static analysis (code scanning)                                 |
 
-Publishing data is a local step, not a workflow: cells are built on a machine with the
-disk and the OpenStreetMap downloads, and sent straight to the bucket.
+Routing cells are built and published locally, not in a workflow: they need the disk and
+the OpenStreetMap downloads, and go straight to the bucket. Their map packs are cut in CI
+after the next release, or at once with `npm run data:map-cells -- --publish --skip-built`.
 
 | Name                                                  | Kind     | Used by              |
 | ----------------------------------------------------- | -------- | -------------------- |
@@ -107,6 +118,17 @@ disk and the OpenStreetMap downloads, and sent straight to the bucket.
 | `VITE_HEATMAP_URL`, `S3_PREFIX`, `S3_PUBLIC_URL`, `APP_ORIGIN` | variables | deploy, data |
 
 Give CI an S3 key limited to the data bucket.
+
+### Releasing
+
+```sh
+npm run release -- patch --push     # or minor, major, x.y.z
+```
+
+`scripts/release.ts` runs the checks, bumps `package.json`, commits `chore: release vX.Y.Z`,
+tags it, and pushes both atomically. The push to `main` deploys the app; the tag makes the
+GitHub release and then cuts the map packs. The version shows in the map's attribution
+and at the foot of Configure, with the commit it was built from.
 
 ## Checks
 
