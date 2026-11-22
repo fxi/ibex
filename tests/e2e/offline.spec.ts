@@ -63,6 +63,33 @@ test("installs a region, restarts offline, routes and exports GPX", async ({
     (previous) => performance.timeOrigin !== previous,
     previousTimeOrigin,
   );
+  // The map comes back from the packs installed with the cell: the style loads from the
+  // saved index, and the road is drawn from the cell's own tiles, which the online
+  // archive cannot have supplied (only the packs carry `source: "pack"`).
+  // WebKit's outage is the server's, so the browser still thinks it is online.
+  if (browserName !== "webkit")
+    await expect(page.getByTestId("map-error")).toHaveText(
+      "Offline. The map shows downloaded areas only.",
+    );
+  await page.waitForFunction(
+    () => {
+      const map = (
+        document.querySelector(".map") as HTMLElement & {
+          _map?: {
+            querySourceFeatures: (
+              source: string,
+              options: { sourceLayer: string },
+            ) => { properties: Record<string, unknown> }[];
+          };
+        }
+      )._map;
+      return !!map
+        ?.querySourceFeatures("protomaps", { sourceLayer: "roads" })
+        .some((f) => f.properties.source === "pack");
+    },
+    {},
+    { timeout: 30000 },
+  );
   // Readiness now lives in the Data tab, so the restart has to look there for it.
   await page.getByRole("tab", { name: "Data", exact: true }).click();
   await expect(page.getByText(SAVED_TEXT, { exact: true })).toBeVisible();

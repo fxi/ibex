@@ -9,6 +9,7 @@ import {
   type StyleInputs,
 } from "../src/map/style";
 import { mapIndexURL, parseMapIndex } from "../src/map/resources";
+import { GLYPHS_URL, SPRITE_URL, tileURL } from "../src/map/tiles";
 
 const ROOT = "https://bucket.example/ibex/";
 const resources = parseMapIndex(
@@ -51,15 +52,21 @@ it("draws everything from the bucket or keyless services", () => {
     for (const l of style.layers)
       if ("source" in l) expect(style.sources).toHaveProperty(l.source);
   }
+  // Every map file goes through the `ibex://` protocol, which answers from the map packs
+  // on the device before the bucket named in the index.
   const outdoor = outdoorStyle(inputs);
   expect(outdoor.sources.protomaps).toMatchObject({
-    url: "pmtiles://https://bucket.example/ibex/basemap/abc.pmtiles",
+    tiles: [tileURL("basemap")],
+    maxzoom: 14,
   });
+  expect(outdoor.sources.cycle_routes).toMatchObject({ tiles: [tileURL("routes")] });
   expect(outdoor.sources.terrain).toMatchObject({
     type: "raster-dem",
     encoding: "terrarium",
+    tiles: [tileURL("terrain")],
   });
-  expect(outdoor.glyphs).toBe(resources.glyphs);
+  expect(outdoor.glyphs).toBe(GLYPHS_URL);
+  expect(outdoor.sprite).toBe(SPRITE_URL);
 });
 
 it("starts with the background alone until the map index arrives", () => {
@@ -79,8 +86,9 @@ it("draws relief from the index: Mapterhorn by default, another source, or none"
   };
   const own = parseMapIndex({ ...index, terrain: "dem/{z}/{x}/{y}.webp" }, ROOT);
   expect(own.terrain).toBe("https://bucket.example/ibex/dem/{z}/{x}/{y}.webp");
+  // The protocol fetches what the index names; the style only says relief is on.
   expect(outdoorStyle({ ...inputs, resources: own }).sources.terrain).toMatchObject({
-    tiles: [own.terrain],
+    tiles: [tileURL("terrain")],
   });
   const none = outdoorStyle({
     ...inputs,
@@ -173,4 +181,29 @@ it("asks Booking for hotels only, tonight, on its map", () => {
   expect(url.searchParams.get("checkout")).toBe("2027-01-01");
   expect(url.searchParams.get("nflt")).toBe("ht_id=204");
   expect(url.hash).toBe("#map_opened");
+});
+
+it("lists map packs under the data root, and refuses one pointing out of it", () => {
+  const file = {
+    path: "basemap.pmtiles",
+    url: "map-cells/9-264-181/abc.basemap.pmtiles",
+    bytes: 10,
+    sha256: "a".repeat(64),
+  };
+  const index = {
+    basemap: "b.pmtiles",
+    glyphs: "f/{fontstack}/{range}.pbf",
+    sprite: "s",
+    cells: { "9-264-181": { hash: "abcdef12", files: [file] } },
+  };
+  const parsed = parseMapIndex(index, ROOT);
+  expect(parsed.cells["9-264-181"].files[0].url).toBe(
+    "https://bucket.example/ibex/map-cells/9-264-181/abc.basemap.pmtiles",
+  );
+  expect(parsed.world).toBeUndefined();
+  expect(parseMapIndex({ ...index, cells: undefined }, ROOT).cells).toEqual({});
+  for (const url of ["../elsewhere.pmtiles", "https://other.example/x.pmtiles"])
+    expect(() =>
+      parseMapIndex({ ...index, cells: { "9-264-181": { hash: "abcdef12", files: [{ ...file, url }] } } }, ROOT),
+    ).toThrow();
 });

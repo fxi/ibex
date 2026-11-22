@@ -2,10 +2,13 @@ import { DATA_VERSION } from "./version";
 import { storageEstimate, sha256Hex } from "./capabilities";
 import { openDB } from "idb";
 import { z } from "zod";
+
+const CELL_ID = /^\d{1,2}-\d{1,8}-\d{1,8}$/;
+const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const fileSchema = z.object({
   path: z.enum(["index.ibx", "graph.ibx"]),
   bytes: z.number().int().positive().max(300_000_000),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  sha256,
 });
 /**
  * What is known about one installed cell.
@@ -18,7 +21,7 @@ const fileSchema = z.object({
 export const cellManifestSchema = z.object({
   dataVersion: z.literal(DATA_VERSION),
   // Hyphenated cell id, which is also the `packs` object-store key.
-  id: z.string().regex(/^\d{1,2}-\d{1,8}-\d{1,8}$/),
+  id: z.string().regex(CELL_ID),
   /** The identity of these bytes. A different hash in the catalogue means stale. */
   hash: z.string().regex(/^[a-f0-9]{8,64}$/),
   builtAt: z.string(),
@@ -41,29 +44,79 @@ export type CellManifest = Manifest;
 /** True for any pack this build can read; cells from another data version fail. */
 export const isCellManifest = (m: unknown): m is CellManifest =>
   cellManifestSchema.safeParse(m).success;
-export type Installed = {
-  manifest: Manifest;
+
+/** The files a map pack can hold, under the names the tile protocol asks for. */
+export const MAP_FILES = [
+  "basemap.pmtiles",
+  "routes.pmtiles",
+  "terrain.pmtiles",
+  "assets.json",
+] as const;
+/**
+ * What is kept for one installed map pack: the map tiles of one routing cell, or `world`,
+ * the whole world far out plus the fonts and sprite every map needs.
+ *
+ * Kept apart from the routing packs, in their own object store, because nothing that
+ * routes should ever see one: they share a cell id and nothing else.
+ */
+export const mapManifestSchema = z.object({
+  kind: z.literal("map"),
+  id: z.union([z.literal("world"), z.string().regex(CELL_ID)]),
+  hash: z.string().regex(/^[a-f0-9]{8,64}$/),
+  files: z
+    .array(
+      z.object({
+        path: z.enum(MAP_FILES),
+        bytes: z.number().int().positive().max(300_000_000),
+        sha256,
+      }),
+    )
+    .min(1)
+    .max(MAP_FILES.length),
+});
+export type MapManifest = z.infer<typeof mapManifestSchema>;
+export const isMapManifest = (m: unknown): m is MapManifest =>
+  mapManifestSchema.safeParse(m).success;
+
+type FileEntry = { path: string; bytes: number; sha256: string };
+type PackManifest = { id: string; hash: string; files: readonly FileEntry[] };
+/** A pack on the device: its manifest, and where its files are. */
+export type Stored<M extends PackManifest> = {
+  manifest: M;
   installedAt: string;
   directory: string;
   backend: "opfs" | "idb";
 };
+export type Installed = Stored<Manifest>;
+export type MapInstalled = Stored<MapManifest>;
+
+type StoreName = "packs" | "maps";
+const storeOf = (manifest: PackManifest): StoreName =>
+  "kind" in manifest && manifest.kind === "map" ? "maps" : "packs";
+
 const db = () =>
-  openDB("ibex", 1, {
-    upgrade(database) {
-      database.createObjectStore("packs");
-      database.createObjectStore("files");
-      database.createObjectStore("preferences");
+  openDB("ibex", 2, {
+    upgrade(database, from) {
+      if (from < 1) {
+        database.createObjectStore("packs");
+        database.createObjectStore("files");
+        database.createObjectStore("preferences");
+      }
+      if (from < 2) database.createObjectStore("maps");
     },
   });
 export async function listPacks(): Promise<Installed[]> {
   return (await db()).getAll("packs");
+}
+export async function listMapPacks(): Promise<MapInstalled[]> {
+  return (await db()).getAll("maps");
 }
 const root = async () =>
   (await navigator.storage.getDirectory()).getDirectoryHandle("ibex", {
     create: true,
   });
 export async function readFile(
-  pack: Installed,
+  pack: Stored<PackManifest>,
   path: string,
 ): Promise<ArrayBuffer> {
   if (!pack.manifest.files.some((f) => f.path === path))
@@ -77,7 +130,7 @@ export async function readFile(
   return (await (await directory.getFileHandle(path)).getFile()).arrayBuffer();
 }
 export async function readRange(
-  pack: Installed,
+  pack: Stored<PackManifest>,
   path: string,
   offset: number,
   length: number,
@@ -118,7 +171,7 @@ export async function readJSON<T>(pack: Installed, path: string): Promise<T> {
   }
   return JSON.parse(new TextDecoder().decode(output));
 }
-export async function removePack(pack: Installed) {
+export async function removePack(pack: Stored<PackManifest>) {
   const database = await db();
   if (pack.backend === "opfs")
     await (await root()).removeEntry(pack.directory, { recursive: true });
@@ -128,9 +181,10 @@ export async function removePack(pack: Installed) {
       await tx.store.delete(`${pack.directory}/${f.path}`);
     await tx.done;
   }
-  const current = await database.get("packs", pack.manifest.id);
+  const store = storeOf(pack.manifest);
+  const current = await database.get(store, pack.manifest.id);
   if (current?.directory === pack.directory)
-    await database.delete("packs", pack.manifest.id);
+    await database.delete(store, pack.manifest.id);
 }
 /**
  * Install one cell.
@@ -148,20 +202,51 @@ export async function installPack(
   const paths = new Set(manifest.files.map((f) => f.path));
   if (paths.size !== 2 || !paths.has("index.ibx") || !paths.has("graph.ibx"))
     throw new Error("A cell needs exactly an index.ibx and a graph.ibx");
+  return installFiles(manifest, `${manifest.id}-${manifest.hash}`, sources, progress, signal);
+}
+/** Install the map tiles of one cell, or the world pack. */
+export async function installMapPack(
+  manifest: MapManifest,
+  sources: Record<string, string>,
+  progress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<MapInstalled> {
+  const parsed = mapManifestSchema.parse(manifest);
+  if (new Set(parsed.files.map((f) => f.path)).size !== parsed.files.length)
+    throw new Error("A map pack names a file twice");
+  return installFiles(parsed, `map-${parsed.id}-${parsed.hash}`, sources, progress, signal);
+}
+class NoStorage extends Error {
+  constructor() {
+    super("Not enough storage to install this region");
+  }
+}
+async function installFiles<M extends PackManifest>(
+  manifest: M,
+  directoryName: string,
+  sources: Record<string, string>,
+  progress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<Stored<M>> {
+  const store = storeOf(manifest);
   const total = manifest.files.reduce((s, f) => s + f.bytes, 0);
   if (total > 400_000_000)
     throw new Error("Pack exceeds this prototype’s 400 MB storage limit");
+  // The estimate counts the whole origin, which fxi.io shares with other projects, and
+  // browsers shrink the quota with free disk: usage above quota was seen on a disk with
+  // 25 GB free, refusing a 14 MB cell. Trust it only when it adds up; otherwise the
+  // write itself is the test, and its quota error says the same thing below.
   const estimate = await storageEstimate();
-  if (estimate.quota && estimate.quota - (estimate.usage ?? 0) < total * 1.15)
-    throw new Error("Not enough storage to install this region");
+  const free = (estimate.quota ?? 0) - (estimate.usage ?? 0);
+  if (estimate.quota && free > 0 && free < total * 1.15) throw new NoStorage();
   await navigator.storage?.persist?.().catch(() => false);
   const database = await db(),
-    previous: Installed | undefined = await database.get("packs", manifest.id);
+    previous: Stored<M> | undefined = await database.get(store, manifest.id);
   if (previous?.manifest.hash === manifest.hash) return previous;
-  const pack: Installed = {
+  const pack: Stored<M> = {
     manifest,
     installedAt: new Date().toISOString(),
-    directory: `${manifest.id}-${manifest.hash}`,
+    directory: directoryName,
     backend:
       typeof navigator.storage?.getDirectory === "function" ? "opfs" : "idb",
   };
@@ -250,14 +335,16 @@ export async function installPack(
       done += received;
     }
     signal.throwIfAborted();
-    await database.put("packs", pack, manifest.id);
+    await database.put(store, pack, manifest.id);
     await database.delete("preferences", resumeKey);
   } catch (e) {
-    if (signal.aborted) {
+    const full = e instanceof DOMException && e.name === "QuotaExceededError";
+    // A partial pack kept for resuming is no use when the disk is what stopped it.
+    if (signal.aborted || full) {
       await removePack(pack).catch(() => {});
       await database.delete("preferences", resumeKey);
     }
-    throw e;
+    throw full ? new NoStorage() : e;
   }
   if (previous) await removePack(previous).catch(() => {});
   return pack;

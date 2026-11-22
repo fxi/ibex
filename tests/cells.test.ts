@@ -104,6 +104,12 @@ describe("cell state", () => {
     expect(cellState(ID, undefined, pack())).toBe("installed");
   });
 
+  it("reports update-available when the cell's map pack is missing or older", () => {
+    // Routing data current, map not: one update brings the map, the graph is kept.
+    expect(cellState(ID, cell(), pack(), { mapStale: new Set([ID]) })).toBe("update-available");
+    expect(cellState(ID, cell(), pack(), { mapStale: new Set() })).toBe("installed");
+  });
+
   it("gives every state a paint colour", () => {
     const states: CellState[] = [
       "unavailable",

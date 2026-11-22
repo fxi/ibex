@@ -11,6 +11,7 @@ import {
   type Flavor,
 } from "@protomaps/basemaps";
 import type { MapResources } from "./resources";
+import { BASEMAP_MAXZOOM, GLYPHS_URL, SPRITE_URL, tileURL } from "./tiles";
 
 /** Mapterhorn is z12 almost everywhere; beyond it hillshade and contours overzoom. */
 export const TERRAIN_MAXZOOM = 12;
@@ -333,7 +334,9 @@ function sources(inputs: StyleInputs): StyleSpecification["sources"] {
   if (r?.terrain) {
     out.terrain = {
       type: "raster-dem",
-      tiles: [r.terrain],
+      // Every map file goes through the `ibex://` protocol, which answers from the map
+      // packs on the device before the network (src/map/tiles.ts).
+      tiles: [tileURL("terrain")],
       encoding: "terrarium",
       tileSize: 512,
       maxzoom: TERRAIN_MAXZOOM,
@@ -345,13 +348,16 @@ function sources(inputs: StyleInputs): StyleSpecification["sources"] {
   if (r) {
     out.protomaps = {
       type: "vector",
-      url: `pmtiles://${r.basemap}`,
+      tiles: [tileURL("basemap")],
+      maxzoom: BASEMAP_MAXZOOM,
       attribution: `<a href="https://protomaps.com">Protomaps</a> ${OSM}`,
     };
     if (r.cycleRoutes)
       out.cycle_routes = {
         type: "vector",
-        url: `pmtiles://${r.cycleRoutes}`,
+        tiles: [tileURL("routes")],
+        minzoom: 5,
+        maxzoom: 14,
         attribution: OSM,
       };
   }
@@ -388,8 +394,8 @@ export function outdoorStyle(inputs: StyleInputs): StyleSpecification {
   const firstRoad = lines.findIndex((l) => l.id.startsWith("roads_"));
   return {
     version: 8,
-    glyphs: r.glyphs,
-    sprite: r.sprite,
+    glyphs: GLYPHS_URL,
+    sprite: SPRITE_URL,
     sources: src,
     layers: [
       ...lines.slice(0, firstRoad),

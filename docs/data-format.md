@@ -10,10 +10,17 @@ in browser tests. Building the cells is covered in [data-pipeline.md](data-pipel
 <data root>/                             VITE_DATA_URL points here
   catalog.json                           every cell that exists; the only thing that changes
   map.json                               the basemap files below; changes when they do
-  basemap/<hash>.pmtiles                 Protomaps: the world to z6, the cells' box to z15
+  basemap/<hash>.pmtiles                 Protomaps: the world to z6, the cells' box to z14
   cycle-routes/<hash>.pmtiles            OSM cycle and MTB route relations, layer cycle_routes
   assets/fonts/<fontstack>/<range>.pbf   glyphs for the basemap labels
   assets/sprites/v4/light*.{json,png}    basemap icons
+  map-cells/9-264-181/
+    <hash>.basemap.pmtiles               the map pack of one cell: Protomaps z7–14,
+    <hash>.routes.pmtiles                cycle routes z7–14,
+    <hash>.terrain.pmtiles               Mapterhorn relief z7–12
+  map-world/
+    <hash>.basemap.pmtiles               the world pack: Protomaps to z6,
+    <hash>.assets.json                   and the fonts and sprite as base64 by path
   cells/
     9-264-181/
       a1b2c3d4e5f60718.index.ibx         64-byte header + block directory
@@ -29,6 +36,29 @@ the map draws needs a key: relief comes from Mapterhorn (or whatever `map.json` 
 `terrain`; `null` turns it off, as the test fixture does), imagery from EOX, IGN and
 swisstopo, all keyless. There is no pointer, no release directory, no
 edition and no version segment in any path.
+
+## Map packs
+
+The map works offline where the cells do. Each cell has a map pack, downloaded with it in
+the same job, and the first cell also brings the world pack. `scripts/map_cells.ts` cuts
+them from the same sources the online map reads, and `map.json` lists them:
+
+```json
+"world": { "hash": "…", "files": [{ "path": "basemap.pmtiles", "url": "map-world/….basemap.pmtiles", "bytes": 45126582, "sha256": "…" }, …] },
+"cells": { "9-265-181": { "hash": "…", "build": "20261121", "files": [ … ] } }
+```
+
+A pack's `hash` covers its files; an installed cell whose map pack hash differs, or which
+has none, shows as stale and one update fetches only the map. Packs start at z7, so zooming
+out over a downloaded area stays drawn; z7 and z8 tiles repeat across the cells under them.
+
+The app reads every map file through its `ibex://` protocol (`src/map/tiles.ts`): a tile
+at z9 or deeper comes from the pack of the cell under it, z7–8 from any installed pack
+beneath, z0–6 from the world pack, and anything else from the bucket. An installed pack is
+authoritative for what it covers. The online basemap stops at z14 like the packs, so the
+map looks the same with or without a connection. `map.json` itself is saved on the device
+so the style loads offline. Sizes, measured 2026-11-21: 12–23 MB of basemap and 7–13 MB of
+relief per cell, 56 MB for the world pack.
 
 **Files are named after their content.** A cell's `hash` is the digest of the two files it
 holds, and it prefixes both of them. So a published object never changes: a rebuilt cell is
@@ -114,7 +144,7 @@ Nothing else is consulted.
 |---|---|
 | `cells/**/*.ibx` | `public, max-age=31536000, immutable` |
 | `catalog.json`, `map.json` | `public, max-age=300, must-revalidate` |
-| `basemap/*`, `cycle-routes/*` | `public, max-age=31536000, immutable` |
+| `basemap/*`, `cycle-routes/*`, `map-cells/**`, `map-world/*` | `public, max-age=31536000, immutable` |
 | `assets/**` | `public, max-age=604800` |
 
 The catalogue is also fetched with `cache: "no-cache"` by the app, so a cell published a

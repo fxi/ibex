@@ -272,6 +272,7 @@ function App() {
         debug={debug}
         history={history}
         basemap={basemap}
+        mapPacks={data.mapPacks}
         dimmed={dimmed}
         tracks={tracks.collection?.tracks ?? []}
         activeId={active?.id}

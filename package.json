@@ -21,7 +21,8 @@
     "data:build": "node --import tsx --max-old-space-size=12000 scripts/build_cells.ts",
     "data:publish": "node --import tsx scripts/publish.ts",
     "data:basemap": "node --import tsx scripts/basemap.ts",
-    "data:cycle-routes": "node --import tsx --max-old-space-size=8000 scripts/cycle_routes.ts"
+    "data:cycle-routes": "node --import tsx --max-old-space-size=8000 scripts/cycle_routes.ts",
+    "data:map-cells": "node --import tsx scripts/map_cells.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

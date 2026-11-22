@@ -250,6 +250,60 @@ for (const font of ["Noto Sans Regular", "Noto Sans Medium"]) {
   await fs.mkdir(`${directory}/map/fonts/${font}`, { recursive: true });
   await fs.writeFile(`${directory}/map/fonts/${font}/0-255.pbf`, new Uint8Array());
 }
+/**
+ * Map packs, as `scripts/map_cells.ts` publishes them: the cell's own tiles from z7, and a
+ * world pack to z6 with the fonts and sprite, so the browser test can reload offline and
+ * still draw the road. The tiles carry `source: "pack"`, which the online archive's do not,
+ * so a test can tell where a drawn tile came from.
+ */
+const packFile = async (prefix: string, path: string, bytes: Uint8Array) => {
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const url = `${prefix}/${sha256.slice(0, 16)}.${path}`;
+  await fs.mkdir(`${directory}/${prefix}`, { recursive: true });
+  await fs.writeFile(`${directory}/${url}`, bytes);
+  return { path, url, bytes: bytes.length, sha256 };
+};
+const packHash = (files: { path: string; sha256: string }[]) =>
+  createHash("sha256")
+    .update(files.map((e) => `${e.path}:${e.sha256}`).join("\n"))
+    .digest("hex")
+    .slice(0, 16);
+const tiles = async (layer: string, properties: Record<string, string>, zooms: string[]) => {
+  const source = `${directory}/pack.geojsonl`;
+  const target = `${directory}/pack.pmtiles`;
+  await fs.writeFile(source, line({ ...properties, source: "pack" }));
+  const tippecanoe = spawnSync(
+    "tippecanoe",
+    ["-o", target, "--force", "--quiet", "-l", layer, ...zooms, source],
+    { stdio: "inherit" },
+  );
+  if (tippecanoe.status !== 0) throw new Error(`tippecanoe exited ${tippecanoe.status}`);
+  const bytes = new Uint8Array(await fs.readFile(target));
+  await fs.rm(source);
+  await fs.rm(target);
+  return bytes;
+};
+await fs.rm(`${directory}/map-cells`, { recursive: true, force: true });
+await fs.rm(`${directory}/map-world`, { recursive: true, force: true });
+const road = { kind: "minor_road", kind_detail: "residential" };
+const cellFiles = [
+  await packFile(`map-cells/${id}`, "basemap.pmtiles", await tiles("roads", road, ["-Z7", "-z14"])),
+  await packFile(
+    `map-cells/${id}`,
+    "routes.pmtiles",
+    await tiles("cycle_routes", { route: "bicycle", network: "rcn", ref: "1" }, ["-Z7", "-z14"]),
+  ),
+];
+const assets: Record<string, string> = {};
+for (const font of ["Noto Sans Regular", "Noto Sans Medium"]) assets[`glyphs/${font}/0-255.pbf`] = "";
+for (const scale of ["", "@2x"]) {
+  assets[`sprite/light${scale}.json`] = Buffer.from("{}\n").toString("base64");
+  assets[`sprite/light${scale}.png`] = PIXEL.toString("base64");
+}
+const worldFiles = [
+  await packFile("map-world", "basemap.pmtiles", await tiles("roads", road, ["-Z0", "-z6"])),
+  await packFile("map-world", "assets.json", new TextEncoder().encode(JSON.stringify(assets))),
+];
 await fs.writeFile(
   `${directory}/map.json`,
   JSON.stringify(
@@ -259,6 +313,8 @@ await fs.writeFile(
       glyphs: "map/fonts/{fontstack}/{range}.pbf",
       sprite: "map/sprites/light",
       terrain: null,
+      world: { hash: packHash(worldFiles), files: worldFiles },
+      cells: { [id]: { hash: packHash(cellFiles), files: cellFiles } },
     },
     null,
     2,

@@ -38,10 +38,7 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
   const adding = [...intents]
     .filter(([, i]) => i !== "remove")
     .map(([id]) => id);
-  const bytes =
-    catalogue?.cells
-      .filter((c) => adding.includes(c.id))
-      .reduce((sum, c) => sum + c.bytes, 0) ?? 0;
+  const bytes = data.downloadBytes(adding);
 
   return (
     <>
@@ -215,7 +212,7 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
                       >
                         <span className="cell-name">{label}</span>
                         <span className="cell-size">
-                          {formatBytes(cell.bytes)}
+                          {formatBytes(data.cellBytes(cell.id))}
                         </span>
                         <span className="cell-state">{state}</span>
                       </button>
@@ -256,8 +253,8 @@ export function DataPanel({ ctx }: { ctx: PanelContext }) {
 
       <p className="hint">{storage}</p>
       <p className="note">
-        Downloaded data supports local routing. The background map and place
-        search need an internet connection.
+        Downloaded areas keep the map and routing without a connection. Place
+        search, satellite imagery and the map outside those areas need one.
       </p>
     </>
   );

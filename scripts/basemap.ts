@@ -4,7 +4,7 @@
  *
  * The planet build is 130 GB; the app needs the ground its cells cover and the rest of the
  * world only far enough out to find it. So this cuts the covered box at full detail from
- * zoom 7, the whole world up to zoom 6, and joins them into one archive. `pmtiles extract`
+ * zoom 7 to 14, the whole world up to zoom 6, and joins them into one archive. `pmtiles extract`
  * reads the daily build by range request, so nothing but the result touches the disk.
  *
  *   node --import tsx scripts/basemap.ts --dry-run
@@ -14,11 +14,9 @@
  * Needs `pmtiles` (go-pmtiles) and `tile-join` (tippecanoe) on the PATH.
  */
 import fs from "node:fs/promises";
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import { cellBBox, parseCellId, type BBox } from "../src/geo/grid";
 import { client, IMMUTABLE, putLargeFile, putObject, updateMapIndex, type Bucket } from "./s3";
+import { ASSETS, download, FONTS, latestBuild, protomapsBuild, run, sha256, SPRITES } from "./map_lib";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(`--${name}`);
@@ -27,11 +25,6 @@ const option = (name: string) => {
   return at >= 0 ? args[at + 1] : undefined;
 };
 
-const BUILDS = "https://build-metadata.protomaps.dev/builds.json";
-const ASSETS = "https://protomaps.github.io/basemaps-assets";
-/** The fonts the Protomaps layers and the app's own labels ask for. */
-const FONTS = ["Noto Sans Regular", "Noto Sans Medium", "Noto Sans Italic"];
-const SPRITES = ["light.json", "light.png", "light@2x.json", "light@2x.png"];
 /** Fonts and sprites keep their names across releases, so they are cached for a week. */
 const WEEK = "public, max-age=604800";
 
@@ -39,20 +32,6 @@ const out = option("out") ?? ".cache/basemap";
 const worldMaxzoom = Number(option("world-maxzoom") ?? 6);
 const dryRun = flag("dry-run");
 const publish = flag("publish");
-
-function run(command: string, argv: string[]) {
-  console.log(`  $ ${command} ${argv.join(" ")}`);
-  const result = spawnSync(command, argv, { stdio: "inherit" });
-  if (result.error) throw new Error(`${command}: ${result.error.message}`);
-  if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
-}
-
-async function latestBuild(): Promise<string> {
-  const builds = (await (await fetch(BUILDS)).json()) as { key: string }[];
-  const key = builds.map((b) => b.key).sort().at(-1);
-  if (!key) throw new Error("No Protomaps build listed");
-  return key.replace(/\.pmtiles$/, "");
-}
 
 /** The published cells' extent, padded so the edge of the covered ground is not the map's. */
 async function coveredBox(): Promise<BBox> {
@@ -76,14 +55,8 @@ async function coveredBox(): Promise<BBox> {
     .map((v) => Math.round(v * 1000) / 1000) as BBox;
 }
 
-async function sha256(file: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
-}
-
 async function buildArchive(build: string, bbox: BBox): Promise<string> {
-  const source = `https://build.protomaps.com/${build}.pmtiles`;
+  const source = protomapsBuild(build);
   await fs.mkdir(out, { recursive: true });
   const world = `${out}/world-${build}.pmtiles`;
   const region = `${out}/region-${build}.pmtiles`;
@@ -93,27 +66,14 @@ async function buildArchive(build: string, bbox: BBox): Promise<string> {
   const extract = (to: string, extra: string[]) =>
     run("pmtiles", ["extract", source, to, ...extra, ...(dryRun ? ["--dry-run"] : [])]);
   extract(world, [`--maxzoom=${worldMaxzoom}`]);
-  extract(region, [`--bbox=${bbox.join(",")}`, `--minzoom=${worldMaxzoom + 1}`]);
+  // The app stops at z14 and overzooms (src/map/tiles.ts), so z15 would be bytes nobody reads.
+  extract(region, [`--bbox=${bbox.join(",")}`, `--minzoom=${worldMaxzoom + 1}`, "--maxzoom=14"]);
   if (dryRun) return merged;
   // The zoom ranges do not overlap, so joining never merges two versions of one tile.
   run("tile-join", ["-o", merged, "--no-tile-size-limit", "--force", world, region]);
   await fs.rm(world);
   await fs.rm(region);
   return merged;
-}
-
-/** Fetch a URL, or nothing for a 404: not every font covers every glyph range. */
-async function download(url: string): Promise<Uint8Array | undefined> {
-  // GitHub Pages answers the odd 503 across 768 requests; one of them once stopped a
-  // publish after the 6 GB archive was already up.
-  for (let attempt = 1; ; attempt++) {
-    const response = await fetch(url);
-    if (response.status === 404) return undefined;
-    if (response.ok) return new Uint8Array(await response.arrayBuffer());
-    if (response.status < 500 || attempt === 5)
-      throw new Error(`${url}: HTTP ${response.status}`);
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
-  }
 }
 
 async function publishAssets(at: Bucket) {

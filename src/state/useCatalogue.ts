@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isCellManifest,
+  isMapManifest,
+  listMapPacks,
   listPacks,
   removePack,
   type Installed,
+  type MapInstalled,
 } from "../offline/store";
+import {
+  loadMapResources,
+  mapPackJob,
+  type MapPackEntry,
+  type MapResources,
+} from "../map/resources";
+import { DATA_ROOT } from "../config";
 import { storageEstimate } from "../offline/capabilities";
 import {
   cachedCatalogue,
@@ -21,6 +31,12 @@ import {
   type CellIntent,
 } from "../offline/cells";
 import DataWorker from "../workers/data.worker.ts?worker&inline";
+
+const packBytes = (entry: MapPackEntry | undefined) =>
+  entry?.files.reduce((sum, f) => sum + f.bytes, 0) ?? 0;
+/** Whether the installed map pack is the one the index offers. */
+const current = (entry: MapPackEntry | undefined, held: MapInstalled | undefined) =>
+  !entry || held?.manifest.hash === entry.hash;
 
 export type CatalogueState = ReturnType<typeof useCatalogue>;
 
@@ -45,6 +61,13 @@ export function useCatalogue({
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue>();
   const [installed, setInstalled] = useState<Installed[]>([]);
+  // The map tiles of each cell, and the world pack, kept apart from the routing packs.
+  const [mapPacks, setMapPacks] = useState<MapInstalled[]>([]);
+  const [mapIndex, setMapIndex] = useState<MapResources>();
+  const mapPacksRef = useRef<MapInstalled[]>([]);
+  mapPacksRef.current = mapPacks;
+  const mapIndexRef = useRef<MapResources | undefined>(undefined);
+  mapIndexRef.current = mapIndex;
   const [catalogueError, setCatalogueError] = useState("");
   const [notice, setNotice] = useState("");
   const [intents, setIntents] = useState<ReadonlyMap<string, CellIntent>>(
@@ -71,6 +94,29 @@ export function useCatalogue({
   const changed = useRef(onDataChange);
   changed.current = onDataChange;
 
+  /** The map packs that go with a cell: its own, and the world pack if it is not current. */
+  function mapJobs(id: string) {
+    const index = mapIndexRef.current;
+    if (!index) return [];
+    const held = new Map(mapPacksRef.current.map((p) => [p.manifest.id, p]));
+    return [
+      ...(index.cells[id] ? [[id, index.cells[id]] as const] : []),
+      ...(index.world ? [["world", index.world] as const] : []),
+    ]
+      .filter(([packId, entry]) => !current(entry, held.get(packId)))
+      .map(([packId, entry]) => mapPackJob(packId, entry));
+  }
+
+  /** Re-read what is on the device, after a job that may have stopped half way. */
+  function reloadInstalled() {
+    listPacks()
+      .then((packs) => setInstalled(packs.filter((p) => isCellManifest(p.manifest))))
+      .catch(() => {});
+    listMapPacks()
+      .then((packs) => setMapPacks(packs.filter((p) => isMapManifest(p.manifest))))
+      .catch(() => {});
+  }
+
   function nextInstall() {
     const next = pending.current.shift();
     installing.current = next;
@@ -89,6 +135,7 @@ export function useCatalogue({
       type: "install",
       manifest: toManifest(current, cell),
       sources: cellSources(catalogueURL.current, cell),
+      maps: mapJobs(next),
     });
   }
 
@@ -108,6 +155,17 @@ export function useCatalogue({
           ...previous.filter((p) => p.manifest.id !== cell),
           data.pack,
         ]);
+        const maps = (data.maps ?? []) as MapInstalled[];
+        if (maps.length) {
+          const ids = new Set(maps.map((p) => p.manifest.id));
+          // The ref is read by the next job, which is posted before React renders again;
+          // without it the world pack would be queued with every cell of a bulk run.
+          mapPacksRef.current = [
+            ...mapPacksRef.current.filter((p) => !ids.has(p.manifest.id)),
+            ...maps,
+          ];
+          setMapPacks(mapPacksRef.current);
+        }
         onStatus(`Saved ${data.pack.manifest.name}`);
         if (cell) {
           setQueuedCells((previous) => {
@@ -128,6 +186,8 @@ export function useCatalogue({
         // A cancelled download is not a failure to report: the user asked for it, and
         // cancelDownloads has already cleared the queue and the progress bar.
         if (data.aborted) return;
+        // The cell's routing pack may be in while its map pack is not.
+        reloadInstalled();
         const cell = installing.current;
         if (cell) {
           setFailedCells((previous) => new Map(previous).set(cell, data.error));
@@ -153,6 +213,11 @@ export function useCatalogue({
           setInstalled((previous) =>
             previous.filter((p) => p.manifest.id !== removed),
           );
+        const maps = new Set((data.maps ?? []) as string[]);
+        if (maps.size) {
+          mapPacksRef.current = mapPacksRef.current.filter((p) => !maps.has(p.manifest.id));
+          setMapPacks(mapPacksRef.current);
+        }
         onStatus(removed ? `Removed ${removed}` : "Removed");
       }
     };
@@ -176,6 +241,26 @@ export function useCatalogue({
         }
       })
       .catch(() => onError("Browser storage unavailable"));
+
+    listMapPacks()
+      .then(async (packs) => {
+        if (disposed) return;
+        const usable = packs.filter((p) => isMapManifest(p.manifest));
+        setMapPacks(usable);
+        await Promise.all(
+          packs
+            .filter((p) => !usable.includes(p))
+            .map((p) => removePack(p).catch(() => undefined)),
+        );
+      })
+      .catch(() => {});
+
+    // Without a map index the cells still install, only without their map.
+    loadMapResources(DATA_ROOT)
+      .then((index) => {
+        if (!disposed) setMapIndex(index);
+      })
+      .catch(() => {});
 
     readCatalogue(pointerURL)
       .then((v) => {
@@ -201,10 +286,10 @@ export function useCatalogue({
 
     storageEstimate()
       .then((e) => {
-        if (!disposed && e.quota)
-          setStorage(
-            `${((e.quota - (e.usage ?? 0)) / 1e9).toFixed(1)} GB available`,
-          );
+        const free = (e.quota ?? 0) - (e.usage ?? 0);
+        // Usage above quota is the browser's arithmetic, not a fact about this app.
+        if (!disposed && e.quota && free > 0)
+          setStorage(`${(free / 1e9).toFixed(1)} GB available`);
       })
       .catch(() => {});
 
@@ -214,6 +299,16 @@ export function useCatalogue({
     };
   }, []);
 
+  // An installed cell whose map pack is missing or older than the index offers is stale,
+  // like one whose routing data is: one update brings both.
+  const mapStale = useMemo(() => {
+    const held = new Map(mapPacks.map((p) => [p.manifest.id, p]));
+    return new Set(
+      installed
+        .map((p) => p.manifest.id)
+        .filter((id) => !current(mapIndex?.cells[id], held.get(id))),
+    );
+  }, [installed, mapPacks, mapIndex]);
   const cells = useMemo(
     () =>
       catalogue
@@ -222,6 +317,7 @@ export function useCatalogue({
             queued: queuedCells,
             downloading: downloadingCell,
             failed: failedCells,
+            mapStale,
           })
         : undefined,
     [
@@ -231,6 +327,7 @@ export function useCatalogue({
       queuedCells,
       downloadingCell,
       failedCells,
+      mapStale,
     ],
   );
   // The map draws the grid for its own viewport, most of which nobody has built, so it
@@ -242,8 +339,9 @@ export function useCatalogue({
         queued: queuedCells,
         downloading: downloadingCell,
         failed: failedCells,
+        mapStale,
       }),
-    [catalogue, installed, intents, queuedCells, downloadingCell, failedCells],
+    [catalogue, installed, intents, queuedCells, downloadingCell, failedCells, mapStale],
   );
   const savedCells = useMemo(
     () => installedCells(installed, catalogue),
@@ -253,6 +351,22 @@ export function useCatalogue({
   // header, and one from another data version is removed at start-up. There is no release
   // for a cell to belong to any more.
   const routableCells = installed;
+
+  /** What downloading a cell costs: its routing data and its map pack. */
+  function cellBytes(id: string): number {
+    const entry = catalogue?.cells.find((c) => c.id === id);
+    const map = mapIndex?.cells[id];
+    const held = mapPacks.find((p) => p.manifest.id === id);
+    return (entry?.bytes ?? 0) + (current(map, held) ? 0 : packBytes(map));
+  }
+
+  /** What a run of downloads costs, with the world pack if it is not here yet. */
+  function downloadBytes(ids: string[]): number {
+    if (!ids.length) return 0;
+    const world = mapPacks.find((p) => p.manifest.id === "world");
+    const worldBytes = current(mapIndex?.world, world) ? 0 : packBytes(mapIndex?.world);
+    return ids.reduce((sum, id) => sum + cellBytes(id), worldBytes);
+  }
 
   function download(ids: string[]) {
     if (!ids.length) return;
@@ -279,6 +393,10 @@ export function useCatalogue({
     }
     setIntents(new Map());
     for (const pack of removals) removeCell(pack);
+    // The world pack is only there for the cells; it goes with the last of them.
+    const world = mapPacks.find((p) => p.manifest.id === "world");
+    if (world && !downloads.length && removals.length === installed.length)
+      dataWorker.current?.postMessage({ id: 2, type: "remove", maps: [world] });
     download(downloads);
   }
 
@@ -296,6 +414,7 @@ export function useCatalogue({
       id: 2,
       type: "remove",
       pack: installedPack,
+      maps: mapPacks.filter((p) => p.manifest.id === installedPack.manifest.id),
     });
   }
 
@@ -328,6 +447,9 @@ export function useCatalogue({
     catalogueError,
     notice,
     installed,
+    mapPacks,
+    cellBytes,
+    downloadBytes,
     cells,
     cellStates,
     gridZoom: catalogue?.grid.zoom,

@@ -21,6 +21,16 @@ import {
   type Basemap,
 } from "./style";
 import { loadMapResources, type MapResources } from "./resources";
+import {
+  demTile,
+  hasPacks,
+  protocol as tileProtocol,
+  setPacks,
+  setRemote,
+  TILE_PROTOCOL,
+  tileURL,
+} from "./tiles";
+import type { MapInstalled } from "../offline/store";
 import { DATA_ROOT } from "../config";
 import { freshResult, type Track } from "../tracks";
 
@@ -52,35 +62,39 @@ export type MapCommand = {
 };
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
-// Contours are drawn from the relief tiles in a worker, so there is no contour tileset to
-// host or pay for. One source per relief URL, which map.json names.
-const contourTiles = new Map<string, string>();
-function contoursFor(terrain: string): string {
-  let tiles = contourTiles.get(terrain);
-  if (!tiles) {
+maplibregl.addProtocol(TILE_PROTOCOL, tileProtocol);
+/** Map sources whose tiles come from the packs, and so change when a pack does. */
+const PACKED_SOURCES = ["protomaps", "cycle_routes", "terrain", "contours"];
+// Contours are drawn from the relief tiles, so there is no contour tileset to host or pay
+// for. They run on this thread rather than in maplibre-contour's worker, because that
+// worker fetches by URL and cannot reach the relief in the map packs.
+let contourTiles: string | undefined;
+function contoursFor(): string {
+  if (!contourTiles) {
     const dem = new mlcontour.DemSource({
-      url: terrain,
+      url: tileURL("terrain"),
       encoding: "terrarium",
       maxzoom: TERRAIN_MAXZOOM,
-      worker: true,
-      id: `dem-${contourTiles.size}`,
+      worker: false,
+      id: "dem",
     });
+    // maplibre-contour 0.1 takes no tile loader in its options; its local manager does.
+    (dem.manager as unknown as { getTile: typeof demTile }).getTile = demTile;
     dem.setupMaplibre(maplibregl);
-    tiles = dem.contourProtocolUrl({
+    contourTiles = dem.contourProtocolUrl({
       thresholds: CONTOUR_THRESHOLDS,
       contourLayer: "contours",
       elevationKey: "ele",
       levelKey: "level",
       overzoom: 1,
     });
-    contourTiles.set(terrain, tiles);
   }
-  return tiles;
+  return contourTiles;
 }
 /** Everything a style needs, from the bucket's map index once it has arrived. */
 const styleInputs = (resources: MapResources | undefined) => ({
   resources,
-  contours: resources?.terrain ? contoursFor(resources.terrain) : undefined,
+  contours: resources?.terrain ? contoursFor() : undefined,
   lang: labelLanguage(navigator.language),
 });
 export function MapView({
@@ -111,9 +125,12 @@ export function MapView({
   cursor,
   bottomInset,
   basemap,
+  mapPacks,
   dimmed,
 }: {
   basemap: Basemap;
+  /** Installed map packs, which the map draws from before the network. */
+  mapPacks: readonly MapInstalled[];
   dimmed: boolean;
   tracks: Track[];
   activeId?: string;
@@ -684,35 +701,47 @@ export function MapView({
     });
     m.on("error", (event) => {
       console.warn("Map rendering error:", event.error?.message);
-      if (!disposed)
-        setMapError(
-          "Map resources unavailable. Check your connection. Routing and export remain available.",
-        );
+      // Offline, a tile outside the downloaded areas is expected to be missing, and the
+      // offline notice already says so.
+      if (disposed || !navigator.onLine || event.error?.name === "TileUnavailable") return;
+      setMapError(
+        "Map resources unavailable. Check your connection. Routing and export remain available.",
+      );
     });
-    loadMapResources(DATA_ROOT).then(
-      (loaded) => {
-        if (disposed) return;
-        resources.current = loaded;
-        m.setStyle(mapStyle(styleInputs(loaded), appliedBasemap.current), {
-          diff: false,
-        });
-      },
-      (error) => {
-        console.warn("Map resources:", error);
-        if (!disposed)
-          setMapError(
-            "Map resources unavailable. Check your connection. Routing and export remain available.",
-          );
-      },
-    );
+    let indexed = false;
+    const loadIndex = () =>
+      loadMapResources(DATA_ROOT).then(
+        (loaded) => {
+          if (disposed) return;
+          indexed = true;
+          resources.current = loaded;
+          setRemote(loaded);
+          m.setStyle(mapStyle(styleInputs(loaded), appliedBasemap.current), {
+            diff: false,
+          });
+          changeConnection();
+        },
+        (error) => {
+          console.warn("Map resources:", error);
+          if (!disposed && navigator.onLine)
+            setMapError(
+              "Map resources unavailable. Check your connection. Routing and export remain available.",
+            );
+        },
+      );
+    void loadIndex();
     const changeConnection = () => {
       if (!navigator.onLine)
         setMapError(
-          "Map resources require an internet connection. Routing and export remain available.",
+          hasPacks()
+            ? "Offline. The map shows downloaded areas only."
+            : "Offline. Download areas in the Data tab to keep the map and routing without a connection.",
         );
       else {
         setMapError("");
-        m.triggerRepaint();
+        // The index may never have arrived; tiles that failed offline are fetched again.
+        if (!indexed) void loadIndex();
+        for (const id of PACKED_SOURCES) if (m.getSource(id)) m.refreshTiles(id);
       }
     };
     changeConnection();
@@ -743,6 +772,14 @@ export function MapView({
       map.current = undefined;
     };
   }, []);
+  // A pack installed or removed changes where tiles come from, so the ones drawn are stale.
+  useEffect(() => {
+    setPacks(mapPacks);
+    const m = map.current;
+    if (!m) return;
+    for (const id of PACKED_SOURCES) if (m.getSource(id)) m.refreshTiles(id);
+    if (!navigator.onLine) window.dispatchEvent(new Event("offline"));
+  }, [mapPacks]);
   // A full style reload drops the app's sources and layers; `style.load` adds them back.
   useEffect(() => {
     const m = map.current;

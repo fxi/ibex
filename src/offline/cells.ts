@@ -50,6 +50,8 @@ export type CellActivity = {
   queued?: ReadonlySet<CellId>;
   downloading?: CellId;
   failed?: ReadonlyMap<CellId, string>;
+  /** Installed cells whose map pack is missing or older than the map index offers. */
+  mapStale?: ReadonlySet<CellId>;
 };
 
 /**
@@ -93,7 +95,9 @@ export function cellState(
     // A cell is stale when the catalogue offers different bytes than the ones installed.
     // That is the whole rule: there is no release to belong to.
     if (!entry) return "installed";
-    return installed.manifest.hash === entry.hash ? "installed" : "update-available";
+    return installed.manifest.hash === entry.hash && !activity.mapStale?.has(id)
+      ? "installed"
+      : "update-available";
   }
   if (!entry) return "unavailable";
   if (intent === "add") return "selected";

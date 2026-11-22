@@ -170,7 +170,7 @@ export async function putLargeFile(
 }
 
 /** The index to the basemap files; mutable like the catalogue, and cached like it. */
-export async function readMapIndex(at: Bucket): Promise<Record<string, string>> {
+export async function readMapIndex(at: Bucket): Promise<Record<string, unknown>> {
   const response = await at.s3
     .send(new GetObjectCommand({ Bucket: at.bucket, Key: key(at.prefix, "map.json") }))
     .catch(() => undefined);
@@ -179,11 +179,12 @@ export async function readMapIndex(at: Bucket): Promise<Record<string, string>> 
 }
 
 /** Merge entries into `map.json`, after the files they name are up. */
-export async function updateMapIndex(at: Bucket, patch: Record<string, string>): Promise<void> {
+export async function updateMapIndex(at: Bucket, patch: Record<string, unknown>): Promise<void> {
   const index = { ...(await readMapIndex(at)), ...patch };
-  await putObject(at, "map.json", JSON.stringify(index, null, 2), {
+  // Compact: with a map pack per cell this is hundreds of kilobytes, read on every start.
+  await putObject(at, "map.json", JSON.stringify(index), {
     type: "application/json",
     cache: CATALOGUE,
   });
-  console.log(`  map.json: ${JSON.stringify(index)}`);
+  console.log(`  map.json: ${Object.keys(patch).join(", ")} updated`);
 }

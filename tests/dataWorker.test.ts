@@ -10,6 +10,8 @@ import type { Installed } from "../src/offline/store";
  */
 const removed: Installed[] = [];
 let installs: ((signal: AbortSignal) => Promise<Installed>)[] = [];
+const mapInstalls: string[] = [];
+const cellManifest = { id: "9-264-181", files: [{ path: "graph.ibx", bytes: 10 }] };
 
 vi.mock("../src/offline/store", () => ({
   installPack: (
@@ -17,6 +19,10 @@ vi.mock("../src/offline/store", () => ({
     _progress: (fraction: number) => void,
     signal: AbortSignal,
   ) => installs.shift()!(signal),
+  installMapPack: async (manifest: { id: string }) => {
+    mapInstalls.push(manifest.id);
+    return { manifest, directory: `map-${manifest.id}` };
+  },
   listPacks: async () => [],
   removePack: async (pack: Installed) => {
     removed.push(pack);
@@ -45,6 +51,7 @@ const started = () => {
 beforeEach(() => {
   removed.length = 0;
   installs = [];
+  mapInstalls.length = 0;
   vi.resetModules();
 });
 
@@ -82,7 +89,7 @@ describe("data worker", () => {
     ];
 
     send({ id: 2, type: "remove", pack: pack("9-264-181") });
-    send({ id: 1, type: "install", url: "https://example.test/manifest.json" });
+    send({ id: 1, type: "install", manifest: cellManifest, sources: {} });
     release();
     await slow;
     await vi.waitFor(() => expect(posted).toHaveLength(2));
@@ -103,7 +110,7 @@ describe("data worker", () => {
     ];
 
     send({ id: 2, type: "remove", pack: pack("9-264-181") });
-    send({ id: 1, type: "install", url: "https://example.test/manifest.json" });
+    send({ id: 1, type: "install", manifest: cellManifest, sources: {} });
     send({ id: 1, type: "cancel" });
     await vi.waitFor(() => expect(posted).toHaveLength(1));
 
@@ -123,11 +130,46 @@ describe("data worker", () => {
         ),
     ];
 
-    send({ id: 1, type: "install", url: "https://example.test/manifest.json" });
+    send({ id: 1, type: "install", manifest: cellManifest, sources: {} });
     send({ id: 1, type: "cancel" });
     await vi.waitFor(() => expect(posted).toHaveLength(1));
 
     expect(posted[0].type).toBe("error");
     expect(posted[0].aborted).toBe(true);
+  });
+
+  it("installs a cell's map packs after it, as one job with one progress bar", async () => {
+    const { posted, send } = started();
+    await import("../src/workers/data.worker");
+    installs = [async () => pack("9-264-181")];
+    const map = (id: string, bytes: number) => ({
+      manifest: { kind: "map", id, hash: "abcdef12", files: [{ path: "basemap.pmtiles", bytes }] },
+      sources: {},
+    });
+    send({
+      id: 1,
+      type: "install",
+      manifest: cellManifest,
+      sources: {},
+      maps: [map("9-264-181", 30), map("world", 60)],
+    });
+    await vi.waitFor(() => expect(posted.some((m) => m.type === "installed")).toBe(true));
+
+    expect(mapInstalls).toEqual(["9-264-181", "world"]);
+    const done = posted.find((m) => m.type === "installed") as unknown as {
+      maps: { manifest: { id: string } }[];
+    };
+    expect(done.maps.map((m) => m.manifest.id)).toEqual(["9-264-181", "world"]);
+  });
+
+  it("removes a cell's map pack with it, and names both", async () => {
+    const { posted, send } = started();
+    await import("../src/workers/data.worker");
+    const map = { manifest: { kind: "map", id: "9-264-181" }, directory: "map-9-264-181" };
+    send({ id: 2, type: "remove", pack: pack("9-264-181"), maps: [map] });
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+
+    expect(removed.map((p) => p.directory)).toEqual(["9-264-181", "map-9-264-181"]);
+    expect(posted[0]).toMatchObject({ cell: "9-264-181", maps: ["9-264-181"] });
   });
 });

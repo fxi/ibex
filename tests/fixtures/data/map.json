@@ -3,5 +3,41 @@
   "cycleRoutes": "map/cycle-routes.pmtiles",
   "glyphs": "map/fonts/{fontstack}/{range}.pbf",
   "sprite": "map/sprites/light",
-  "terrain": null
+  "terrain": null,
+  "world": {
+    "hash": "ada42febf47dc0c7",
+    "files": [
+      {
+        "path": "basemap.pmtiles",
+        "url": "map-world/404f45b2fa4e36d2.basemap.pmtiles",
+        "bytes": 1392,
+        "sha256": "404f45b2fa4e36d2ddc847f45f6831e78c3208abad5ab60235dcf1961bcdbaee"
+      },
+      {
+        "path": "assets.json",
+        "url": "map-world/dc0c32200a51769f.assets.json",
+        "bytes": 368,
+        "sha256": "dc0c32200a51769f905c61c33a9bdd2faf38ef6168ca9a0dd7d681d430e90a84"
+      }
+    ]
+  },
+  "cells": {
+    "9-264-181": {
+      "hash": "dd4d490ddda1a983",
+      "files": [
+        {
+          "path": "basemap.pmtiles",
+          "url": "map-cells/9-264-181/eea8f5477bf06880.basemap.pmtiles",
+          "bytes": 2735,
+          "sha256": "eea8f5477bf068803216b0cf6639bc5c7728103a295351246808a7e98975b594"
+        },
+        {
+          "path": "routes.pmtiles",
+          "url": "map-cells/9-264-181/c9e3affa2d868e6f.routes.pmtiles",
+          "bytes": 2797,
+          "sha256": "c9e3affa2d868e6f3fcd5e2f8e52e5afeddf47ffc32381356b3cab034958a335"
+        }
+      ]
+    }
+  }
 }
