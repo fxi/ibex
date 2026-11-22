@@ -33,6 +33,8 @@ Scripts that read a local build take its cells directory as an argument, default
 | | `data-server.ts`, `local-env.ts` | **lib** for `vite.config.ts`: serve the cells directory with byte ranges; read only this workspace's `.env` |
 | | `build_browser_tests.ts`, `test-server.mjs` | Isolated browser test build and its server |
 | | `gh-setup.sh` | Copy the deploy secrets and variables from `.env` to the GitHub repository |
+| | `release.ts` | Cut a release: checks, bump `package.json`, commit, tag, and with `--push` send both. `npm run release -- <patch|minor|major|x.y.z> [--push] [--skip-checks]` |
+| | `coverage_badge.ts` | vitest's `coverage-summary.json` → the shields.io endpoint JSON CI deploys at `/ibex/badges/coverage.json` |
 
 Rules: one-off experiments do not get committed here. If a script is worth keeping, give it
 argv inputs (no hardcoded `data/` build paths) and add it to this table.
