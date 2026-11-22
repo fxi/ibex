@@ -1,6 +1,6 @@
 name: Deploy app
 # Builds the app and publishes it to GitHub Pages, served at /<repository name>/.
-# Routing data is not part of the app: it is published separately (see data.yml).
+# Routing data is not part of the app: it is published separately; map packs by data.yml.
 #
 # Configure once (scripts/gh-setup.sh does it from .env):
 #   variable VITE_DATA_URL       required; the deploy is skipped until it is set, so forks
@@ -41,6 +41,11 @@ jobs:
           echo "dist is ${size} MB"
           test "$size" -lt 20
           test -z "$(find dist -name '*.ibx' -print -quit)"
+      # The README reads its coverage badge from here (scripts/coverage_badge.ts).
+      - uses: actions/download-artifact@v4
+        with:
+          name: badges
+          path: dist/badges
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -23,7 +23,14 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
+      - name: Coverage badge
+        run: node --import tsx scripts/coverage_badge.ts coverage/coverage-summary.json badges/coverage.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: badges
+          path: badges/
+          retention-days: 7
       - run: npm run build:test
       - name: Playwright version
         id: playwright

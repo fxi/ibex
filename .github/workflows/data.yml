@@ -1,0 +1,51 @@
+name: Map packs
+# Cuts the offline map packs (scripts/map_cells.ts) for every published cell that has none
+# yet, and the world pack if it is missing. Each pack goes to the bucket as it is cut and
+# leaves the disk, and map.json is updated after each, so a cancelled run resumes.
+#
+# Runs after each release (release.yml), or by hand; `rebuild` recuts every pack from
+# today's Protomaps build. Routing cells are not built here: they need Geofabrik downloads
+# and hours of CPU per region, and are published from a workstation.
+#
+# Needs the S3_* secrets and the S3_PUBLIC_URL variable (scripts/gh-setup.sh).
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Recut every pack, not only the missing ones
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: map-packs
+  cancel-in-progress: false
+jobs:
+  packs:
+    runs-on: ubuntu-latest
+    # About a minute a cell; 114 cells on 2026-11-22.
+    timeout-minutes: 340
+    env:
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_KEY: ${{ secrets.S3_KEY }}
+      S3_SECRET: ${{ secrets.S3_SECRET }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_PREFIX: ${{ vars.S3_PREFIX }}
+      S3_PUBLIC_URL: ${{ vars.S3_PUBLIC_URL }}
+      PMTILES_VERSION: 1.31.2
+      SKIP: ${{ inputs.rebuild && '' || '--skip-built' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install pmtiles
+        run: |
+          curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" |
+            tar -xz -C /usr/local/bin pmtiles
+          pmtiles version
+      - run: npm run data:map-cells -- --world --publish $SKIP
+      - run: npm run data:map-cells -- --publish $SKIP

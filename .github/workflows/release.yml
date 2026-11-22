@@ -22,3 +22,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+  map-packs:
+    # Offline map packs for the cells published since the last run (data.yml).
+    needs: release
+    if: vars.S3_PUBLIC_URL != ''
+    uses: ./.github/workflows/data.yml
+    secrets: inherit
