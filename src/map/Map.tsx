@@ -43,6 +43,7 @@ import { syncSources } from "./sources";
 import type { Note } from "../notes/types";
 import type { SearchArea } from "../state/useNotes";
 import type { Lens } from "./rideStyle";
+import { APP_VERSION } from "../version";
 /**
  * Screen distance between route handles. Laid out per whole zoom level, so handles hold
  * still while the map pans and only regroup when the zoom level changes.
@@ -258,7 +259,10 @@ export function MapView({
       zoom: 10.7,
       minZoom: 0,
       maxZoom: 18,
-      attributionControl: { compact: true },
+      attributionControl: {
+        compact: true,
+        customAttribution: `<a href="https://github.com/fxi/ibex/releases" target="_blank" rel="noopener">Ibex ${APP_VERSION}</a>`,
+      },
     });
     map.current = m;
     // Browser tests inspect sources and layers through the container, the same way they
